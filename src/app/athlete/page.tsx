@@ -203,7 +203,7 @@ export default function AthleteDashboard() {
   const [loading, setLoading] = useState(true);
   const [weekOffset, setWeekOffset] = useState(0);
   const [modalOpen, setModalOpen] = useState(false);
-  const [sessionSelected, setSessionSelected] = useState(null);
+  const [sessionSelected, setSessionSelected] = useState<Session | null>(null);
   const [absModalOpen, setAbsModalOpen] = useState(false);
   type Absence = {
   id: string;

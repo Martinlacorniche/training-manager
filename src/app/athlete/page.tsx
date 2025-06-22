@@ -216,7 +216,7 @@ export default function AthleteDashboard() {
     const fetchUser = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.user?.id) {
-        window.location = "/login";
+        window.location.href = "/login";
         return;
       }
       const { data: u } = await supabase.from("users").select("*").eq("id_auth", session.user.id).single();

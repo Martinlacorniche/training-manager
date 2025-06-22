@@ -24,7 +24,7 @@ function getSportIcon(sport: string) {
   }
 }
 
-function ModalAthleteSession({ session, onClose, onUpdated }) {
+function ModalAthleteSession({ session, onClose, onUpdated }: { session: any, onClose: any, onUpdated: any }) {
   const [rpe, setRpe] = useState(session.rpe ?? 5);
   const [status, setStatus] = useState(session.status ?? "valide");
   const [athleteComment, setAthleteComment] = useState(session.athlete_comment ?? "");

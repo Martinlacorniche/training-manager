@@ -558,11 +558,12 @@ const [user, setUser] = useState<User | null>(null);
         <ModalAthleteSession
           session={sessionSelected}
           onClose={() => setModalOpen(false)}
-          onUpdated={(updatedSession) => {
-            setSessions(sess =>
-              sess.map(s => s.id === updatedSession.id ? updatedSession : s)
-            );
-          }}
+          onUpdated={(updatedSession: Session) => {
+  setSessions(sess =>
+    sess.map(s => s.id === updatedSession.id ? updatedSession : s)
+  );
+}}
+
         />
       )}
       {absModalOpen && user && (

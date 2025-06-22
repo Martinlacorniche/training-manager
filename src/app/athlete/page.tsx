@@ -7,6 +7,8 @@ import "dayjs/locale/fr";
 import { BikeIcon, Dumbbell, Footprints, WavesLadder, Mountain, Activity, Trash2 } from "lucide-react";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import type { DropResult } from "@hello-pangea/dnd";
+
 
 
 
@@ -225,7 +227,7 @@ export default function AthleteDashboard() {
     fetchUser();
   }, []);
 
-  const handleDragEnd = async (result) => {
+  const handleDragEnd = async (result: DropResult) => {
   if (!result.destination) return;
   const sessionId = result.draggableId;
   const newDate = result.destination.droppableId.replace("jour_", "");

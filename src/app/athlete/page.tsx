@@ -227,6 +227,14 @@ type Session = {
   planned_inter?: string;
   athlete_comment?: string;
   load_index?: number;};
+  type User = {
+  id_auth: string;
+  name?: string;
+  // Ajoute d'autres champs si besoin
+};
+
+const [user, setUser] = useState<User | null>(null);
+
   const [absences, setAbsences] = useState<Absence[]>([]);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [hoveredDayId, setHoveredDayId] = useState(null);

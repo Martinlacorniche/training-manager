@@ -199,20 +199,8 @@ function ModalAbsComp({
 
 export default function AthleteDashboard() {
   const [user, setUser] = useState(null);
-  type Session = {
-  id: string;
-  user_id: string;
-  date: string;
-  planned_hour?: number;
-  rpe?: number;
-  status?: string;
-  sport?: string;
-  title?: string;
-  intensity?: string;
-  planned_inter?: string;
-  athlete_comment?: string;
-  load_index?: number;
-  const [sessions, setSessions] = useState([]);
+  
+  
   const [loading, setLoading] = useState(true);
   const [weekOffset, setWeekOffset] = useState(0);
   const [modalOpen, setModalOpen] = useState(false);
@@ -226,7 +214,21 @@ export default function AthleteDashboard() {
   comment: string;
   // Ajoute d’autres champs si tu veux, adapte à ta table si besoin
 };
-  const [absences, setAbsences] = useState([]);
+type Session = {
+  id: string;
+  user_id: string;
+  date: string;
+  planned_hour?: number;
+  rpe?: number;
+  status?: string;
+  sport?: string;
+  title?: string;
+  intensity?: string;
+  planned_inter?: string;
+  athlete_comment?: string;
+  load_index?: number;};
+  const [absences, setAbsences] = useState<Absence[]>([]);
+  const [sessions, setSessions] = useState<Session[]>([]);
   const [hoveredDayId, setHoveredDayId] = useState(null);
 
 

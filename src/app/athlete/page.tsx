@@ -121,7 +121,16 @@ function ModalAthleteSession({ session, onClose, onUpdated }: { session: any, on
   );
 }
 
-function ModalAbsComp({ user, onClose, onCreated }) {
+function ModalAbsComp({
+  user,
+  onClose,
+  onCreated
+}: {
+  user: any,
+  onClose: any,
+  onCreated: any
+}) { ... }
+
   const [date, setDate] = useState(dayjs().format("YYYY-MM-DD"));
   const [type, setType] = useState("absence");
   const [comment, setComment] = useState("");

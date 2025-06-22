@@ -29,7 +29,14 @@ export default function StatsSemaine() {
         .lte("date", end);
 
       // Regroupement par semaine
-      const weeks = {};
+      type WeekSummary = {
+  week: number;
+  séances: number;
+  [key: string]: any; // si tu veux d’autres champs dynamiques
+};
+
+const weeks: { [key: number]: WeekSummary } = {};
+
       (sessions || []).forEach(s => {
         const week = dayjs(s.date).isoWeek();
         if (!weeks[week]) {

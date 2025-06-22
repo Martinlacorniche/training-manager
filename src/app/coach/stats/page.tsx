@@ -9,7 +9,14 @@ dayjs.extend(isoWeek);
 export default function StatsCoachSemaine() {
   const [athletes, setAthletes] = useState([]);
   const [athleteId, setAthleteId] = useState("all");
-  const [data, setData] = useState([]);
+  type WeekData = {
+  week: number;
+  séances: number;
+  heures: any;
+  charge: any;
+};
+const [data, setData] = useState<WeekData[]>([]);
+
   const [loading, setLoading] = useState(true);
   const [topWeeks, setTopWeeks] = useState([]);
   const [topAthletes, setTopAthletes] = useState([]);
@@ -41,7 +48,14 @@ export default function StatsCoachSemaine() {
       }
 
       // Regroupement par semaine
-      const weeks = {};
+      type WeekSummary = {
+  week: number;
+  séances: number;
+  [key: string]: any; // si tu veux d’autres champs dynamiques
+};
+
+const weeks: { [key: number]: WeekSummary } = {};
+
       (sessions || []).forEach(s => {
         const week = dayjs(s.date).isoWeek();
         if (!weeks[week]) {

@@ -8,7 +8,14 @@ dayjs.extend(isoWeek);
 
 export default function StatsSemaine() {
   const [user, setUser] = useState(null);
-  const [data, setData] = useState([]);
+  type WeekData = {
+  week: number;
+  séances: number;
+  heures: any;
+  charge: any;
+};
+const [data, setData] = useState<WeekData[]>([]);
+
 
   useEffect(() => {
     const fetchUserAndSessions = async () => {

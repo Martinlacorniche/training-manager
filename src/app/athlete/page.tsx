@@ -12,7 +12,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 
 dayjs.locale("fr");
 
-function getSportIcon(sport) {
+function getSportIcon(sport: string) {
   switch (sport) {
     case "Vélo": return <BikeIcon size={15} className="text-blue-500" />;
     case "Course à pied": return <Footprints size={15} className="text-emerald-600" />;

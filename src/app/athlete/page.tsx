@@ -14,7 +14,7 @@ import type { DropResult } from "@hello-pangea/dnd";
 
 dayjs.locale("fr");
 
-function getSportIcon(sport: string) {
+function getSportIcon(sport: string = "") {
   switch (sport) {
     case "Vélo": return <BikeIcon size={15} className="text-blue-500" />;
     case "Course à pied": return <Footprints size={15} className="text-emerald-600" />;
@@ -487,7 +487,7 @@ const [user, setUser] = useState<User | null>(null);
     >
       {/* Ligne sport */}
       <div className="flex items-center gap-1 mb-0.5 w-full">
-        {getSportIcon(s.sport)}
+        {getSportIcon(s.sport ?? "")}
         <span className="font-semibold text-blue-700 text-[15px] truncate max-w-[80px]">{s.sport}</span>
       </div>
       {/* Titre */}

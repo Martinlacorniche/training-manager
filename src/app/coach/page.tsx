@@ -14,7 +14,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 
   
 // Helper: icône selon sport
-function getSportIcon(sport) {
+function getSportIcon(sport: string) {
   switch (sport) {
     case "Vélo":
       return <BikeIcon size={15} className="text-blue-500" />;
@@ -34,7 +34,19 @@ function getSportIcon(sport) {
 }
 
 // --- ModalSession (ajout/modif) ---
-function ModalSession({ athlete, date, onClose, onCreated, sessionToEdit }) {
+function ModalSession({
+  athlete,
+  date,
+  onClose,
+  onCreated,
+  sessionToEdit
+}: {
+  athlete: any,
+  date: any,
+  onClose: any,
+  onCreated: any,
+  sessionToEdit?: any
+}) {
   const [sport, setSport] = useState(sessionToEdit?.sport || "Vélo");
   const [title, setTitle] = useState(sessionToEdit?.title || "");
   const [plannedHour, setPlannedHour] = useState(sessionToEdit ? Math.floor(sessionToEdit.planned_hour) : 0);
@@ -49,7 +61,7 @@ function ModalSession({ athlete, date, onClose, onCreated, sessionToEdit }) {
 
 
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = async (e: any) => {
     e.preventDefault();
     setLoading(true);
     let data, error;

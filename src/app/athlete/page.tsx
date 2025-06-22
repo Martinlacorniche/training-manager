@@ -32,7 +32,7 @@ function ModalAthleteSession({ session, onClose, onUpdated }: { session: any, on
   const [plannedMinute, setPlannedMinute] = useState(session.planned_hour ? Math.round((session.planned_hour % 1) * 60) : 0);
   const [loading, setLoading] = useState(false);
 
-  const handleSubmit = async e => {
+  const handleSubmit = async (e: any) => {
     e.preventDefault();
     setLoading(true);
     const planned_hour = Number(plannedHour) + Number(plannedMinute) / 60;

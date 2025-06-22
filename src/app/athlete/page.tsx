@@ -461,7 +461,7 @@ const [user, setUser] = useState<User | null>(null);
                       .filter(
                         s =>
                           s.date === weekStart.add(j, "day").format("YYYY-MM-DD") &&
-                          s.user_id === user.id_auth
+                          s.user_id === user?.id_auth
                       )
                       .map((s, idx) => (
                         <Draggable draggableId={s.id} index={idx} key={s.id}>

@@ -62,11 +62,7 @@ const [topWeeks, setTopWeeks] = useState<WeekSummary[]>([]);
       }
 
       // Regroupement par semaine
-      type WeekSummary = {
-  week: number;
-  séances: number;
-  [key: string]: any; // si tu veux d’autres champs dynamiques
-};
+      
 
 const weeks: { [key: number]: WeekSummary } = {};
 

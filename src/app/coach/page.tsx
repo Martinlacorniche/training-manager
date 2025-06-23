@@ -645,16 +645,17 @@ useEffect(() => {
     date={selectedCell.date}
     sessionToEdit={sessionToEdit}
     onClose={() => setModalOpen(false)}
-    onCreated={(sessionCreated, isEdit) => {
-      setModalOpen(false);
-      if (isEdit) {
-        setSessions(sessions =>
-          sessions.map(s => s.id === sessionCreated.id ? sessionCreated : s)
-        );
-      } else {
-        setSessions(sessions => [...sessions, sessionCreated]);
-      }
-    }}
+    onCreated={(sessionCreated: SessionType, isEdit: boolean) => {
+  setModalOpen(false);
+  if (isEdit) {
+    setSessions(sessions =>
+      sessions.map(s => s.id === sessionCreated.id ? sessionCreated : s)
+    );
+  } else {
+    setSessions(sessions => [...sessions, sessionCreated]);
+  }
+}}
+
   />
 )}
 </main>

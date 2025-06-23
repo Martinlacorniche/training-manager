@@ -11,7 +11,8 @@ export default function StatsCoachSemaine() {
   id_auth: string;
   name: string;
 };
-  const [athletes, setAthletes] = useState([]);
+  const [athletes, setAthletes] = useState<Athlete[]>([]);
+
   const [athleteId, setAthleteId] = useState("all");
   type WeekData = {
   week: number;

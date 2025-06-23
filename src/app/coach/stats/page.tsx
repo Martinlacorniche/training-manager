@@ -12,6 +12,12 @@ export default function StatsCoachSemaine() {
   name: string;
 };
   const [athletes, setAthletes] = useState<Athlete[]>([]);
+  type AthleteStats = {
+  name: string;
+  séances: number;
+  heures: number;
+  charge: number;
+};
 
   const [athleteId, setAthleteId] = useState("all");
   type WeekData = {
@@ -97,7 +103,7 @@ const weeks: { [key: number]: WeekSummary } = {};
       setTopWeeks(bestWeeks);
 
       // --- TOP 3 athlètes sur l'année ---
-      const athletesMap = {};
+      const athletesMap: { [uid: string]: AthleteStats } = {};
       (sessions || []).forEach(s => {
         const uid = s.user_id;
         const name = s.users?.name || "Inconnu";

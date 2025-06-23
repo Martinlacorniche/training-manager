@@ -18,7 +18,7 @@ function getSportIcon(sport: string) {
   switch (sport) {
     case "Vélo":
       return <BikeIcon size={15} className="text-blue-500" />;
-    case "Run ":
+    case "Run":
       return <Footprints size={15} className="text-emerald-600" />;
     case "Natation":
       return <WavesLadder size={15} className="text-blue-400" />;
@@ -186,16 +186,51 @@ function ModalSession({
 
 // --- Composant principal ---
 export default function CoachDashboard() {
+  type UserType = {
+  id_auth: string;
+  name: string;
+  email?: string;
+  // ...autres champs si besoin
+};
+
+type SessionType = {
+  id: string;
+  user_id: string;
+  sport: string;
+  title?: string;
+  planned_hour: number;
+  planned_inter?: string;
+  intensity: string;
+  status?: string;
+  rpe?: number;
+  athlete_comment?: string;
+  date: string;
+  // ...autres champs selon ta BDD
+};
+
+type AbsenceType = {
+  id: string;
+  user_id: string;
+  date: string;
+  type: string;
+  comment?: string;
+};
+
   const router = useRouter();
-  const [coach, setCoach] = useState(null);
-  const [athletes, setAthletes] = useState([]);
+  const [coach, setCoach] = useState<UserType | null>(null);
+const [athletes, setAthletes] = useState<UserType[]>([]);
   const [loading, setLoading] = useState(true);
   const [weekOffset, setWeekOffset] = useState(0);
-  const [sessions, setSessions] = useState([]);
+  type Session = {
+  id: string;
+  // ...autres champs
+};
+const [sessions, setSessions] = useState<Session[]>([]);
+
   const [modalOpen, setModalOpen] = useState(false);
-  const [selectedCell, setSelectedCell] = useState(null);
+  const [selectedCell, setSelectedCell] = useState<{ athlete: UserType; date: string } | null>(null);
   const [sessionToEdit, setSessionToEdit] = useState(null);
-  const [absences, setAbsences] = useState([]); // tout en haut, avec tes autres useState
+  const [absences, setAbsences] = useState<AbsenceType[]>([]);
 
   // Semaine courante/déplacement
   const weekStart = dayjs().startOf("week").add(weekOffset, "week");

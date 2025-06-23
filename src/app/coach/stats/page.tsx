@@ -23,8 +23,10 @@ export default function StatsCoachSemaine() {
 const [data, setData] = useState<WeekData[]>([]);
 
   const [loading, setLoading] = useState(true);
-  const [topWeeks, setTopWeeks] = useState([]);
-  const [topAthletes, setTopAthletes] = useState([]);
+
+  type TopAthlete = { name: string; séances: number; heures: number; charge: number };
+const [topWeeks, setTopWeeks] = useState<WeekSummary[]>([]);
+  const [topAthletes, setTopAthletes] = useState<TopAthlete[]>([]);
 
   useEffect(() => {
     const fetchAthletes = async () => {

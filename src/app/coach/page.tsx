@@ -224,7 +224,16 @@ const [athletes, setAthletes] = useState<UserType[]>([]);
   type Session = {
   id: string;
   user_id: string;
-};
+  date: string;
+  planned_hour?: number;
+  rpe?: number;
+  status?: string;
+  sport?: string;
+  title?: string;
+  intensity?: string;
+  planned_inter?: string;
+  athlete_comment?: string;
+  load_index?: number;};
 const [sessions, setSessions] = useState<Session[]>([]);
 
   const [modalOpen, setModalOpen] = useState(false);

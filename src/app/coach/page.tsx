@@ -254,6 +254,29 @@ const coachId = coach?.id_auth;
   const weekDays = Array.from({ length: 7 }, (_, i) =>
     weekStart.add(i, "day").format("ddd DD/MM")
   );
+async function moveAthlete(index, direction) {
+  if (
+    (direction === -1 && index === 0) ||
+    (direction === 1 && index === athletes.length - 1)
+  ) return;
+
+  const newAthletes = [...athletes];
+  [newAthletes[index], newAthletes[index + direction]] = [newAthletes[index + direction], newAthletes[index]];
+  newAthletes.forEach((a, idx) => (a.ordre = idx));
+  setAthletes(newAthletes);
+
+  // Affiche dans la console pour debug
+  console.log("Update ordre:", newAthletes.map(a => ({ name: a.name, ordre: a.ordre })));
+
+  await Promise.all(
+    newAthletes.map((ath, idx) =>
+      supabase.from("users").update({ ordre: idx }).eq("id_auth", ath.id_auth)
+    )
+  );
+}
+
+
+
 
   // Suppression d'une séance
 async function handleDeleteSession(sessionId: string) {
@@ -280,10 +303,20 @@ async function handleDeleteSession(sessionId: string) {
       .single();
     setCoach(prev => prev?.id_auth === user?.id_auth ? prev : user);
     const { data: athletesList } = await supabase
-      .from("users")
-      .select("*")
-      .eq("role", "athlete");
-    setAthletes(athletesList || []);
+  .from("users")
+  .select("*")
+  .eq("role", "athlete")
+  .order("ordre", { ascending: true });
+    // Si certains n'ont pas d'ordre, on attribue un ordre temporaire
+    if (athletesList && athletesList.some(a => a.ordre === null || a.ordre === undefined)) {
+  for (let i = 0; i < athletesList.length; i++) {
+    if (athletesList[i].ordre === null || athletesList[i].ordre === undefined) {
+      await supabase.from("users").update({ ordre: i }).eq("id_auth", athletesList[i].id_auth);
+      athletesList[i].ordre = i;
+    }
+  }
+}
+setAthletes(athletesList || []);
     setLoading(false);
   };
   fetchData();
@@ -453,6 +486,31 @@ useEffect(() => {
       <span className="font-bold text-blue-800 text-[15px] leading-tight break-words">
         {ath.name}
       </span>
+      <div className="flex gap-1 mt-1">
+  <button
+    onClick={() => moveAthlete(i, -1)}
+    disabled={i === 0}
+    className={`rounded-full p-1 bg-gradient-to-tr from-blue-200 to-emerald-200 shadow hover:scale-110 transition border-2 border-white ${
+      i === 0 ? 'opacity-30 cursor-not-allowed' : 'hover:bg-blue-300'
+    }`}
+    title="Monter"
+    aria-label="Monter"
+  >
+    <ChevronLeft className="rotate-90 text-blue-700" size={18} />
+  </button>
+  <button
+    onClick={() => moveAthlete(i, 1)}
+    disabled={i === athletes.length - 1}
+    className={`rounded-full p-1 bg-gradient-to-tr from-blue-200 to-emerald-200 shadow hover:scale-110 transition border-2 border-white ${
+      i === athletes.length - 1 ? 'opacity-30 cursor-not-allowed' : 'hover:bg-blue-300'
+    }`}
+    title="Descendre"
+    aria-label="Descendre"
+  >
+    <ChevronLeft className="-rotate-90 text-blue-700" size={18} />
+  </button>
+</div>
+
     </div>
   </div>
   {/* Récap stats semaine dans une carte */}

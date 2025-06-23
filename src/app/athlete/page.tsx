@@ -1,6 +1,6 @@
 // /app/athlete/page.tsx (ou /pages/athlete.tsx selon ton Next)
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import dayjs from "dayjs";
 import "dayjs/locale/fr";
@@ -237,10 +237,13 @@ const [user, setUser] = useState<User | null>(null);
   const [absences, setAbsences] = useState<Absence[]>([]);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [hoveredDayId, setHoveredDayId] = useState(null);
+  const userId = user?.id_auth;
 
 
 
-  const weekStart = dayjs().startOf("week").add(weekOffset, "week");
+
+  const weekStart = useMemo(() => dayjs().startOf("week").add(weekOffset, "week"), [weekOffset]);
+
   const weekDays = Array.from({ length: 7 }, (_, i) => weekStart.add(i, "day").format("ddd DD/MM"));
 
   // Auth + profil
@@ -277,6 +280,7 @@ const [user, setUser] = useState<User | null>(null);
 
   // Séances semaine
   useEffect(() => {
+  if (!userId) return;
   const fetchSessionsAndAbsences = async () => {
     if (!user) return;
     const start = weekStart.format("YYYY-MM-DD");
@@ -300,7 +304,7 @@ const [user, setUser] = useState<User | null>(null);
     setLoading(false);
   };
   fetchSessionsAndAbsences();
-}, [user, weekStart]);
+}, [userId, weekOffset]);
 
 
   // Stats

@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
@@ -240,9 +240,17 @@ const [sessions, setSessions] = useState<Session[]>([]);
   const [selectedCell, setSelectedCell] = useState<{ athlete: UserType; date: string } | null>(null);
   const [sessionToEdit, setSessionToEdit] = useState<Session | null>(null);
   const [absences, setAbsences] = useState<AbsenceType[]>([]);
+  const [sessionsLoading, setSessionsLoading] = useState(false);
+const [absencesLoading, setAbsencesLoading] = useState(false);
+const coachId = coach?.id_auth;
+
+
 
   // Semaine courante/déplacement
-  const weekStart = dayjs().startOf("week").add(weekOffset, "week");
+  const weekStart = useMemo(
+  () => dayjs().startOf("week").add(weekOffset, "week"),
+  [weekOffset]
+);
   const weekDays = Array.from({ length: 7 }, (_, i) =>
     weekStart.add(i, "day").format("ddd DD/MM")
   );
@@ -259,44 +267,51 @@ async function handleDeleteSession(sessionId: string) {
 
 
   useEffect(() => {
-    const fetchData = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.user?.id) {
-        router.push("/login");
-        return;
-      }
-      const { data: user } = await supabase
-        .from("users")
-        .select("*")
-        .eq("id_auth", session.user.id)
-        .single();
-      setCoach(user);
-      const { data: athletesList } = await supabase
-        .from("users")
-        .select("*")
-        .eq("role", "athlete");
-      setAthletes(athletesList || []);
-      setLoading(false);
-    };
-    fetchData();
-  }, [router]);
+  const fetchData = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.user?.id) {
+      router.push("/login");
+      return;
+    }
+    const { data: user } = await supabase
+      .from("users")
+      .select("*")
+      .eq("id_auth", session.user.id)
+      .single();
+    setCoach(prev => prev?.id_auth === user?.id_auth ? prev : user);
+    const { data: athletesList } = await supabase
+      .from("users")
+      .select("*")
+      .eq("role", "athlete");
+    setAthletes(athletesList || []);
+    setLoading(false);
+  };
+  fetchData();
+}, []);
+
 
   useEffect(() => {
-    const fetchSessions = async () => {
-      const start = weekStart.format("YYYY-MM-DD");
-      const end = weekStart.add(6, "day").format("YYYY-MM-DD");
-      const { data: sess } = await supabase
-        .from("sessions")
-        .select("*")
-        .gte("date", start)
-        .lte("date", end);
-      setSessions(sess || []);
-    };
-    fetchSessions();
-  }, [weekStart]);
+  if (!coachId) return;
+  setSessionsLoading(true);
+  const fetchSessions = async () => {
+    const start = weekStart.format("YYYY-MM-DD");
+    const end = weekStart.add(6, "day").format("YYYY-MM-DD");
+    const { data: sess } = await supabase
+      .from("sessions")
+      .select("*")
+      .gte("date", start)
+      .lte("date", end);
+    setSessions(sess || []);
+    setSessionsLoading(false);
+  };
+  fetchSessions();
+}, [coachId, weekOffset]);
 
   // ...puis
 useEffect(() => {
+  if (!coachId) return;
+  
+  setAbsencesLoading(true);
   const fetchAbsences = async () => {
     const start = weekStart.format("YYYY-MM-DD");
     const end = weekStart.add(6, "day").format("YYYY-MM-DD");
@@ -306,9 +321,10 @@ useEffect(() => {
       .gte("date", start)
       .lte("date", end);
     setAbsences(abs || []);
+    setAbsencesLoading(false);
   };
   fetchAbsences();
-}, [weekStart]);
+}, [coachId, weekOffset]);
 
   if (loading) {
     return (

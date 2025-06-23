@@ -109,7 +109,7 @@ function ModalSession({
         className="bg-white rounded-2xl shadow-2xl p-6 min-w-[320px] flex flex-col gap-2 border border-emerald-100 relative"
       >
         <h2 className="font-bold text-xl mb-2 text-blue-900 flex gap-2 items-center">
-          {getSportIcon(s.sport ?? "")}
+          {getSportIcon(sport: string = "")}
           {isEdit ? "Modifier la séance" : `Créer une séance pour ${athlete.name} le ${dayjs(date).format("dddd DD MMMM")}`}
         </h2>
         <label>Sport :</label>

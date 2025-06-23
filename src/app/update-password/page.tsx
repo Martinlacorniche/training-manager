@@ -3,39 +3,40 @@ import { useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { Bike, BikeIcon } from "lucide-react";
+import { DumbbellIcon } from "lucide-react";
 
-export default function Login() {
-  const router = useRouter();
-  const [form, setForm] = useState({ email: "", password: "" });
+export default function UpdatePassword() {
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setForm({ ...form, [e.target.name]: e.target.value });
-  };
+  const router = useRouter();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setMessage(null);
     setError(null);
 
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email: form.email,
-      password: form.password,
-    });
-
-    if (error) {
-      setError(error.message || "Erreur de connexion.");
+    if (password.length < 6) {
+      setError("Le mot de passe doit faire au moins 6 caractères !");
       return;
     }
-
-    router.push("/");
+    if (password !== confirm) {
+      setError("Les mots de passe ne correspondent pas.");
+      return;
+    }
+    const { error } = await supabase.auth.updateUser({ password });
+    if (error) {
+      setError("Erreur : " + error.message);
+    } else {
+      setMessage("Mot de passe modifié avec succès !");
+      setTimeout(() => router.push("/login"), 1800);
+    }
   };
 
   return (
     <main className="min-h-screen bg-gradient-to-br from-emerald-400 via-blue-400 to-blue-600 p-2 sm:p-6 flex flex-col items-center">
-
       <div className="flex flex-col items-center">
-        {/* Logo avec icône vélo */}
         <div className="mb-4 relative w-fit mx-auto">
           <Image
             src="/coach-logo.jpg"
@@ -45,37 +46,34 @@ export default function Login() {
             className="rounded-full shadow-lg border-4 border-white object-cover -mb-2 mt-2"
             priority
           />
-          <BikeIcon
-            size={34}
-            className="absolute -right-7 top-5 text-blue-700 drop-shadow-lg animate-bounce"
+          <DumbbellIcon
+            size={32}
+            className="absolute -right-7 top-6 text-emerald-700 drop-shadow-lg animate-bounce"
             strokeWidth={2.2}
           />
         </div>
         <div className="bg-white/90 rounded-2xl shadow-2xl p-8 w-full max-w-md flex flex-col items-center relative">
-          <h2 className="text-2xl font-bold text-emerald-600 mb-2 tracking-tight flex items-center gap-2">
-  <Bike className="inline mb-1 text-blue-700" size={28} />
-  Connexion
-</h2>
-
+          <h2 className="text-2xl font-bold text-emerald-600 mb-2 flex items-center gap-2">
+            <DumbbellIcon className="inline mb-1 text-blue-700" size={26} />
+            Nouveau mot de passe
+          </h2>
           <p className="mb-6 text-blue-700 text-center font-semibold tracking-wide">
-            Viens transpirer avec NG Sport Coaching !
+            Choisis un mot de passe solide pour ton compte NG Sport Coaching !
           </p>
           <form onSubmit={handleSubmit} className="flex flex-col gap-3 w-full">
             <input
-              name="email"
-              type="email"
-              placeholder="Adresse e-mail"
-              value={form.email}
-              onChange={handleChange}
+              type="password"
+              placeholder="Nouveau mot de passe"
+              value={password}
+              onChange={e => setPassword(e.target.value)}
               required
               className="p-2 rounded-xl border border-emerald-200 focus:ring-2 focus:ring-blue-300 transition"
             />
             <input
-              name="password"
               type="password"
-              placeholder="Mot de passe"
-              value={form.password}
-              onChange={handleChange}
+              placeholder="Confirmer le mot de passe"
+              value={confirm}
+              onChange={e => setConfirm(e.target.value)}
               required
               className="p-2 rounded-xl border border-emerald-200 focus:ring-2 focus:ring-blue-300 transition"
             />
@@ -83,25 +81,16 @@ export default function Login() {
               type="submit"
               className="p-2 rounded-xl bg-gradient-to-r from-blue-400 to-emerald-500 text-white font-bold mt-2 shadow-lg hover:scale-105 transition"
             >
-              Se connecter 🚴‍♂️
+              Mettre à jour 💪
             </button>
-            {error && <div className="text-red-500 text-sm text-center mt-2">{error}</div>}
           </form>
+          {message && <div className="text-green-700 mt-3 text-center">{message}</div>}
+          {error && <div className="text-red-500 mt-3 text-center">{error}</div>}
           <div className="mt-4 text-sm text-gray-500">
-            Pas encore de compte ?{" "}
-            <a href="/signup" className="text-emerald-700 underline font-bold hover:text-blue-600 transition">
-              Inscris-toi
+            <a href="/login" className="text-emerald-700 underline font-bold hover:text-blue-600 transition">
+              Retour à la connexion
             </a>
           </div>
-          <div className="mt-2 text-sm text-gray-500">
-  <a
-    href="/reset-password"
-    className="text-emerald-700 underline font-bold hover:text-blue-600 transition"
-  >
-    Mot de passe oublié ?
-  </a>
-</div>
-
         </div>
       </div>
     </main>

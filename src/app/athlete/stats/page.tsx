@@ -73,8 +73,8 @@ const weeks: { [key: number]: WeekSummary } = {};
   }, []);
 
   // --- Calcul des podiums (top 3) ---
-  const medal = idx => ["🥇", "🥈", "🥉"][idx] || "";
-  const colorClass = idx =>
+  const medal = (idx: number) => ["🥇", "🥈", "🥉"][idx] || "";
+  const colorClass = (idx: number) =>
     idx === 0
       ? "font-bold text-yellow-700"
       : idx === 1

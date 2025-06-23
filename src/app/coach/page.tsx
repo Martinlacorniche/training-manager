@@ -254,7 +254,7 @@ const coachId = coach?.id_auth;
   const weekDays = Array.from({ length: 7 }, (_, i) =>
     weekStart.add(i, "day").format("ddd DD/MM")
   );
-async function moveAthlete(index, direction) {
+async function moveAthlete(index: number, direction: number) {
   if (
     (direction === -1 && index === 0) ||
     (direction === 1 && index === athletes.length - 1)

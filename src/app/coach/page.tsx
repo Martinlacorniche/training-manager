@@ -41,11 +41,11 @@ function ModalSession({
   onCreated,
   sessionToEdit
 }: {
-  athlete: UserType,
-  date: string,
-  onClose: () => void,
-  onCreated: (session: Session, isEdit: boolean) => void,
-  sessionToEdit?: Session | null
+  athlete: any,
+  date: any,
+  onClose: any,
+  onCreated: any,
+  sessionToEdit?: any
 }) {
   const [sport, setSport] = useState(sessionToEdit?.sport || "Vélo");
   const [title, setTitle] = useState(sessionToEdit?.title || "");

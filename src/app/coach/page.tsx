@@ -14,7 +14,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 
   
 // Helper: icône selon sport
-function getSportIcon(sport: string) {
+function getSportIcon(sport: string = "") {
   switch (sport) {
     case "Vélo":
       return <BikeIcon size={15} className="text-blue-500" />;
@@ -41,11 +41,11 @@ function ModalSession({
   onCreated,
   sessionToEdit
 }: {
-  athlete: any,
-  date: any,
-  onClose: any,
-  onCreated: any,
-  sessionToEdit?: any
+  athlete: UserType,
+  date: string,
+  onClose: () => void,
+  onCreated: (session: Session, isEdit: boolean) => void,
+  sessionToEdit?: Session | null
 }) {
   const [sport, setSport] = useState(sessionToEdit?.sport || "Vélo");
   const [title, setTitle] = useState(sessionToEdit?.title || "");
@@ -109,7 +109,7 @@ function ModalSession({
         className="bg-white rounded-2xl shadow-2xl p-6 min-w-[320px] flex flex-col gap-2 border border-emerald-100 relative"
       >
         <h2 className="font-bold text-xl mb-2 text-blue-900 flex gap-2 items-center">
-          {getSportIcon(sport)}
+          {getSportIcon(s.sport ?? "")}
           {isEdit ? "Modifier la séance" : `Créer une séance pour ${athlete.name} le ${dayjs(date).format("dddd DD MMMM")}`}
         </h2>
         <label>Sport :</label>
@@ -238,7 +238,7 @@ const [sessions, setSessions] = useState<Session[]>([]);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedCell, setSelectedCell] = useState<{ athlete: UserType; date: string } | null>(null);
-  const [sessionToEdit, setSessionToEdit] = useState(null);
+  const [sessionToEdit, setSessionToEdit] = useState<Session | null>(null);
   const [absences, setAbsences] = useState<AbsenceType[]>([]);
 
   // Semaine courante/déplacement
@@ -553,7 +553,7 @@ useEffect(() => {
 >
   {/* Icône sport + sport (gros, visible) */}
   <div className="flex items-center gap-2 mb-1">
-    {getSportIcon(s.sport)}
+    {getSportIcon(s.sport ?? "")}
     <span className="font-semibold text-blue-700 text-[15px] truncate">{s.sport}</span>
   </div>
 

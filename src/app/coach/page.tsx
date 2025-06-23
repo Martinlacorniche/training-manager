@@ -190,6 +190,7 @@ export default function CoachDashboard() {
   id_auth: string;
   name: string;
   email?: string;
+  ordre: number;
   // ...autres champs si besoin
 };
 

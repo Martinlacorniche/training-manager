@@ -7,6 +7,10 @@ import isoWeek from "dayjs/plugin/isoWeek";
 dayjs.extend(isoWeek);
 
 export default function StatsCoachSemaine() {
+  type Athlete = {
+  id_auth: string;
+  name: string;
+};
   const [athletes, setAthletes] = useState([]);
   const [athleteId, setAthleteId] = useState("all");
   type WeekData = {

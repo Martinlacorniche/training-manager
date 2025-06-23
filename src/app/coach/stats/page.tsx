@@ -25,6 +25,13 @@ const [data, setData] = useState<WeekData[]>([]);
   const [loading, setLoading] = useState(true);
 
   type TopAthlete = { name: string; séances: number; heures: number; charge: number };
+  type WeekSummary = {
+  week: number;
+  séances: number;
+  heures: number;
+  charge: number;
+};
+
 const [topWeeks, setTopWeeks] = useState<WeekSummary[]>([]);
   const [topAthletes, setTopAthletes] = useState<TopAthlete[]>([]);
 

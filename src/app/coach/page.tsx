@@ -223,7 +223,7 @@ const [athletes, setAthletes] = useState<UserType[]>([]);
   const [weekOffset, setWeekOffset] = useState(0);
   type Session = {
   id: string;
-  // ...autres champs
+  user_id: string;
 };
 const [sessions, setSessions] = useState<Session[]>([]);
 

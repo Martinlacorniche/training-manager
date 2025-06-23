@@ -7,7 +7,12 @@ import isoWeek from "dayjs/plugin/isoWeek";
 dayjs.extend(isoWeek);
 
 export default function StatsSemaine() {
-  const [user, setUser] = useState(null);
+  type User = {
+  name: string;
+  // autres champs si besoin
+};
+const [user, setUser] = useState<User | null>(null);
+
   type WeekData = {
   week: number;
   séances: number;

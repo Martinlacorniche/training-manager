@@ -204,7 +204,7 @@ export default function CoachDashboard() {
   );
 
   // Suppression d'une séance
-async function handleDeleteSession(sessionId) {
+async function handleDeleteSession(sessionId: string) {
   const { error } = await supabase.from("sessions").delete().eq("id", sessionId);
   if (!error) {
     setSessions(sessions => sessions.filter(s => s.id !== sessionId));

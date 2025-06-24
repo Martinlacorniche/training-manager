@@ -535,7 +535,7 @@ useEffect(() => {
             <span className="font-semibold">Temps</span> : {Math.floor(totalTime)}h{String(Math.round((totalTime % 1) * 60)).padStart(2, "0")}
           </div>
           <div>
-            <span className="font-semibold">Charge</span> : {loadIndex}
+            <span className="font-semibold">Charge</span> : {loadIndex.toFixed(2)}
           </div>
         </>
       );

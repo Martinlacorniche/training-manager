@@ -372,7 +372,7 @@ const [user, setUser] = useState<User | null>(null);
         <div className="mb-3 text-xs text-gray-600">
           <span>Validées: {validCount}/{totalSessions} | </span>
           <span>Temps: {Math.floor(totalTime)}h{String(Math.round((totalTime%1)*60)).padStart(2,"0")} | </span>
-          <span>Charge: {loadIndex}</span>
+          <span>Charge: {loadIndex.toFixed(2)}</span>
         </div>
         <DragDropContext onDragEnd={handleDragEnd}>
   <div className="overflow-x-auto w-full">

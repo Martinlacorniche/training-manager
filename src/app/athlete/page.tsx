@@ -17,7 +17,7 @@ dayjs.locale("fr");
 function getSportIcon(sport: string = "") {
   switch (sport) {
     case "Vélo": return <BikeIcon size={15} className="text-blue-500" />;
-    case "Course à pied": return <Footprints size={15} className="text-emerald-600" />;
+    case "Run": return <Footprints size={15} className="text-emerald-600" />;
     case "Natation": return <WavesLadder size={15} className="text-blue-400" />;
     case "Renforcement": return <Dumbbell size={15} className="text-yellow-700" />;
     case "Musculation": return <Dumbbell size={15} className="text-red-600" />;
@@ -311,7 +311,10 @@ const [user, setUser] = useState<User | null>(null);
   const validCount = sessions.filter(s => s.status === "valide").length;
   const totalSessions = sessions.length;
   const totalTime = sessions.reduce((acc, s) => acc + (Number(s.planned_hour) || 0), 0);
-  const loadIndex = sessions.reduce((acc, s) => acc + ((Number(s.rpe) || 0) * (Number(s.planned_hour) || 0)), 0);
+  const loadIndex = sessions
+  .filter(s => s.status === "valide")
+  .reduce((acc, s) => acc + ((Number(s.rpe) || 0) * (Number(s.planned_hour) || 0)), 0);
+
 
   if (loading) {
     return <main className="flex items-center justify-center min-h-screen bg-gradient-to-br from-teal-100 via-blue-200 to-emerald-200">

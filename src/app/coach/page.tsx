@@ -524,7 +524,10 @@ useEffect(() => {
       const validCount = athleteSessions.filter(s => s.status === "valide").length;
       const totalSessions = athleteSessions.length;
       const totalTime = athleteSessions.reduce((acc, s) => acc + (Number(s.planned_hour) || 0), 0);
-      const loadIndex = athleteSessions.reduce((acc, s) => acc + ((Number(s.rpe) || 0) * (Number(s.planned_hour) || 0)), 0);
+      const loadIndex = athleteSessions
+  .filter(s => s.status === "valide")
+  .reduce((acc, s) => acc + ((Number(s.rpe) || 0) * (Number(s.planned_hour) || 0)), 0);
+
 
       return (
         <>

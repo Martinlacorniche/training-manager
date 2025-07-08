@@ -412,7 +412,7 @@ useEffect(() => {
   </div>
 
       {/* Carte principale avec ombre et arrondi */}
-      <div className="w-full max-w-6xl bg-white/90 rounded-2xl shadow-2xl p-6 pb-4 flex flex-col items-center transition">
+    <div className="w-full max-w-6xl bg-gradient-to-r from-emerald-400 via-indigo-100 to-blue-250 rounded-2xl shadow-2xl p-6 pb-4 flex flex-col items-center transition">
         {/* Navigation semaine */}
         <div className="flex items-center justify-center gap-4 mb-6">
   <button
@@ -469,19 +469,15 @@ useEffect(() => {
             </thead>
             <tbody>
               {athletes.map((ath, i) => (
-  <tr key={ath.id_auth} className={`transition ${i % 2 ? 'bg-emerald-50' : 'bg-white'}`}>
-                 <td
-  className="
-    p-3 align-top bg-white rounded-l-xl min-w-[170px]
-    transition hover:bg-emerald-100
-    border-l-4 border-transparent hover:border-emerald-400
-  "
->
+  <tr key={ath.id_auth} className="transition bg-blue-50/60 hover:bg-blue-100">
+
+  <td className="p-0 align-top bg-transparent rounded-l-xl min-w-[170px]">
+  <div className="bg-white/90 border border-blue-100 rounded-2xl p-3 m-2 shadow-sm">
+
+
   <div className="flex items-center gap-3 mb-2">
     {/* Avatar initiales */}
-    <div className="flex items-center justify-center rounded-full bg-emerald-100 text-emerald-700 font-bold w-10 h-10 text-lg shadow">
-      {ath.name?.split(" ").map(n => n[0]).join("").toUpperCase()}
-    </div>
+    
     {/* Nom athlète */}
     <div className="flex flex-col">
       <span className="font-bold text-blue-800 text-[15px] leading-tight break-words">
@@ -544,6 +540,7 @@ useEffect(() => {
       );
     })()}
   </div>
+  </div>
 </td>
 
 
@@ -576,12 +573,13 @@ useEffect(() => {
   .map(a => (
     <div
       key={a.id}
-      className={
-        "group rounded-xl shadow w-[110px] px-2 py-1 flex flex-col items-center min-w-0 max-w-[120px] relative " +
-        (a.type === "competition"
-          ? "bg-yellow-100 border border-yellow-300 text-yellow-800"
-          : "bg-gray-100 border border-gray-300 text-gray-500")
-      }
+  className={`
+    group rounded-2xl shadow-md w-[120px] px-3 py-2 flex flex-col items-center min-w-0 max-w-[140px] relative
+    transition hover:scale-105 hover:shadow-xl
+    ${a.type === "competition"
+      ? "bg-yellow-100/80 border border-yellow-200 text-yellow-800"
+      : "bg-gray-100/70 border border-gray-200 text-gray-500"}
+  `}
     >
       <button
         type="button"
@@ -599,7 +597,7 @@ useEffect(() => {
         {a.type === "competition" ? "🏆 Compétition" : "⛔ Off"}
       </span>
       {a.comment && (
-        <span className="text-[11px] text-gray-600 mt-1 line-clamp-2 max-w-[100px] break-words whitespace-pre-line">
+        <span className="text-[11px] text-gray-600 mt-1 line-clamp-6 max-w-[100px] break-words whitespace-pre-line">
           {a.comment}
         </span>
       )}
@@ -617,10 +615,19 @@ useEffect(() => {
                               <div
   key={s.id || idx}
   className={`
-    group relative rounded-xl shadow border bg-white/95 w-full max-w-[120px] min-w-0 px-2 py-1 flex flex-col items-start
-    cursor-pointer hover:shadow-lg transition overflow-hidden
-    ${s.status === "valide" ? "bg-green-100 border-green-300" : s.status === "non_valide" ? "bg-red-100 border-red-300" : ""}
+    group relative rounded-2xl shadow-md border w-full max-w-[140px] min-w-0 px-3 py-2 flex flex-col items-start
+    cursor-pointer transition
+    hover:scale-105 hover:shadow-xl
+    ${s.status === "valide" 
+      ? "bg-emerald-100 border-emerald-300" 
+      : s.status === "non_valide"
+      ? "bg-red-100 border-red-300"
+      : "bg-white border-gray-100"}
   `}
+  style={{
+    fontFamily: "'Inter', 'Quicksand', sans-serif",
+    transition: "box-shadow .2s, transform .18s",
+  }}
   style={{ wordBreak: "break-word" }}
   onClick={() => {
     setSelectedCell({ athlete: ath, date: s.date });
@@ -677,17 +684,7 @@ useEffect(() => {
     </span>
   )}
 
-  {/* Statut */}
-  <span className={
-    "text-xs font-bold mt-1 " +
-    (s.status === "valide"
-      ? "text-emerald-700"
-      : s.status === "non_valide"
-      ? "text-red-600"
-      : "text-gray-400")
-  }>
-    {s.status === "valide" ? "Validée" : s.status === "non_valide" ? "Non validée" : ""}
-  </span>
+  
 
   {/* Supprimer (icône affichée au hover) */}
   <button

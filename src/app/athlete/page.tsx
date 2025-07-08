@@ -332,7 +332,8 @@ const [user, setUser] = useState<User | null>(null);
 </div>
 
 
-      <div className="w-full max-w-6xl bg-white/90 rounded-2xl shadow-2xl p-6 pb-4 flex flex-col items-center transition">
+      <div className="w-full max-w-6xl bg-gradient-to-r from-emerald-400 via-indigo-100 to-blue-250 rounded-2xl shadow-2xl p-6 pb-4 flex flex-col items-center transition">
+
         <div className="flex items-center justify-center gap-4 mb-6">
   <button
     onClick={() => setWeekOffset(w => w - 1)}
@@ -401,10 +402,14 @@ const [user, setUser] = useState<User | null>(null);
 
 
       <tbody>
-        <tr>
-          <td className="p-3 font-bold text-emerald-700 bg-emerald-50 rounded-l-xl text-center shadow-inner">
-  L'athlète 😁
-</td>
+      
+          <tr className="border-b border-blue-100 transition bg-blue-50/60 hover:bg-blue-100">
+  <td className="p-3 font-bold text-emerald-700 bg-white/90 border border-blue-100 rounded-l-2xl text-center shadow-sm">
+    L'athlète 😁
+  </td>
+
+
+
 
           {weekDays.map((day, j) => (
             <Droppable droppableId={`jour_${weekStart.add(j, "day").format("YYYY-MM-DD")}`} key={day + "-" + j}>
@@ -433,11 +438,12 @@ const [user, setUser] = useState<User | null>(null);
                         <div
                           key={a.id}
   className={
-    "group rounded-xl shadow w-[110px] px-2 py-1 flex flex-col items-center min-w-0 max-w-[120px] relative " +
-    (a.type === "competition"
-      ? "bg-yellow-100 border border-yellow-300 text-yellow-800"
-      : "bg-gray-100 border border-gray-300 text-gray-500")
-  }
+  "group rounded-xl shadow w-[110px] px-2 py-1 flex flex-col items-center min-w-0 max-w-[120px] relative " +
+  (a.type === "competition"
+    ? "bg-yellow-100 border border-yellow-300 text-yellow-800"
+    : "bg-gray-100 border border-gray-300 text-gray-500")
+}
+
 >
                           <button
                             type="button"
@@ -531,16 +537,7 @@ const [user, setUser] = useState<User | null>(null);
         </span>
       )}
       {/* Statut */}
-      <span className={
-        "text-xs font-bold mt-1 " +
-        (s.status === "valide"
-          ? "text-emerald-700"
-          : s.status === "non_valide"
-          ? "text-red-600"
-          : "text-gray-400")
-      }>
-        {s.status === "valide" ? "Validée" : s.status === "non_valide" ? "Non validée" : ""}
-      </span>
+      
     </div>
   )}
 </Draggable>

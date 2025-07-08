@@ -627,8 +627,8 @@ useEffect(() => {
   style={{
     fontFamily: "'Inter', 'Quicksand', sans-serif",
     transition: "box-shadow .2s, transform .18s",
+    wordBreak: "break-word",
   }}
-  style={{ wordBreak: "break-word" }}
   onClick={() => {
     setSelectedCell({ athlete: ath, date: s.date });
     setSessionToEdit(s);

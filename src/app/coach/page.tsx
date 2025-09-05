@@ -1,744 +1,547 @@
+
 "use client";
-import { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
 import dayjs from "dayjs";
 import "dayjs/locale/fr";
+import isoWeek from "dayjs/plugin/isoWeek";
 dayjs.locale("fr");
-import isBetween from "dayjs/plugin/isBetween";
-dayjs.extend(isBetween);
+dayjs.extend(isoWeek);
 
-import { User, PlusCircle, BikeIcon, Dumbbell, Footprints, WavesLadder, Mountain, Activity, Trash2 } from "lucide-react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+// Font
+import { Plus_Jakarta_Sans } from "next/font/google";
+const jakarta = Plus_Jakarta_Sans({ subsets: ["latin"], weight: ["500","600","700"], display: "swap" });
 
-  
-// Helper: icône selon sport
-function getSportIcon(sport: string = "") {
-  switch (sport) {
-    case "Vélo":
-      return <BikeIcon size={15} className="text-blue-500" />;
-    case "Run":
-      return <Footprints size={15} className="text-emerald-600" />;
-    case "Natation":
-      return <WavesLadder size={15} className="text-blue-400" />;
+// Icons (Phosphor)
+import {
+  PencilSimple, Trash, Plus, Info, ChartLineUp,
+  CaretLeft, CaretRight, CheckCircle, XCircle,
+  ChartLineUp as LoadIcon, Bicycle, SwimmingPool, Mountains, PersonSimpleRun, Clock, SignOut
+} from "@phosphor-icons/react";
+
+// Animations
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
+
+// ---------- helpers
+function sportIcon(s?: string, size: number = 16) {
+  switch (s) {
+    case "Vélo": return <Bicycle size={size} />;
+    case "Run": return <PersonSimpleRun size={size} />;
+    case "Natation": return <SwimmingPool size={size} />;
+    case "Trail": return <Mountains size={size} />;
     case "Renfo":
-      return <Dumbbell size={15} className="text-yellow-700" />;
-    case "Muscu":
-      return <Dumbbell size={15} className="text-red-600" />;
-    case "Trail":
-      return <Mountain size={15} className="text-green-700" />;
-    default:
-      return <Activity size={15} className="text-gray-400" />;
+    case "Muscu": return <ChartLineUp size={size} />;
+    default: return <ChartLineUp size={size} />;
   }
 }
+function sportBadgeClasses(s?: string) {
+  switch (s) {
+    case "Vélo": return "bg-sky-50 text-sky-700 ring-sky-200";
+    case "Run": return "bg-emerald-50 text-emerald-700 ring-emerald-200";
+    case "Natation": return "bg-cyan-50 text-cyan-700 ring-cyan-200";
+    case "Trail": return "bg-green-50 text-green-700 ring-green-200";
+    case "Renfo":
+    case "Muscu": return "bg-amber-50 text-amber-700 ring-amber-200";
+    default: return "bg-gray-50 text-gray-700 ring-gray-200";
+  }
+}
+function intensityBar(level?: string) {
+  switch (level) {
+    case "haute": return "bg-red-400";
+    case "moyenne": return "bg-amber-400";
+    default: return "bg-emerald-500";
+  }
+}
+function fmtTime(h?: number) {
+  if (h === undefined || h === null) return "";
+  const H = Math.floor(h || 0);
+  const M = Math.round(((h || 0) % 1) * 60);
+  return `${H}h${String(M).padStart(2,"0")}`;
+}
 
-// --- ModalSession (ajout/modif) ---
-function ModalSession({
-  athlete,
-  date,
-  onClose,
-  onCreated,
-  sessionToEdit
-}: {
-  athlete: any,
-  date: any,
-  onClose: any,
-  onCreated: any,
-  sessionToEdit?: any
+// ---------- types
+type UserType = { id_auth: string; name: string; coach_code?: string; coach_id?: string; ordre: number | null; };
+type SessionType = { id: string; user_id: string; sport?: string; title?: string; planned_hour?: number; planned_inter?: string; intensity?: string; status?: string; rpe?: number | null; athlete_comment?: string | null; date: string; };
+type AbsenceType = { id: string; user_id: string; date: string; type: string; name?: string | null; distance_km?: number | null; elevation_d_plus?: number | null; comment?: string | null; };
+
+// ---------- Modal create/edit
+function SessionModal({ open, onClose, onSaved, initial, athlete, date }:{
+  open: boolean; onClose: ()=>void; onSaved: (s: SessionType, isEdit: boolean)=>void;
+  initial?: SessionType | null; athlete: UserType; date: string;
 }) {
-  const [sport, setSport] = useState(sessionToEdit?.sport || "Vélo");
-  const [title, setTitle] = useState(sessionToEdit?.title || "");
-  const [plannedHour, setPlannedHour] = useState(sessionToEdit ? Math.floor(sessionToEdit.planned_hour) : 0);
-  const [plannedMinute, setPlannedMinute] = useState(sessionToEdit ? Math.round((sessionToEdit.planned_hour % 1) * 60) : 0);
-  const [planned_inter, setPlannedInter] = useState(sessionToEdit?.planned_inter || "");
-  const [intensity, setIntensity] = useState(sessionToEdit?.intensity || "moyenne");
+  const [sport, setSport] = useState("Run");
+  const [title, setTitle] = useState("");
+  const [plannedHour, setPlannedHour] = useState(0);
+  const [plannedMinute, setPlannedMinute] = useState(0);
+  const [intensity, setIntensity] = useState("moyenne");
+  const [planned_inter, setPlannedInter] = useState("");
+
+  useEffect(() => {
+    if (!open) return;
+    if (initial) {
+      const ph = initial.planned_hour || 0;
+      setSport(initial.sport || "Run");
+      setTitle(initial.title || "");
+      setPlannedHour(Math.floor(ph));
+      setPlannedMinute(Math.round((ph % 1) * 60));
+      setIntensity(initial.intensity || "moyenne");
+      setPlannedInter(initial.planned_inter || "");
+    } else {
+      setSport("Run"); setTitle(""); setPlannedHour(0); setPlannedMinute(0);
+      setIntensity("moyenne"); setPlannedInter("");
+    }
+  }, [open, initial]);
+
   const [loading, setLoading] = useState(false);
+  if (!open) return null;
+  const isEdit = !!initial;
 
-  const isEdit = !!sessionToEdit;
-
-
-
-
-
-  const handleSubmit = async (e: any) => {
+  async function submit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
-    let data, error;
-    if (isEdit) {
-      ({ data, error } = await supabase
-        .from("sessions")
-        .update({
-          sport,
-          title,
-          planned_hour: plannedHour + plannedMinute / 60,
-          planned_inter,
-          intensity,
-        })
-        .eq("id", sessionToEdit.id)
-        .select()
-        .single());
-    } else {
-      ({ data, error } = await supabase
-        .from("sessions")
-        .insert({
-          user_id: athlete.id_auth,
-          date,
-          sport,
-          title,
-          planned_hour: plannedHour + plannedMinute / 60,
-          planned_inter,
-          intensity,
-        })
-        .select()
-        .single());
+    const payload: any = { user_id: athlete.id_auth, date, sport, title, planned_hour: plannedHour + plannedMinute / 60, planned_inter, intensity };
+    try {
+      let data: any, error: any;
+      if (isEdit) ({ data, error } = await supabase.from("sessions").update(payload).eq("id", initial!.id).select().single());
+      else ({ data, error } = await supabase.from("sessions").insert(payload).select().single());
+      if (error) throw error;
+      if (data) onSaved(data as SessionType, isEdit);
+    } catch (err:any) {
+      alert("Erreur: " + (err?.message || "inconnue"));
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
-
-    if (!error && data) {
-      onCreated(data, isEdit);
-    } else {
-      alert("Erreur lors de la " + (isEdit ? "modification" : "création") + " ! " + (error?.message || ""));
-    }
-  };
+  }
 
   return (
-    <div className="fixed z-50 inset-0 bg-black/40 flex items-center justify-center">
-      <form
-        onSubmit={handleSubmit}
-        className="bg-white rounded-2xl shadow-2xl p-6 min-w-[320px] flex flex-col gap-2 border border-emerald-100 relative"
-      >
-        <h2 className="font-bold text-xl mb-2 text-blue-900 flex gap-2 items-center">
-          {getSportIcon("")}
-          {isEdit ? "Modifier la séance" : `Créer une séance pour ${athlete.name} le ${dayjs(date).format("dddd DD MMMM")}`}
-        </h2>
-        <label>Sport :</label>
-        <select
-          value={sport}
-          onChange={e => setSport(e.target.value)}
-          className="rounded-lg p-2 border"
-        >
-          <option>Vélo</option>
-          <option>Run</option>
-          <option>Natation</option>
-          <option>Renfo</option>
-          <option>Muscu</option>
-          <option>Trail</option>
-          <option>Autre</option>
-        </select>
-        <label>Titre :</label>
-        <input
-          value={title}
-          onChange={e => setTitle(e.target.value)}
-          className="rounded-lg p-2 border"
-        />
-        <label>Durée prévue :</label>
-        <div className="flex gap-2">
-          <select value={plannedHour} onChange={e => setPlannedHour(Number(e.target.value))} className="rounded-lg p-2 border">
-            {Array.from({ length: 15 }, (_, i) => (
-              <option key={i} value={i}>{i} h</option>
-            ))}
-          </select>
-          <select value={plannedMinute} onChange={e => setPlannedMinute(Number(e.target.value))} className="rounded-lg p-2 border">
-            {Array.from({ length: 12 }, (_, i) => (
-              <option key={i} value={i * 5}>{String(i * 5).padStart(2, "0")} min</option>
-            ))}
-          </select>
-        </div>
-        <label>Intensité :</label>
-        <select
-          value={intensity}
-          onChange={e => setIntensity(e.target.value)}
-          className="rounded-lg p-2 border"
-        >
-          <option value="basse">Basse</option>
-          <option value="moyenne">Moyenne</option>
-          <option value="haute">Haute</option>
-        </select>
-        <label>Instructions :</label>
-        <textarea
-          value={planned_inter}
-          onChange={e => setPlannedInter(e.target.value)}
-          className="rounded-lg p-2 border"
-        />
-        <div className="flex gap-2 mt-4">
-          <button
-            type="button"
-            onClick={onClose}
-            className="bg-gray-200 rounded-lg px-4 py-2 hover:bg-gray-300"
+    <AnimatePresence>
+      {open && (
+        <motion.div className="fixed inset-0 z-50 grid place-items-center p-4" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}>
+          <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+          <motion.form
+            onSubmit={submit}
+            initial={{ opacity: 0, scale: 0.98 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.98 }}
+            transition={{ duration: 0.18 }}
+            className="relative w-full max-w-md rounded-2xl bg-white shadow-2xl p-5 space-y-3"
           >
-            Annuler
-          </button>
-          <button
-            type="submit"
-            className="bg-emerald-500 text-white rounded-lg px-4 py-2 hover:bg-emerald-700"
-            disabled={loading}
-          >
-            {loading ? (isEdit ? "Modification..." : "Création...") : (isEdit ? "Modifier" : "Créer")}
-          </button>
-        </div>
-      </form>
-    </div>
+            <h3 className="text-lg font-semibold text-slate-800">{isEdit ? "Modifier la séance" : `Nouvelle séance – ${athlete.name}`}</h3>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="text-sm text-slate-700">Sport
+                <select value={sport} onChange={(e)=>setSport(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 p-2 focus:outline-none focus:ring-2 focus:ring-emerald-300">
+                  <option>Run</option><option>Vélo</option><option>Natation</option><option>Renfo</option><option>Muscu</option><option>Trail</option><option>Autre</option>
+                </select>
+              </label>
+              <label className="text-sm text-slate-700">Intensité
+                <select value={intensity} onChange={(e)=>setIntensity(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 p-2 focus:outline-none focus:ring-2 focus:ring-emerald-300">
+                  <option value="basse">Basse</option><option value="moyenne">Moyenne</option><option value="haute">Haute</option>
+                </select>
+              </label>
+            </div>
+            <label className="text-sm text-slate-700">Titre
+              <input value={title} onChange={(e)=>setTitle(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 p-2 focus:outline-none focus:ring-2 focus:ring-emerald-300"/>
+            </label>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="text-sm text-slate-700">Heures
+                <select value={plannedHour} onChange={(e)=>setPlannedHour(Number(e.target.value))} className="mt-1 w-full rounded-lg border border-slate-200 p-2 focus:outline-none focus:ring-2 focus:ring-emerald-300">
+                  {Array.from({length:15}, (_,i)=> <option key={i} value={i}>{i} h</option>)}
+                </select>
+              </label>
+              <label className="text-sm text-slate-700">Minutes
+                <select value={plannedMinute} onChange={(e)=>setPlannedMinute(Number(e.target.value))} className="mt-1 w-full rounded-lg border border-slate-200 p-2 focus:outline-none focus:ring-2 focus:ring-emerald-300">
+                  {Array.from({length:12}, (_,i)=> <option key={i} value={i*5}>{String(i*5).padStart(2,"0")} min</option>)}
+                </select>
+              </label>
+            </div>
+            <label className="text-sm text-slate-700">Consignes du coach
+              <textarea value={planned_inter} onChange={(e)=>setPlannedInter(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 p-2 min-h-[90px] focus:outline-none focus:ring-2 focus:ring-emerald-300"/>
+            </label>
+            <div className="flex justify-end gap-2 pt-1">
+              <button type="button" onClick={onClose} className="px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700">Annuler</button>
+              <button disabled={loading} className="px-4 py-2 rounded-lg text-white bg-emerald-600 hover:bg-emerald-700">
+                {loading ? "Enregistrement…" : (isEdit ? "Enregistrer" : "Créer")}
+              </button>
+            </div>
+          </motion.form>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }
 
+// ---------- Smooth height animation helper
+function SmoothCollapsible({ open, children }:{ open: boolean; children: React.ReactNode; }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [height, setHeight] = useState<number | "auto">(0);
 
+  useEffect(() => {
+    if (open && ref.current) {
+      setHeight(ref.current.scrollHeight);
+      const to = setTimeout(() => setHeight("auto"), 220);
+      return () => clearTimeout(to);
+    }
+    if (!open) {
+      if (ref.current) setHeight(ref.current.scrollHeight);
+      const to = setTimeout(() => setHeight(0), 0);
+      return () => clearTimeout(to);
+    }
+  }, [open]);
 
-// --- Composant principal ---
-export default function CoachDashboard() {
-  type UserType = {
-  id_auth: string;
-  name: string;
-  email?: string;
-  ordre: number;
-  coach_code?: string;   // ✅ ajouté
-  coach_id?: string;     // ✅ si tu veux aussi gérer la relation
-};
+  return (
+    <motion.div style={{ overflow: "hidden" }} initial={false} animate={{ height }} transition={{ duration: 0.22, ease: [0.2, 0, 0, 1] }}>
+      <div ref={ref}>{children}</div>
+    </motion.div>
+  );
+}
 
-type SessionType = {
-  id: string;
-  user_id: string;
-  sport: string;
-  title?: string;
-  planned_hour: number;
-  planned_inter?: string;
-  intensity: string;
-  status?: string;
-  rpe?: number;
-  athlete_comment?: string;
-  date: string;
-  // ...autres champs selon ta BDD
-};
+// ---------- Cards
+const SessionCard = React.memo(function SessionCard({ s, onEdit, onDelete }:{ s: SessionType; onEdit: ()=>void; onDelete: ()=>void; }) {
+  const [showCoachNote, setShowCoachNote] = useState(false);
 
-type AbsenceType = {
-  id: string;
-  user_id: string;
-  date: string;
-  type: string;
-  comment?: string;
-};
+  const statusTint =
+    s.status === "valide" ? "bg-emerald-50 border-emerald-200"
+    : s.status === "non_valide" ? "bg-rose-50 border-rose-200"
+    : "bg-white border-emerald-100";
 
+  const statusOverlay =
+    s.status === "valide" ? "after:bg-emerald-100/40"
+    : s.status === "non_valide" ? "after:bg-rose-100/40"
+    : "after:bg-transparent";
+
+  return (
+    <motion.div layout initial={{opacity:0,y:6}} animate={{opacity:1,y:0}} exit={{opacity:0,y:6}} transition={{duration:0.2}} whileHover={{y:-1}}
+      className={`card relative rounded-2xl shadow-sm border p-3 overflow-hidden ${statusTint} ${statusOverlay} after:absolute after:inset-0 after:pointer-events-none`}>
+      <div className="flex items-start justify-between gap-2">
+        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[12px] ring-1 ${sportBadgeClasses(s.sport)}`}>
+          {sportIcon(s.sport, 14)} <span className="font-medium">{s.sport}</span>
+        </span>
+        {s.planned_inter && (
+          <button onClick={()=>setShowCoachNote(v=>!v)} aria-expanded={showCoachNote} title="Voir les consignes du coach" className="p-2 rounded-lg hover:bg-emerald-50">
+            <Info size={16}/>
+          </button>
+        )}
+      </div>
+      <div className={`mt-2 h-1 rounded-full ${intensityBar(s.intensity)}`} />
+      {s.title && <div className="mt-2 text-sm font-semibold text-slate-800 break-words">{s.title}</div>}
+      {s.planned_hour !== undefined && <div className="mt-1 text-[12px] text-slate-600">{fmtTime(s.planned_hour)}</div>}
+      {(s.athlete_comment || s.rpe) && (
+        <div className="mt-1 text-[12px] italic text-slate-600 break-words">
+          {s.athlete_comment ? `“${s.athlete_comment}”` : ""}{s.rpe && s.athlete_comment ? " • " : ""}{s.rpe ? `RPE ${s.rpe}` : ""}
+        </div>
+      )}
+      <AnimatePresence initial={false}>
+        {s.planned_inter && (
+          <SmoothCollapsible open={showCoachNote}>
+            <div className="mt-2 rounded-md bg-emerald-50/50 p-2 text-[13px] text-slate-700 whitespace-pre-line">
+              {s.planned_inter}
+            </div>
+          </SmoothCollapsible>
+        )}
+      </AnimatePresence>
+      <div className="mt-2 pt-2 border-t border-emerald-100 flex items-center justify-between text-[12px]">
+        <div className="flex gap-1">
+          <button onClick={onEdit} className="p-1.5 rounded-lg hover:bg-emerald-50 active:scale-[0.98]" aria-label="Modifier"><PencilSimple size={16}/></button>
+          <button onClick={onDelete} className="p-1.5 rounded-lg hover:bg-rose-50 active:scale-[0.98]" aria-label="Supprimer"><Trash size={16}/></button>
+        </div>
+        <div>
+          {s.status === "valide" && <span className="inline-flex items-center gap-1 text-emerald-800"><CheckCircle size={12}/>Validée</span>}
+          {s.status === "non_valide" && <span className="inline-flex items-center gap-1 text-rose-700"><XCircle size={12}/>Non validée</span>}
+        </div>
+      </div>
+    </motion.div>
+  );
+});
+
+const AbsenceCard = React.memo(function AbsenceCard({ a, onDelete }:{ a: AbsenceType; onDelete: ()=>void; }) {
+  const isComp = a.type === "competition";
+  const cls = isComp ? "bg-amber-50 ring-amber-200 text-amber-800" : "bg-slate-50 ring-slate-200 text-slate-700";
+  const title = isComp ? "Compétition" : "Repos";
+  return (
+    <motion.div layout initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 6 }} transition={{ duration: 0.2 }} whileHover={{ y: -1 }}
+      className="card rounded-2xl bg-white shadow-sm border border-emerald-100 p-3 overflow-hidden">
+      <div className="flex items-start justify-between gap-2">
+        <span className={`inline-flex items-center gap-2 px-2.5 py-1 rounded-full text-[12px] ring-1 ${cls}`}>
+          <span className="font-medium">{title}</span>
+        </span>
+      </div>
+      {isComp && (
+        <div className="mt-2 text-[13px] text-slate-700 space-y-0.5">
+          {a.name && <div className="font-medium">{a.name}</div>}
+          {(a.distance_km || a.elevation_d_plus) && (
+            <div className="text-[12px] text-slate-600">
+              {a.distance_km ? `${a.distance_km} km` : ""}
+              {a.distance_km && a.elevation_d_plus ? " • " : ""}
+              {a.elevation_d_plus ? `D+ ${a.elevation_d_plus} m` : ""}
+            </div>
+          )}
+          {a.comment && <div className="whitespace-pre-line">{a.comment}</div>}
+        </div>
+      )}
+      {!isComp && a.comment && <div className="mt-2 text-[13px] text-slate-700 whitespace-pre-line">{a.comment}</div>}
+      <div className="mt-2 pt-2 border-t border-emerald-100 flex justify-end">
+        <button onClick={onDelete} className="p-1.5 rounded-lg hover:bg-rose-50 active:scale-[0.98]" aria-label="Supprimer"><Trash size={16}/></button>
+      </div>
+    </motion.div>
+  );
+});
+
+// ---------- Main page
+export default function CoachAthleteFocusV7_3() {
   const router = useRouter();
+  const prefersReduced = useReducedMotion();
+
   const [coach, setCoach] = useState<UserType | null>(null);
-const [athletes, setAthletes] = useState<UserType[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [athletes, setAthletes] = useState<UserType[]>([]);
+  const [selectedAthleteId, setSelectedAthleteId] = useState<string | null>(null);
+
   const [weekOffset, setWeekOffset] = useState(0);
-  type Session = {
-  id: string;
-  user_id: string;
-  date: string;
-  planned_hour?: number;
-  rpe?: number;
-  status?: string;
-  sport?: string;
-  title?: string;
-  intensity?: string;
-  planned_inter?: string;
-  athlete_comment?: string;
-  load_index?: number;};
-const [sessions, setSessions] = useState<Session[]>([]);
+  const weekStart = useMemo(() => dayjs().startOf("week").add(weekOffset, "week"), [weekOffset]);
+  const weekDays = useMemo(() => Array.from({ length: 7 }, (_, i) => weekStart.add(i, "day")), [weekStart]);
+
+  const [sessions, setSessions] = useState<SessionType[]>([]);
+  const [absences, setAbsences] = useState<AbsenceType[]>([]);
 
   const [modalOpen, setModalOpen] = useState(false);
-  const [selectedCell, setSelectedCell] = useState<{ athlete: UserType; date: string } | null>(null);
-  const [sessionToEdit, setSessionToEdit] = useState<Session | null>(null);
-  const [absences, setAbsences] = useState<AbsenceType[]>([]);
-  const [sessionsLoading, setSessionsLoading] = useState(false);
-const [absencesLoading, setAbsencesLoading] = useState(false);
-const coachId = coach?.id_auth;
+  const [modalDate, setModalDate] = useState<string>(dayjs().format("YYYY-MM-DD"));
+  const [editSession, setEditSession] = useState<SessionType | null>(null);
 
+  const [prevWeekLoad, setPrevWeekLoad] = useState<number>(0);
+  const [nextRaceText, setNextRaceText] = useState<string>("");
 
-
-  // Semaine courante/déplacement
-  const weekStart = useMemo(
-  () => dayjs().startOf("week").add(weekOffset, "week"),
-  [weekOffset]
-);
-  const weekDays = Array.from({ length: 7 }, (_, i) =>
-    weekStart.add(i, "day").format("ddd DD/MM")
-  );
-async function moveAthlete(index: number, direction: number) {
-  if (
-    (direction === -1 && index === 0) ||
-    (direction === 1 && index === athletes.length - 1)
-  ) return;
-
-  const newAthletes = [...athletes];
-  [newAthletes[index], newAthletes[index + direction]] = [newAthletes[index + direction], newAthletes[index]];
-  newAthletes.forEach((a, idx) => (a.ordre = idx));
-  setAthletes(newAthletes);
-
-  // Affiche dans la console pour debug
-  console.log("Update ordre:", newAthletes.map(a => ({ name: a.name, ordre: a.ordre })));
-
-  await Promise.all(
-    newAthletes.map((ath, idx) =>
-      supabase.from("users").update({ ordre: idx }).eq("id_auth", ath.id_auth)
-    )
-  );
-}
-
-
-
-
-  // Suppression d'une séance
-async function handleDeleteSession(sessionId: string) {
-  const { error } = await supabase.from("sessions").delete().eq("id", sessionId);
-  if (!error) {
-    setSessions(sessions => sessions.filter(s => s.id !== sessionId));
-  } else {
-    alert("Erreur lors de la suppression : " + error.message);
-  }
-}
-
-
+  // boot
   useEffect(() => {
-  const fetchData = async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session?.user?.id) {
-      router.push("/login");
-      return;
-    }
-    const { data: user } = await supabase
-      .from("users")
-      .select("*")
-      .eq("id_auth", session.user.id)
-      .single();
-    setCoach(prev => prev?.id_auth === user?.id_auth ? prev : user);
-    const { data: athletesList } = await supabase
-  .from("users")
-  .select("*")
-  .eq("role", "athlete")
-  .eq("coach_id", session.user.id)   // 🔑 athlètes liés au coach connecté
-  .order("ordre", { ascending: true });
-    // Si certains n'ont pas d'ordre, on attribue un ordre temporaire
-    if (athletesList && athletesList.some(a => a.ordre === null || a.ordre === undefined)) {
-  for (let i = 0; i < athletesList.length; i++) {
-    if (athletesList[i].ordre === null || athletesList[i].ordre === undefined) {
-      await supabase.from("users").update({ ordre: i }).eq("id_auth", athletesList[i].id_auth);
-      athletesList[i].ordre = i;
-    }
-  }
-}
-setAthletes(athletesList || []);
-    setLoading(false);
-  };
-  fetchData();
-}, []);
+    (async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user?.id) { router.push("/login"); return; }
+      const { data: user } = await supabase.from("users").select("*").eq("id_auth", session.user.id).single();
+      setCoach(user as UserType);
 
+      const { data: athletesList } = await supabase
+        .from("users").select("id_auth,name,ordre,coach_code,coach_id")
+        .eq("role", "athlete").eq("coach_id", session.user.id)
+        .order("ordre", { ascending: true });
+      const list = (athletesList || []) as UserType[];
+      setAthletes(list);
+      setSelectedAthleteId(prev => prev ?? list[0]?.id_auth ?? null);
+    })();
+  }, [router]);
 
+  // load week data
   useEffect(() => {
-  if (!coachId) return;
-  setSessionsLoading(true);
-  const fetchSessions = async () => {
-    const start = weekStart.format("YYYY-MM-DD");
-    const end = weekStart.add(6, "day").format("YYYY-MM-DD");
-    const { data: sess } = await supabase
-      .from("sessions")
-      .select("*")
-      .gte("date", start)
-      .lte("date", end);
-    setSessions(sess || []);
-    setSessionsLoading(false);
-  };
-  fetchSessions();
-}, [coachId, weekOffset]);
+    if (!selectedAthleteId) return;
+    (async () => {
+      const start = weekStart.format("YYYY-MM-DD");
+      const end = weekStart.add(6, "day").format("YYYY-MM-DD");
+      const { data: sess } = await supabase
+        .from("sessions")
+        .select("id,user_id,sport,title,planned_hour,planned_inter,intensity,status,rpe,athlete_comment,date")
+        .eq("user_id", selectedAthleteId).gte("date", start).lte("date", end);
+      setSessions((sess || []) as SessionType[]);
 
-  // ...puis
-useEffect(() => {
-  if (!coachId) return;
-  
-  setAbsencesLoading(true);
-  const fetchAbsences = async () => {
-    const start = weekStart.format("YYYY-MM-DD");
-    const end = weekStart.add(6, "day").format("YYYY-MM-DD");
-    const { data: abs } = await supabase
-      .from("absences_competitions")
-      .select("*")
-      .gte("date", start)
-      .lte("date", end);
-    setAbsences(abs || []);
-    setAbsencesLoading(false);
-  };
-  fetchAbsences();
-}, [coachId, weekOffset]);
+      const { data: abs } = await supabase
+        .from("absences_competitions")
+        .select("id,user_id,date,type,name,distance_km,elevation_d_plus,comment")
+        .eq("user_id", selectedAthleteId).gte("date", start).lte("date", end);
+      setAbsences((abs || []) as AbsenceType[]);
+    })();
+  }, [selectedAthleteId, weekStart]);
 
-  if (loading) {
-    return (
-      <main className="flex items-center justify-center min-h-screen bg-gradient-to-br from-teal-100 via-blue-200 to-emerald-200">
-        <span className="text-blue-700 text-lg font-semibold animate-pulse">
-          Chargement...
-        </span>
-      </main>
-    );
+  // prev week load + next race (based on displayed week)
+  useEffect(() => {
+    if (!selectedAthleteId) return;
+    (async () => {
+      const prevStart = weekStart.add(-7, "day").format("YYYY-MM-DD");
+      const prevEnd = weekStart.add(-1, "day").format("YYYY-MM-DD");
+      const { data: prevSessions } = await supabase
+        .from("sessions").select("planned_hour,rpe,status,user_id,date")
+        .eq("user_id", selectedAthleteId).gte("date", prevStart).lte("date", prevEnd);
+      const load = (prevSessions || []).filter(s=> s.status === "valide")
+        .reduce((acc:any, s:any)=> acc + ((Number(s.rpe)||0) * (Number(s.planned_hour)||0)), 0);
+      setPrevWeekLoad(load);
+
+      const base = weekStart.startOf("day");
+      const { data: nextComp } = await supabase
+        .from("absences_competitions")
+        .select("date,type").eq("user_id", selectedAthleteId)
+        .eq("type","competition").gte("date", base.format("YYYY-MM-DD"))
+        .order("date", { ascending: true }).limit(1);
+      if (nextComp && nextComp.length) {
+        const d = dayjs(nextComp[0].date).startOf("day");
+        if (d.isSame(base, "week")) setNextRaceText("cette semaine");
+        else {
+          const diffDays = d.diff(base, "day");
+          const weeks = Math.floor(diffDays / 7) + (diffDays % 7 > 0 ? 1 : 0);
+          setNextRaceText(`dans ${weeks} semaine${weeks>1?"s":""}`);
+        }
+      } else setNextRaceText("aucune à venir");
+    })();
+  }, [selectedAthleteId, weekStart]);
+
+  const deleteSession = useCallback(async (id: string) => {
+    if (!confirm("Supprimer cette séance ?")) return;
+    const { error } = await supabase.from("sessions").delete().eq("id", id);
+    if (error) alert(error.message);
+    else setSessions(prev => prev.filter(s => s.id !== id));
+  }, []);
+
+  const moveAthlete = useCallback(async (index: number, direction: number) => {
+    if ((direction === -1 && index === 0) || (direction === 1 && index === athletes.length - 1)) return;
+    const next = [...athletes];
+    [next[index], next[index + direction]] = [next[index + direction], next[index]];
+    next.forEach((a, i) => (a.ordre = i));
+    setAthletes(next);
+    await Promise.all(next.map((a, i) => supabase.from("users").update({ ordre: i }).eq("id_auth", a.id_auth)));
+  }, [athletes]);
+
+  const stats = useMemo(() => {
+    const total = sessions.length;
+    const validated = sessions.filter(s => s.status === "valide").length;
+    const time = sessions.reduce((acc, s) => acc + (Number(s.planned_hour) || 0), 0);
+    const load = sessions.filter(s => s.status === "valide").reduce((acc, s) => acc + ((Number(s.rpe) || 0) * (Number(s.planned_hour) || 0)), 0);
+    const progress = total ? Math.round((validated / total) * 100) : 0;
+    return { total, validated, time, load, progress };
+  }, [sessions]);
+
+  const athlete = athletes.find(a => a.id_auth === selectedAthleteId) || null;
+
+  const progressVariants = prefersReduced
+    ? {}
+    : { initial: { width: 0 }, animate: { width: `${stats.progress}%`, transition: { duration: 0.45 } } };
+
+  async function logout() {
+    await supabase.auth.signOut();
+    router.push("/login");
   }
 
   return (
-  <main className="min-h-screen bg-gradient-to-br from-emerald-400 via-blue-400 to-blue-600 p-2 sm:p-6 flex flex-col items-center">
-  {/* Header ligne 1 */}
-  <div className="w-full max-w-6xl flex items-start justify-between mb-6 relative">
-    {/* Bloc de gauche : bonjour + date */}
-    <div className="flex flex-col items-start gap-1">
-      <div className="bg-gradient-to-r from-emerald-400 to-blue-500 rounded-xl shadow-lg px-6 py-3 text-white font-bold text-lg flex items-center gap-2">
-        <User className="text-white" size={24} />
-        Bonjour {coach?.name?.split(" ")[0] || "Coach"} !
+    <main className={`${jakarta.className} min-h-screen bg-gradient-to-br from-emerald-50 via-sky-50 to-white text-slate-800`}>
+      {/* Header */}
+      <header className="sticky top-0 z-20 border-b border-emerald-100 bg-white/80 backdrop-blur">
+        <div className="max-w-screen-2xl mx-auto px-3 py-3 flex items-center gap-3">
+          <div className="text-sm text-emerald-900">Bonjour {coach?.name?.split(" ")[0] || "Coach"}</div>
+          <div className="mx-auto flex items-center gap-2">
+            <button onClick={() => setWeekOffset(w => w - 1)} className="p-2 rounded-full bg-emerald-50 hover:bg-emerald-100 border border-emerald-100" aria-label="Semaine précédente"><CaretLeft size={18}/></button>
+            <div className="text-sm font-semibold text-emerald-900">Semaine du {weekStart.format("DD/MM/YYYY")}</div>
+            <button onClick={() => setWeekOffset(w => w + 1)} className="p-2 rounded-full bg-emerald-50 hover:bg-emerald-100 border border-emerald-100" aria-label="Semaine suivante"><CaretRight size={18}/></button>
+          </div>
+          <div className="flex items-center gap-2">
+            {coach?.coach_code && (
+              <div className="text-xs text-emerald-900 bg-emerald-50 border border-emerald-100 rounded-md px-2 py-1">Code coach : <span className="font-semibold">{coach.coach_code}</span></div>
+            )}
+            <a href="/coach/stats/" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-md border border-emerald-200 bg-white hover:bg-emerald-50 text-emerald-900">
+              <ChartLineUp size={14}/> Stats
+            </a>
+            {/* Déconnexion */}
+            <button onClick={logout} className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-md border border-rose-200 bg-white hover:bg-rose-50 text-rose-700">
+              <SignOut size={14}/> 
+            </button>
+          </div>
+        </div>
+      </header>
+
+      {/* Layout wider: sidebar smaller, content larger */}
+      <div className="max-w-screen-2xl mx-auto px-3 py-5 grid grid-cols-12 gap-4">
+        {/* Sidebar Athletes */}
+        <aside className="col-span-12 md:col-span-2">
+          <div className="mb-2 text-xs uppercase tracking-wide text-emerald-800/70">Athlètes</div>
+          <div className="space-y-2">
+            {athletes.map((a, i) => {
+              const active = a.id_auth === selectedAthleteId;
+              const [firstName, ...rest] = (a.name || "").split(" ");
+              const lastName = rest.join(" ");
+              return (
+                <div key={a.id_auth} className={`p-2 rounded-xl border ${active ? "border-emerald-300 bg-white" : "border-emerald-100 bg-white/70 hover:bg-white"}`}>
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => setSelectedAthleteId(a.id_auth)} className="flex-1 text-left">
+                      <div className="text-sm font-semibold text-emerald-950 truncate">{firstName}</div>
+                      <div className="text-[12px] text-emerald-900 truncate">{lastName}</div>
+                    </button>
+                    <div className="flex gap-1">
+                      <button onClick={() => moveAthlete(i, -1)} disabled={i === 0} className="p-1 rounded-lg disabled:opacity-30 hover:bg-emerald-100" aria-label="Monter">↑</button>
+                      <button onClick={() => moveAthlete(i, 1)} disabled={i === athletes.length - 1} className="p-1 rounded-lg disabled:opacity-30 hover:bg-emerald-100" aria-label="Descendre">↓</button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </aside>
+
+        {/* Main content */}
+        <section className="col-span-12 md:col-span-10 space-y-5">
+          {/* Athlete stats header */}
+          {athlete && (
+            <div className="rounded-2xl border border-emerald-100 bg-white p-4">
+              <div className="flex items-center gap-4">
+                <div className="flex-1">
+                  <div className="font-semibold text-emerald-950 text-lg">{athlete.name}</div>
+                  <div className="text-xs text-emerald-800/80">Prochaine compétition : {nextRaceText}</div>
+                  <div className="text-xs text-emerald-800/80 mt-0.5">Charge semaine précédente : {prevWeekLoad.toFixed(1)}</div>
+                </div>
+                <div className="flex items-center gap-6 text-sm text-emerald-900">
+                  <div className="flex items-center gap-2"><CheckCircle size={16} className="text-emerald-600"/><span>{stats.validated}/{stats.total}</span></div>
+                  <div className="flex items-center gap-2"><Clock size={16} className="text-slate-700"/><span>{fmtTime(stats.time)}</span></div>
+                  <div className="flex items-center gap-2"><LoadIcon size={16} className="text-amber-600"/><span>{stats.load.toFixed(1)}</span></div>
+                </div>
+              </div>
+              <div className="mt-3 h-2 w-full rounded-full bg-emerald-100 overflow-hidden">
+                <motion.div className="h-full bg-emerald-500 rounded-full" initial="initial" animate="animate" {...progressVariants} />
+              </div>
+            </div>
+          )}
+
+          {/* Week grid */}
+          <div className="grid grid-cols-7 gap-3">
+            {weekDays.map((d) => {
+              const iso = d.format("YYYY-MM-DD");
+              const daySessions = sessions.filter((s) => s.date === iso);
+              const dayAbs = absences.filter((a) => a.date === iso);
+              return (
+                <div key={iso} className="rounded-2xl border border-emerald-100 bg-white p-3 flex flex-col min-h-[220px]">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="text-xs font-medium text-emerald-900">{d.format("ddd DD/MM")}</div>
+                    <motion.button whileTap={{ scale: 0.96, rotate: 90 }} onClick={() => { setModalDate(iso); setEditSession(null); setModalOpen(true); }} className="p-2 rounded-lg hover:bg-emerald-50" aria-label="Ajouter">
+                      <Plus size={18}/>
+                    </motion.button>
+                  </div>
+                  <div className="space-y-2">
+                    <AnimatePresence initial={false}>
+                      {dayAbs.map((a) => (
+                        <AbsenceCard key={a.id} a={a} onDelete={async () => {
+                          if (!confirm("Supprimer ?")) return;
+                          await supabase.from("absences_competitions").delete().eq("id", a.id);
+                          setAbsences((prev) => prev.filter((x) => x.id !== a.id));
+                        }} />
+                      ))}
+                      {daySessions.map((s) => (
+                        <SessionCard key={s.id} s={s} onEdit={() => { setModalDate(s.date); setEditSession(s); setModalOpen(true); }} onDelete={() => deleteSession(s.id)} />
+                      ))}
+                    </AnimatePresence>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
       </div>
-      {coach?.coach_code && (
-  <div className="mt-2 bg-white/90 text-blue-900 font-bold px-4 py-2 rounded-xl shadow">
-    Ton code coach : <span className="text-emerald-600">{coach.coach_code}</span>
-  </div>
-)}
-      
-    </div>
 
-    {/* Bloc centre : logo */}
-    <div className="flex flex-col items-center mx-auto absolute left-1/2 -translate-x-1/2">
-      <Image
-        src="/coach-logo.jpg"
-        width={90}
-        height={90}
-        alt="Logo NG Sports"
-        className="rounded-full shadow-lg border-4 border-white"
-        priority
-      />
-    </div>
-
-    {/* Bloc droite : bouton deconnexion */}
-    <div className="flex items-center ml-auto">
-      <button
-        className="px-4 py-2 bg-gradient-to-r from-emerald-400 to-blue-500 text-white rounded-xl shadow-lg hover:scale-105 transition font-bold"
-        onClick={async () => {
-          await supabase.auth.signOut();
-          router.push("/login");
-        }}
-      >
-        Déconnexion
-      </button>
-    </div>
-  </div>
-
-      {/* Carte principale avec ombre et arrondi */}
-    <div className="w-full max-w-6xl bg-gradient-to-r from-emerald-400 via-indigo-100 to-blue-250 rounded-2xl shadow-2xl p-6 pb-4 flex flex-col items-center transition">
-        {/* Navigation semaine */}
-        <div className="flex items-center justify-center gap-4 mb-6">
-  <button
-    onClick={() => setWeekOffset(w => w - 1)}
-    className="p-2 bg-blue-200 rounded-full shadow hover:bg-blue-400 transition flex items-center justify-center"
-    aria-label="Semaine précédente"
-  >
-    <ChevronLeft className="w-6 h-6 text-blue-700" />
-  </button>
-  <span className="text-xl font-bold text-blue-900">
-    Semaine du {weekStart.format("DD/MM/YYYY")}
-  </span>
-  <button
-    onClick={() => setWeekOffset(w => w + 1)}
-    className="p-2 bg-blue-200 rounded-full shadow hover:bg-blue-400 transition flex items-center justify-center"
-    aria-label="Semaine suivante"
-  >
-    <ChevronRight className="w-6 h-6 text-blue-700" />
-  </button>
-</div>
-
-        <div className="flex justify-end w-full mb-4">
-  <a
-    href="/coach/stats/"
-    target="_blank"
-    rel="noopener noreferrer"
-   className="flex items-center gap-2 bg-gradient-to-r from-blue-200 to-emerald-200 text-blue-900 font-bold px-4 py-2 rounded-xl shadow hover:scale-105 transition text-sm"
-  >
-    Sont ils morts ? #stats
-  </a>
-</div>
-
-        {/* Planning stylé */}
-        <div className="overflow-x-auto w-full">
-          <table className="w-full min-w-[800px] border-separate border-spacing-y-2 table-fixed">
-            <thead>
-              <tr>
-                <th className="p-3 bg-emerald-100 text-emerald-800 font-bold text-left rounded-tl-xl min-w-[110px]">
-  Athlète
-</th>
-{weekDays.map((d, idx) => (
-  <th
-    key={d}
-    className={
-      "p-3 bg-emerald-100 text-emerald-800 font-bold text-center min-w-[120px] max-w-[140px]" +
-      (idx === weekDays.length - 1 ? " rounded-tr-xl" : "")
-    }
-  >
-    {d}
-  </th>
-))}
-
-              </tr>
-            </thead>
-            <tbody>
-              {athletes.map((ath, i) => (
-  <tr key={ath.id_auth} className="transition bg-blue-50/60 hover:bg-blue-100">
-
-  <td className="p-0 align-top bg-transparent rounded-l-xl min-w-[170px]">
-  <div className="bg-white/90 border border-blue-100 rounded-2xl p-3 m-2 shadow-sm">
-
-
-  <div className="flex items-center gap-3 mb-2">
-    {/* Avatar initiales */}
-    
-    {/* Nom athlète */}
-    <div className="flex flex-col">
-      <span className="font-bold text-blue-800 text-[15px] leading-tight break-words">
-        {ath.name}
-      </span>
-      <div className="flex gap-1 mt-1">
-  <button
-    onClick={() => moveAthlete(i, -1)}
-    disabled={i === 0}
-    className={`rounded-full p-1 bg-gradient-to-tr from-blue-200 to-emerald-200 shadow hover:scale-110 transition border-2 border-white ${
-      i === 0 ? 'opacity-30 cursor-not-allowed' : 'hover:bg-blue-300'
-    }`}
-    title="Monter"
-    aria-label="Monter"
-  >
-    <ChevronLeft className="rotate-90 text-blue-700" size={18} />
-  </button>
-  <button
-    onClick={() => moveAthlete(i, 1)}
-    disabled={i === athletes.length - 1}
-    className={`rounded-full p-1 bg-gradient-to-tr from-blue-200 to-emerald-200 shadow hover:scale-110 transition border-2 border-white ${
-      i === athletes.length - 1 ? 'opacity-30 cursor-not-allowed' : 'hover:bg-blue-300'
-    }`}
-    title="Descendre"
-    aria-label="Descendre"
-  >
-    <ChevronLeft className="-rotate-90 text-blue-700" size={18} />
-  </button>
-</div>
-
-    </div>
-  </div>
-  {/* Récap stats semaine dans une carte */}
-  <div className="mt-1 px-2 py-1 rounded-xl bg-emerald-50 text-sm shadow-inner font-medium text-gray-800 w-fit">
-    {(() => {
-      const athleteSessions = sessions.filter(
-        s => s.user_id === ath.id_auth &&
-             dayjs(s.date).isBetween(weekStart, weekStart.add(6, "day"), null, "[]")
-      );
-      const validCount = athleteSessions.filter(s => s.status === "valide").length;
-      const totalSessions = athleteSessions.length;
-      const totalTime = athleteSessions.reduce((acc, s) => acc + (Number(s.planned_hour) || 0), 0);
-      const loadIndex = athleteSessions
-  .filter(s => s.status === "valide")
-  .reduce((acc, s) => acc + ((Number(s.rpe) || 0) * (Number(s.planned_hour) || 0)), 0);
-
-
-      return (
-        <>
-          <div>
-            <span className="font-semibold">Validées</span> : {validCount}/{totalSessions}
-          </div>
-          <div>
-            <span className="font-semibold">Temps</span> : {Math.floor(totalTime)}h{String(Math.round((totalTime % 1) * 60)).padStart(2, "0")}
-          </div>
-          <div>
-            <span className="font-semibold">Charge</span> : {loadIndex.toFixed(2)}
-          </div>
-        </>
-      );
-    })()}
-  </div>
-  </div>
-</td>
-
-
-
-                  {weekDays.map((day, j) => (
-                    <td key={day + "-" + j} className="p-2 text-center align-middle min-w-[120px] max-w-[140px]">
-                      <div className="flex flex-col items-center gap-1">
-                        {/* Mini bouton + */}
-                        <button
-                          className="w-6 h-6 rounded-full bg-gradient-to-tr from-blue-200 to-emerald-200 flex items-center justify-center shadow border-2 border-white mb-1 hover:scale-110 transition"
-                          title="Ajouter une séance"
-                          style={{ margin: '0 auto' }}
-                          onClick={() => {
-                            setSelectedCell({ athlete: ath, date: weekStart.add(j, "day").format("YYYY-MM-DD") });
-                            setSessionToEdit(null);
-                            setModalOpen(true);
-                          }}
-                        >
-                          <PlusCircle size={16} />
-                        </button>
-                        {/* Séances du jour */}
-                        <div className="flex flex-col gap-1 w-full items-center">
-                          {/* Absences / Compétitions du jour POUR cet athlète */}
-{absences
-  .filter(
-    a =>
-      a.user_id === ath.id_auth &&
-      a.date === weekStart.add(j, "day").format("YYYY-MM-DD")
-  )
-  .map(a => (
-    <div
-      key={a.id}
-  className={`
-    group rounded-2xl shadow-md w-[120px] px-3 py-2 flex flex-col items-center min-w-0 max-w-[140px] relative
-    transition hover:scale-105 hover:shadow-xl
-    ${a.type === "competition"
-      ? "bg-yellow-100/80 border border-yellow-200 text-yellow-800"
-      : "bg-gray-100/70 border border-gray-200 text-gray-500"}
-  `}
-    >
-      <button
-        type="button"
-        onClick={async (e) => {
-          e.stopPropagation();
-          await supabase.from("absences_competitions").delete().eq("id", a.id);
-          setAbsences(absences => absences.filter(ab => ab.id !== a.id));
-        }}
-        className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition p-1 rounded-full hover:bg-red-100"
-        title="Supprimer"
-      >
-        <Trash2 size={15} className="text-red-400 hover:text-red-600" />
-      </button>
-      <span className="text-base font-semibold">
-        {a.type === "competition" ? "🏆 Compétition" : "⛔ Off"}
-      </span>
-      {a.comment && (
-        <span className="text-[11px] text-gray-600 mt-1 line-clamp-6 max-w-[100px] break-words whitespace-pre-line">
-          {a.comment}
-        </span>
+      {/* Modal */}
+      {athlete && (
+        <SessionModal
+          open={modalOpen}
+          onClose={() => setModalOpen(false)}
+          onSaved={(ss, isEdit) => {
+            setModalOpen(false);
+            if (isEdit) setSessions((prev) => prev.map((x) => (x.id === ss.id ? ss : x)));
+            else setSessions((prev) => [...prev, ss]);
+          }}
+          initial={editSession}
+          athlete={athlete}
+          date={modalDate}
+        />
       )}
-    </div>
-  ))}
-
-
-                          {sessions
-                            .filter(
-                              s =>
-                                s.user_id === ath.id_auth &&
-                                s.date === weekStart.add(j, "day").format("YYYY-MM-DD")
-                            )
-                            .map((s, idx) => (
-                              <div
-  key={s.id || idx}
-  className={`
-    group relative rounded-2xl shadow-md border w-full max-w-[140px] min-w-0 px-3 py-2 flex flex-col items-start
-    cursor-pointer transition
-    hover:scale-105 hover:shadow-xl
-    ${s.status === "valide" 
-      ? "bg-emerald-100 border-emerald-300" 
-      : s.status === "non_valide"
-      ? "bg-red-100 border-red-300"
-      : "bg-white border-gray-100"}
-  `}
-  style={{
-    fontFamily: "'Inter', 'Quicksand', sans-serif",
-    transition: "box-shadow .2s, transform .18s",
-    wordBreak: "break-word",
-  }}
-  onClick={() => {
-    setSelectedCell({ athlete: ath, date: s.date });
-    setSessionToEdit(s);
-    setModalOpen(true);
-  }}
-  title="Modifier la séance"
->
-  {/* Icône sport + sport (gros, visible) */}
-  <div className="flex items-center gap-2 mb-1">
-    {getSportIcon(s.sport ?? "")}
-    <span className="font-semibold text-blue-700 text-[15px] truncate">{s.sport}</span>
-  </div>
-
-  {/* Titre */}
-  { s.title && (
-  <span className="font-bold text-[13px] text-emerald-700 mb-1 line-clamp-2 max-w-[110px] break-words whitespace-pre-line">
-    {s.title}
-  </span>
-)}
-
-
-  {/* Durée + Intensité */}
-  <span className="text-xs text-gray-600 mb-1">
-    {s.planned_hour
-      ? `${Math.floor(s.planned_hour)}h${String(Math.round((s.planned_hour % 1) * 60)).padStart(2, "0")}`
-      : ""}
-    {" · "}
-    <span
-      className={
-        s.intensity === "haute"
-          ? "text-red-500 font-bold"
-          : s.intensity === "moyenne"
-          ? "text-yellow-500 font-bold"
-          : "text-emerald-600 font-bold"
-      }
-    >
-      {s.intensity}
-    </span>
-  </span>
-
-  {/* Instructions (toujours visibles, max 2 lignes) */}
-  {s.planned_inter && (
-    <span className="text-[11px] text-gray-700 mb-1 line-clamp-2 whitespace-pre-line">
-      {s.planned_inter}
-    </span>
-  )}
-
-  {/* Feedback athlète */}
-  {(s.athlete_comment || s.rpe) && (
-    <span className="text-[11px] text-gray-400 italic mt-1">
-      {s.rpe && `RPE: ${s.rpe} `}
-      {s.athlete_comment && `- "${s.athlete_comment}"`}
-    </span>
-  )}
-
-  
-
-  {/* Supprimer (icône affichée au hover) */}
-  <button
-    onClick={e => {
-      e.stopPropagation();
-      if (confirm("Supprimer cette séance ?")) {
-        handleDeleteSession(s.id);
-      }
-    }}
-    className="absolute top-1 right-1 p-0.5 rounded hover:bg-red-50 text-gray-400 group-hover:text-red-500 opacity-0 group-hover:opacity-100 transition"
-    title="Supprimer la séance"
-  >
-    <Trash2 size={15} />
-  </button>
-</div>
-
-))}
-</div>
-</div>
-</td>
-))}
-</tr>
-))}
-</tbody>
-</table>
-</div>
-</div>
-
-{/* Appel du modal */}
-{modalOpen && selectedCell && (
-  <ModalSession
-    athlete={selectedCell.athlete}
-    date={selectedCell.date}
-    sessionToEdit={sessionToEdit}
-    onClose={() => setModalOpen(false)}
-    onCreated={(sessionCreated: SessionType, isEdit: boolean) => {
-  setModalOpen(false);
-  if (isEdit) {
-    setSessions(sessions =>
-      sessions.map(s => s.id === sessionCreated.id ? sessionCreated : s)
-    );
-  } else {
-    setSessions(sessions => [...sessions, sessionCreated]);
-  }
-}}
-
-  />
-)}
-</main>
-);
+    </main>
+  );
 }
-

@@ -191,7 +191,8 @@ export default function CoachDashboard() {
   name: string;
   email?: string;
   ordre: number;
-  // ...autres champs si besoin
+  coach_code?: string;   // ✅ ajouté
+  coach_id?: string;     // ✅ si tu veux aussi gérer la relation
 };
 
 type SessionType = {

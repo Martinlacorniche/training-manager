@@ -121,7 +121,7 @@ function ValidateModal({ open, onClose, onSaved, initial }:{ open: boolean; onCl
         athlete_comment: comment,
         planned_hour: hours + minutes / 60,
       };
-      const { data, error } = await supabase.from("sessions").update(payload).eq("id", initial.id).select().single();
+      const { data, error } = await supabase.from("sessions").update(payload).eq("id", initial!.id).select().single();
       if (error) throw error;
       if (data) onSaved(data as SessionType);
     } catch (err:any) {

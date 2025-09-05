@@ -13,6 +13,7 @@ export default function Signup() {
     firstname: "",
     lastname: "",
     role: "athlete",
+    coachCode: "",
   });
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -27,22 +28,21 @@ export default function Signup() {
     setSuccess(null);
 
     const { data, error: signUpError } = await supabase.auth.signUp({
-      email: form.email,
-      password: form.password,
-    });
+  email: form.email,
+  password: form.password,
+});
 
-    let user = data.user;
-    if (!user) {
-      const { data: loginData, error: loginError } = await supabase.auth.signInWithPassword({
-        email: form.email,
-        password: form.password,
-      });
-      if (loginError) {
-        setError("Erreur lors de la connexion : " + loginError.message);
-        return;
-      }
-      user = loginData.user;
-    }
+if (signUpError) {
+  setError("Erreur lors de l'inscription : " + signUpError.message);
+  return;
+}
+
+const user = data.user;
+if (!user) {
+  setError("Utilisateur non trouvé après inscription.");
+  return;
+}
+
 
     if (!user) {
       setError("Utilisateur non trouvé après inscription.");
@@ -55,6 +55,25 @@ await new Promise((resolve) => setTimeout(resolve, 1000));
       email: form.email,
       role: form.role,
     });
+    if (form.role === "athlete" && form.coachCode) {
+  const { data: coach } = await supabase
+    .from("users")
+    .select("id_auth")
+    .eq("coach_code", form.coachCode)
+    .eq("role", "coach")
+    .single();
+
+  if (coach) {
+    await supabase
+      .from("users")
+      .update({ coach_id: coach.id_auth })
+      .eq("id_auth", user.id);
+  } else {
+    setError("Code coach invalide.");
+    return;
+  }
+}
+
     if (userError) {
   // On log l’erreur (pour toi), mais on n’affiche pas à l’utilisateur
   console.warn("Erreur lors de la création du profil :", userError.message);
@@ -122,6 +141,16 @@ setTimeout(() => router.push("/login"), 2000);
               <option value="athlete">Athlète</option>
               <option value="coach">Coach</option>
             </select>
+            {form.role === "athlete" && (
+  <input
+    name="coachCode"
+    placeholder="Code coach (5 chiffres)"
+    value={form.coachCode}
+    onChange={handleChange}
+    required
+    className="p-2 rounded-xl border border-blue-200 focus:ring-2 focus:ring-emerald-300 transition"
+  />
+)}
             <input
               name="email"
               type="email"

@@ -42,12 +42,25 @@ const [topWeeks, setTopWeeks] = useState<WeekSummary[]>([]);
   const [topAthletes, setTopAthletes] = useState<TopAthlete[]>([]);
 
   useEffect(() => {
-    const fetchAthletes = async () => {
-      const { data: aths } = await supabase.from("users").select("id_auth,name").eq("role", "athlete").order("name");
-      setAthletes(aths || []);
-    };
-    fetchAthletes();
-  }, []);
+  const fetchAthletes = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.user?.id) {
+      return; // ou router.push("/login") si tu veux forcer la connexion
+    }
+    const coachId = session.user.id;
+
+    const { data: aths } = await supabase
+      .from("users")
+      .select("id_auth,name")
+      .eq("role", "athlete")
+      .eq("coach_id", coachId)   // ✅ uniquement les athlètes liés au coach
+      .order("name");
+
+    setAthletes(aths || []);
+  };
+  fetchAthletes();
+}, []);
+
 
   useEffect(() => {
     const fetchSessions = async () => {
@@ -58,10 +71,12 @@ const [topWeeks, setTopWeeks] = useState<WeekSummary[]>([]);
 
       // On demande le nom de l'athlète en plus
       let { data: sessions } = await supabase
-        .from("sessions")
-        .select("*, users!sessions_user_id_fkey(name)") // <-- récupère users.name
-        .gte("date", start)
-        .lte("date", end);
+  .from("sessions")
+  .select("*, users!sessions_user_id_fkey(name)")
+  .gte("date", start)
+  .lte("date", end)
+  .in("user_id", athletes.map(a => a.id_auth)); // ✅ sessions seulement des athlètes du coach
+
 
       if (athleteId !== "all") {
         sessions = (sessions || []).filter(s => s.user_id === athleteId);

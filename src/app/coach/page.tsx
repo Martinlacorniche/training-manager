@@ -307,6 +307,7 @@ async function handleDeleteSession(sessionId: string) {
   .from("users")
   .select("*")
   .eq("role", "athlete")
+  .eq("coach_id", session.user.id)   // 🔑 athlètes liés au coach connecté
   .order("ordre", { ascending: true });
     // Si certains n'ont pas d'ordre, on attribue un ordre temporaire
     if (athletesList && athletesList.some(a => a.ordre === null || a.ordre === undefined)) {
@@ -380,9 +381,12 @@ useEffect(() => {
         <User className="text-white" size={24} />
         Bonjour {coach?.name?.split(" ")[0] || "Coach"} !
       </div>
-      <div className="bg-gradient-to-r from-blue-400 to-emerald-400 rounded-xl shadow px-4 py-2 text-white font-semibold text-md mt-1">
-        {dayjs().format("dddd DD MMMM")}
-      </div>
+      {coach?.coach_code && (
+  <div className="mt-2 bg-white/90 text-blue-900 font-bold px-4 py-2 rounded-xl shadow">
+    Ton code coach : <span className="text-emerald-600">{coach.coach_code}</span>
+  </div>
+)}
+      
     </div>
 
     {/* Bloc centre : logo */}

@@ -328,7 +328,7 @@ const SessionCard = React.memo(function SessionCard({ s, onEdit, onDelete }:{ s:
       )}
 
       {/* Actions en bas: icônes seulement */}
-      <div className="mt-2 pt-2 border-t border-emerald-100 flex items-center justify-end gap-1.5 flex-shrink-0">
+      <div className="mt-2 pt-2 border-t border-emerald-100 flex justify-center gap-3">
         {(s.athlete_comment || s.rpe) && (
           <button
             onClick={()=>setShowComment(v=>!v)}

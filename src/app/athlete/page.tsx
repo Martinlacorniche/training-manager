@@ -15,12 +15,9 @@ const jakarta = Plus_Jakarta_Sans({ subsets: ["latin"], weight: ["500","600","70
 // Icons (Phosphor)
 import {
   PencilSimple, Trash, Plus, ChatCircleDots,
-  CaretLeft, CaretRight, CheckCircle, XCircle, SignOut,
+  CaretLeft, CaretRight, SignOut,
   ChartLineUp as LoadIcon, Bicycle, SwimmingPool, Mountains, PersonSimpleRun, Clock, ChartLineUp
 } from "@phosphor-icons/react";
-
-// Animations
-import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 
 // DnD
 import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
@@ -67,26 +64,25 @@ type UserType = { id_auth: string; name: string; coach_code?: string; coach_id?:
 type SessionType = { id: string; user_id: string; sport?: string; title?: string; planned_hour?: number; planned_inter?: string; intensity?: string; status?: string; rpe?: number | null; athlete_comment?: string | null; date: string; };
 type AbsenceType = { id: string; user_id: string; date: string; type: string; name?: string | null; distance_km?: number | null; elevation_d_plus?: number | null; comment?: string | null; };
 
-// ---------- Smooth height for comments
+// ---------- Smooth height for comments (CSS only)
 function SmoothCollapsible({ open, children }:{ open: boolean; children: React.ReactNode; }) {
   const ref = useRef<HTMLDivElement>(null);
-  const [height, setHeight] = useState<number | "auto">(0);
+  const [height, setHeight] = useState(0);
+
   useEffect(() => {
-    if (open && ref.current) {
-      setHeight(ref.current.scrollHeight);
-      const to = setTimeout(() => setHeight("auto"), 220);
-      return () => clearTimeout(to);
-    }
-    if (!open) {
-      if (ref.current) setHeight(ref.current.scrollHeight);
-      const to = setTimeout(() => setHeight(0), 0);
-      return () => clearTimeout(to);
+    if (!ref.current) return;
+    if (open) {
+      const h = ref.current.scrollHeight;
+      requestAnimationFrame(() => setHeight(h));
+    } else {
+      setHeight(0);
     }
   }, [open]);
+
   return (
-    <motion.div style={{ overflow: "hidden" }} initial={false} animate={{ height }} transition={{ duration: 0.22, ease: [0.2, 0, 0, 1] }}>
+    <div style={{ overflow: "hidden", transition: "height 220ms cubic-bezier(0.2,0,0,1)", height }}>
       <div ref={ref}>{children}</div>
-    </motion.div>
+    </div>
   );
 }
 
@@ -132,18 +128,11 @@ function ValidateModal({ open, onClose, onSaved, initial }:{ open: boolean; onCl
   }
 
   return (
-    <AnimatePresence>
+    <>
       {open && (
-        <motion.div className="fixed inset-0 z-50 grid place-items-center p-4" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}>
+        <div className="fixed inset-0 z-50 grid place-items-center p-4">
           <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-          <motion.form
-            onSubmit={submit}
-            initial={{ opacity: 0, scale: 0.98 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.98 }}
-            transition={{ duration: 0.18 }}
-            className="relative w-full max-w-md rounded-2xl bg-white shadow-2xl p-5 space-y-4"
-          >
+          <form onSubmit={submit} className="relative w-full max-w-md rounded-2xl bg-white shadow-2xl p-5 space-y-4">
             <h3 className="text-lg font-semibold text-slate-800">Valider / Modifier</h3>
             <div className="grid grid-cols-2 gap-3">
               <label className="text-sm text-slate-700">Statut
@@ -178,10 +167,10 @@ function ValidateModal({ open, onClose, onSaved, initial }:{ open: boolean; onCl
                 {loading ? "Enregistrement…" : "Enregistrer"}
               </button>
             </div>
-          </motion.form>
-        </motion.div>
+          </form>
+        </div>
       )}
-    </AnimatePresence>
+    </>
   );
 }
 
@@ -247,18 +236,11 @@ function AbsenceModal({ open, onClose, onSaved, initial, athleteId, date }:{
   }
 
   return (
-    <AnimatePresence>
+    <>
       {open && (
-        <motion.div className="fixed inset-0 z-50 grid place-items-center p-4" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}>
+        <div className="fixed inset-0 z-50 grid place-items-center p-4">
           <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-          <motion.form
-            onSubmit={submit}
-            initial={{ opacity: 0, scale: 0.98 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.98 }}
-            transition={{ duration: 0.18 }}
-            className="relative w-full max-w-md rounded-2xl bg-white shadow-2xl p-5 space-y-3"
-          >
+          <form onSubmit={submit} className="relative w-full max-w-md rounded-2xl bg-white shadow-2xl p-5 space-y-3">
             <h3 className="text-lg font-semibold text-slate-800">{isEdit ? "Modifier" : "Déclarer"} {type === "competition" ? "une compétition" : "un jour off"}</h3>
             <label className="text-sm text-slate-700">Type
               <select value={type} onChange={(e)=>setType(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 p-2">
@@ -297,15 +279,15 @@ function AbsenceModal({ open, onClose, onSaved, initial, athleteId, date }:{
                 </button>
               </div>
             </div>
-          </motion.form>
-        </motion.div>
+          </form>
+        </div>
       )}
-    </AnimatePresence>
+    </>
   );
 }
 
 // ---------- Cards
-const SessionCard = React.memo(function SessionCard({ s, onEdit }:{ s: SessionType; onEdit: ()=>void; }) {
+const SessionCard = React.memo(function SessionCard({ s, onEdit, onDelete }:{ s: SessionType; onEdit: ()=>void; onDelete: ()=>void; }) {
   const [showComment, setShowComment] = useState(false);
 
   const statusTint =
@@ -319,45 +301,59 @@ const SessionCard = React.memo(function SessionCard({ s, onEdit }:{ s: SessionTy
     : "after:bg-transparent";
 
   return (
-    <motion.div layout initial={{opacity:0,y:6}} animate={{opacity:1,y:0}} exit={{opacity:0,y:6}} transition={{duration:0.2}} whileHover={{y:-1}}
-      className={`relative rounded-2xl shadow-sm border p-3 overflow-hidden ${statusTint} ${statusOverlay} after:absolute after:inset-0 after:pointer-events-none`}>
+    <div className={`relative rounded-2xl shadow-sm border p-3 overflow-hidden ${statusTint} ${statusOverlay} after:absolute after:inset-0 after:pointer-events-none`}>
+      {/* Header with sport badge */}
       <div className="flex items-start justify-between gap-2">
         <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[12px] ring-1 ${sportBadgeClasses(s.sport)}`}>
           {sportIcon(s.sport, 14)} <span className="font-medium">{s.sport}</span>
         </span>
-        <div className="flex items-center gap-1 shrink-0">
-          {(s.athlete_comment || s.rpe) && (
-            <button onClick={()=>setShowComment(v=>!v)} aria-expanded={showComment} title="Voir mon commentaire" className="p-2 rounded-lg hover:bg-emerald-50">
-              <ChatCircleDots size={16}/>
-            </button>
-          )}
-          <button onClick={onEdit} className="p-2 rounded-lg hover:bg-emerald-50" title="Valider / Modifier"><PencilSimple size={16}/></button>
-        </div>
       </div>
+
       <div className={`mt-2 h-1 rounded-full ${intensityBar(s.intensity)}`} />
-      {s.title && <div className="mt-2 text-sm font-semibold text-slate-800 break-words">{s.title}</div>}
-      {s.planned_hour !== undefined && <div className="mt-1 text-[12px] text-slate-600 inline-flex items-center gap-1"><Clock size={12}/>{fmtTime(s.planned_hour)}</div>}
+      {s.title && <div className="mt-2 text-sm leading-snug font-semibold text-slate-800 break-words">{s.title}</div>}
+      {s.planned_hour !== undefined && <div className="mt-1 text-[12px] leading-none text-slate-600 inline-flex items-center gap-1"><Clock size={12}/>{fmtTime(s.planned_hour)}</div>}
       {s.planned_inter && (
-        <div className="mt-2 rounded-md bg-emerald-50/50 p-2 text-[13px] text-slate-700 whitespace-pre-line">
+        <div className="mt-2 rounded-md bg-emerald-50/50 p-2 text-[13px] leading-snug text-slate-700 whitespace-pre-line">
           {s.planned_inter}
         </div>
       )}
-      <AnimatePresence initial={false}>
-        {showComment && (s.athlete_comment || s.rpe) && (
-          <SmoothCollapsible open={showComment}>
-            <div className="mt-2 rounded-md bg-slate-50 p-2 text-[13px] text-slate-700 whitespace-pre-line">
-              {s.athlete_comment ? `“${s.athlete_comment}”` : ""}{s.athlete_comment && s.rpe ? "\n" : ""}{s.rpe ? `RPE ${s.rpe}` : ""}
-            </div>
-          </SmoothCollapsible>
+
+      {/* Commentaire affichable */}
+      {(s.athlete_comment || s.rpe) && showComment && (
+        <SmoothCollapsible open={showComment}>
+          <div className="mt-2 rounded-md bg-slate-50 p-2 text-[13px] leading-snug text-slate-700 whitespace-pre-line">
+            {s.athlete_comment ? `“${s.athlete_comment}”` : ""}{s.athlete_comment && s.rpe ? "\n" : ""}{s.rpe ? `RPE ${s.rpe}` : ""}
+          </div>
+        </SmoothCollapsible>
+      )}
+
+      {/* Actions en bas: icônes seulement */}
+      <div className="mt-2 pt-2 border-t border-emerald-100 flex items-center justify-end gap-1.5">
+        {(s.athlete_comment || s.rpe) && (
+          <button
+            onClick={()=>setShowComment(v=>!v)}
+            className="p-2 rounded-lg hover:bg-emerald-50"
+            title="Voir commentaire"
+          >
+            <ChatCircleDots size={16}/>
+          </button>
         )}
-      </AnimatePresence>
-      <div className="mt-2 pt-2 border-t border-emerald-100 flex items-center justify-end text-[12px]">
-        <div>
-          {s.status === "valide" && <span className="inline-flex items-center gap-1 text-emerald-800"><CheckCircle size={12}/>Validée</span>}
-          {s.status === "non_valide" && <span className="inline-flex items-center gap-1 text-rose-700"><XCircle size={12}/>Non validée</span>}
-        </div>
+        <button
+          onClick={onEdit}
+          className="p-2 rounded-lg hover:bg-emerald-50"
+          title="Modifier"
+        >
+          <PencilSimple size={16}/>
+        </button>
+        <button
+          onClick={onDelete}
+          className="p-2 rounded-lg hover:bg-slate-50"
+          title="Supprimer"
+        >
+          <Trash size={16}/>
+        </button>
       </div>
-    </motion.div>
+    </div>
   );
 });
 
@@ -367,31 +363,18 @@ const AbsenceCard = React.memo(function AbsenceCard({ a, onEdit }:{ a: AbsenceTy
   const cls = isComp ? "bg-amber-50 ring-amber-200 text-amber-800" : "bg-slate-50 ring-slate-200 text-slate-700";
   const title = isComp ? "Compétition" : "Repos";
   return (
-    <motion.div
-      layout initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 6 }} transition={{ duration: 0.2 }} whileHover={{ y: -1 }}
-      className="relative rounded-2xl bg-white shadow-sm border border-emerald-100 p-3 overflow-visible"
-    >
-      {/* ABSOLUTE, ALWAYS VISIBLE EDIT BUTTON */}
-      <button
-        onClick={onEdit}
-        className="absolute top-2 right-2 p-2 rounded-full bg-white/90 shadow ring-1 ring-emerald-200 hover:bg-emerald-50 focus:outline-none focus:ring-2 focus:ring-emerald-400"
-        title="Modifier / Supprimer"
-        aria-label="Modifier / Supprimer"
-      >
-        <PencilSimple size={16} />
-      </button>
-
-      <div className="flex items-start justify-between gap-2 pr-8">
+    <div className="relative rounded-2xl bg-white shadow-sm border border-emerald-100 p-3 overflow-visible">
+      <div className="flex items-start justify-between gap-2">
         <span className={`inline-flex items-center gap-2 px-2.5 py-1 rounded-full text-[12px] ring-1 ${cls}`}>
           <span className="font-medium">{title}</span>
         </span>
       </div>
 
       {isComp && (
-        <div className="mt-2 text-[13px] text-slate-700 space-y-0.5">
+        <div className="mt-2 text-[13px] leading-snug text-slate-700 space-y-0.5">
           {a.name && <div className="font-medium">{a.name}</div>}
           {(a.distance_km || a.elevation_d_plus) && (
-            <div className="text-[12px] text-slate-600">
+            <div className="text-[12px] leading-none text-slate-600">
               {a.distance_km ? `${a.distance_km} km` : ""}
               {a.distance_km && a.elevation_d_plus ? " • " : ""}
               {a.elevation_d_plus ? `D+ ${a.elevation_d_plus} m` : ""}
@@ -400,15 +383,25 @@ const AbsenceCard = React.memo(function AbsenceCard({ a, onEdit }:{ a: AbsenceTy
           {a.comment && <div className="whitespace-pre-line">{a.comment}</div>}
         </div>
       )}
-      {!isComp && a.comment && <div className="mt-2 text-[13px] text-slate-700 whitespace-pre-line">{a.comment}</div>}
-    </motion.div>
+      {!isComp && a.comment && <div className="mt-2 text-[13px] leading-snug text-slate-700 whitespace-pre-line">{a.comment}</div>}
+
+      {/* Actions en bas: icône stylo */}
+      <div className="mt-2 pt-2 border-t border-emerald-100 flex items-center justify-end">
+        <button
+          onClick={onEdit}
+          className="p-2 rounded-lg hover:bg-emerald-50"
+          title="Modifier"
+        >
+          <PencilSimple size={16}/>
+        </button>
+      </div>
+    </div>
   );
 });
 
 // ---------- Main page
 export default function AthletePage() {
   const router = useRouter();
-  const prefersReduced = useReducedMotion();
 
   const [athlete, setAthlete] = useState<UserType | null>(null);
 
@@ -499,14 +492,14 @@ export default function AthletePage() {
   const dayId = (d: dayjs.Dayjs) => d.format("YYYY-MM-DD");
   const sessionsByDay = useMemo(() => {
     const map: Record<string, SessionType[]> = {};
-    weekDays.forEach(d => map[dayId(d)] = []);
+    weekDays.forEach(d => { map[dayId(d)] = []; });
     sessions.forEach(s => { if (map[s.date]) map[s.date].push(s); });
     return map;
   }, [sessions, weekDays]);
 
   const absencesByDay = useMemo(() => {
     const map: Record<string, AbsenceType[]> = {};
-    weekDays.forEach(d => map[dayId(d)] = []);
+    weekDays.forEach(d => { map[dayId(d)] = []; });
     absences.forEach(a => { if (map[a.date]) map[a.date].push(a); });
     return map;
   }, [absences, weekDays]);
@@ -528,10 +521,6 @@ export default function AthletePage() {
     const progress = total ? Math.round((validated / total) * 100) : 0;
     return { total, validated, time, load, progress };
   }, [sessions]);
-
-  const progressVariants = useReducedMotion()
-    ? {}
-    : { initial: { width: 0 }, animate: { width: `${stats.progress}%`, transition: { duration: 0.45 } } };
 
   return (
     <main className={`${jakarta.className} min-h-screen bg-gradient-to-br from-emerald-50 via-sky-50 to-white text-slate-800`}>
@@ -561,12 +550,9 @@ export default function AthletePage() {
           <div className="rounded-2xl border border-emerald-100 bg-white p-4">
             <div className="text-sm font-semibold text-emerald-950 mb-2">Ma semaine</div>
             <div className="flex items-center gap-4 text-sm text-emerald-900">
-              <div className="flex items-center gap-2"><CheckCircle size={16} className="text-emerald-600"/><span>{stats.validated}/{stats.total}</span></div>
+              <div className="flex items-center gap-2"><span className="inline-block w-3 h-3 rounded-full bg-emerald-500" /> <span>{stats.validated}/{stats.total}</span></div>
               <div className="flex items-center gap-2"><Clock size={16} className="text-slate-700"/><span>{fmtTime(stats.time)}</span></div>
               <div className="flex items-center gap-2"><LoadIcon size={16} className="text-amber-600"/><span>{stats.load.toFixed(1)}</span></div>
-            </div>
-            <div className="mt-3 h-2 w-full rounded-full bg-emerald-100 overflow-hidden">
-              <motion.div className="h-full bg-emerald-500 rounded-full" initial="initial" animate="animate" {...progressVariants}/>
             </div>
           </div>
 
@@ -596,28 +582,34 @@ export default function AthletePage() {
                         className={`rounded-2xl border border-emerald-100 bg-white p-3 min-h-[240px] flex flex-col transition-colors ${snapshot.isDraggingOver && !blocked ? "bg-emerald-50" : ""} ${blocked ? "opacity-80" : ""}`}>
                         <div className="flex items-center justify-between mb-2">
                           <div className="text-xs font-medium text-emerald-900">{d.format("ddd DD/MM")}</div>
-                          <motion.button
-                            whileTap={{ scale: 0.96, rotate: 90 }}
+                          <button
                             onClick={() => { setAbsenceDate(iso); setEditAbsence(null); setAbsenceOpen(true); }}
                             className="p-2 rounded-lg hover:bg-emerald-50" aria-label="Déclarer Off/Compétition">
                             <Plus size={18}/>
-                          </motion.button>
+                          </button>
                         </div>
                         <div className="space-y-2">
                           {dayAbs.map((a) => (
                             <AbsenceCard key={a.id} a={a} onEdit={() => { setAbsenceDate(iso); setEditAbsence(a); setAbsenceOpen(true); }} />
                           ))}
-                          <AnimatePresence initial={false}>
-                            {daySessions.map((s, idx) => (
-                              <Draggable key={s.id} draggableId={s.id} index={idx}>
-                                {(prov) => (
-                                  <div ref={prov.innerRef} {...prov.draggableProps} {...prov.dragHandleProps}>
-                                    <SessionCard s={s} onEdit={()=>{ setCurrentSession(s); setValidateOpen(true); }} />
-                                  </div>
-                                )}
-                              </Draggable>
-                            ))}
-                          </AnimatePresence>
+                          {daySessions.map((s, idx) => (
+                            <Draggable key={s.id} draggableId={s.id} index={idx}>
+                              {(prov) => (
+                                <div ref={prov.innerRef} {...prov.draggableProps} {...prov.dragHandleProps}>
+                                  <SessionCard
+                                    s={s}
+                                    onEdit={()=>{ setCurrentSession(s); setValidateOpen(true); }}
+                                    onDelete={async ()=>{
+                                      if (confirm("Supprimer cette séance ?")) {
+                                        await supabase.from("sessions").delete().eq("id", s.id);
+                                        setSessions(prev => prev.filter(x => x.id !== s.id));
+                                      }
+                                    }}
+                                  />
+                                </div>
+                              )}
+                            </Draggable>
+                          ))}
                           {provided.placeholder}
                         </div>
                       </div>

@@ -301,7 +301,7 @@ const SessionCard = React.memo(function SessionCard({ s, onEdit, onDelete }:{ s:
     : "after:bg-transparent";
 
   return (
-    <div className={`relative rounded-2xl shadow-sm border p-3 overflow-hidden ${statusTint} ${statusOverlay} after:absolute after:inset-0 after:pointer-events-none`}>
+    <div className={`relative rounded-2xl shadow-sm border p-3 overflow-hidden flex flex-col ${statusTint} ${statusOverlay} after:absolute after:inset-0 after:pointer-events-none`}>
       {/* Header with sport badge */}
       <div className="flex items-start justify-between gap-2">
         <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[12px] ring-1 ${sportBadgeClasses(s.sport)}`}>
@@ -310,10 +310,10 @@ const SessionCard = React.memo(function SessionCard({ s, onEdit, onDelete }:{ s:
       </div>
 
       <div className={`mt-2 h-1 rounded-full ${intensityBar(s.intensity)}`} />
-      {s.title && <div className="mt-2 text-sm leading-snug font-semibold text-slate-800 break-words">{s.title}</div>}
+      {s.title && <div className="mt-2 text-[13px] leading-tight font-semibold text-slate-800 break-words">{s.title}</div>}
       {s.planned_hour !== undefined && <div className="mt-1 text-[12px] leading-none text-slate-600 inline-flex items-center gap-1"><Clock size={12}/>{fmtTime(s.planned_hour)}</div>}
       {s.planned_inter && (
-        <div className="mt-2 rounded-md bg-emerald-50/50 p-2 text-[13px] leading-snug text-slate-700 whitespace-pre-line">
+        <div className="mt-2 rounded-md bg-emerald-50/50 p-2 text-[12px] leading-tight text-slate-700 whitespace-pre-wrap break-words max-h-24 overflow-y-auto">
           {s.planned_inter}
         </div>
       )}
@@ -321,18 +321,18 @@ const SessionCard = React.memo(function SessionCard({ s, onEdit, onDelete }:{ s:
       {/* Commentaire affichable */}
       {(s.athlete_comment || s.rpe) && showComment && (
         <SmoothCollapsible open={showComment}>
-          <div className="mt-2 rounded-md bg-slate-50 p-2 text-[13px] leading-snug text-slate-700 whitespace-pre-line">
+          <div className="mt-2 rounded-md bg-slate-50 p-2 text-[12px] leading-tight text-slate-700 whitespace-pre-wrap break-words max-h-24 overflow-y-auto">
             {s.athlete_comment ? `“${s.athlete_comment}”` : ""}{s.athlete_comment && s.rpe ? "\n" : ""}{s.rpe ? `RPE ${s.rpe}` : ""}
           </div>
         </SmoothCollapsible>
       )}
 
       {/* Actions en bas: icônes seulement */}
-      <div className="mt-2 pt-2 border-t border-emerald-100 flex items-center justify-end gap-1.5">
+      <div className="mt-2 pt-2 border-t border-emerald-100 flex items-center justify-end gap-1.5 flex-shrink-0">
         {(s.athlete_comment || s.rpe) && (
           <button
             onClick={()=>setShowComment(v=>!v)}
-            className="p-2 rounded-lg hover:bg-emerald-50"
+            className="p-1.5 rounded-md hover:bg-emerald-50"
             title="Voir commentaire"
           >
             <ChatCircleDots size={16}/>
@@ -340,14 +340,14 @@ const SessionCard = React.memo(function SessionCard({ s, onEdit, onDelete }:{ s:
         )}
         <button
           onClick={onEdit}
-          className="p-2 rounded-lg hover:bg-emerald-50"
+          className="p-1.5 rounded-md hover:bg-emerald-50"
           title="Modifier"
         >
           <PencilSimple size={16}/>
         </button>
         <button
           onClick={onDelete}
-          className="p-2 rounded-lg hover:bg-slate-50"
+          className="p-1.5 rounded-md hover:bg-slate-50"
           title="Supprimer"
         >
           <Trash size={16}/>
@@ -371,7 +371,7 @@ const AbsenceCard = React.memo(function AbsenceCard({ a, onEdit }:{ a: AbsenceTy
       </div>
 
       {isComp && (
-        <div className="mt-2 text-[13px] leading-snug text-slate-700 space-y-0.5">
+        <div className="mt-2 text-[12px] leading-tight text-slate-700 space-y-0.5 break-words">
           {a.name && <div className="font-medium">{a.name}</div>}
           {(a.distance_km || a.elevation_d_plus) && (
             <div className="text-[12px] leading-none text-slate-600">
@@ -380,16 +380,16 @@ const AbsenceCard = React.memo(function AbsenceCard({ a, onEdit }:{ a: AbsenceTy
               {a.elevation_d_plus ? `D+ ${a.elevation_d_plus} m` : ""}
             </div>
           )}
-          {a.comment && <div className="whitespace-pre-line">{a.comment}</div>}
+          {a.comment && <div className="whitespace-pre-wrap break-words">{a.comment}</div>}
         </div>
       )}
-      {!isComp && a.comment && <div className="mt-2 text-[13px] leading-snug text-slate-700 whitespace-pre-line">{a.comment}</div>}
+      {!isComp && a.comment && <div className="mt-2 text-[12px] leading-tight text-slate-700 whitespace-pre-wrap break-words max-h-24 overflow-y-auto">{a.comment}</div>}
 
       {/* Actions en bas: icône stylo */}
       <div className="mt-2 pt-2 border-t border-emerald-100 flex items-center justify-end">
         <button
           onClick={onEdit}
-          className="p-2 rounded-lg hover:bg-emerald-50"
+          className="p-1.5 rounded-md hover:bg-emerald-50"
           title="Modifier"
         >
           <PencilSimple size={16}/>
@@ -584,7 +584,7 @@ export default function AthletePage() {
                           <div className="text-xs font-medium text-emerald-900">{d.format("ddd DD/MM")}</div>
                           <button
                             onClick={() => { setAbsenceDate(iso); setEditAbsence(null); setAbsenceOpen(true); }}
-                            className="p-2 rounded-lg hover:bg-emerald-50" aria-label="Déclarer Off/Compétition">
+                            className="p-1.5 rounded-md hover:bg-emerald-50" aria-label="Déclarer Off/Compétition">
                             <Plus size={18}/>
                           </button>
                         </div>

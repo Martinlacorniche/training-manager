@@ -245,10 +245,6 @@ const SessionCard = React.memo(function SessionCard({ s, onEdit, onDelete }:{ s:
           <button onClick={onEdit} className="p-1.5 rounded-lg hover:bg-emerald-50 active:scale-[0.98]" aria-label="Modifier"><PencilSimple size={16}/></button>
           <button onClick={onDelete} className="p-1.5 rounded-lg hover:bg-rose-50 active:scale-[0.98]" aria-label="Supprimer"><Trash size={16}/></button>
         </div>
-        <div>
-          {s.status === "valide" && <span className="inline-flex items-center gap-1 text-emerald-800"><CheckCircle size={12}/>Validée</span>}
-          {s.status === "non_valide" && <span className="inline-flex items-center gap-1 text-rose-700"><XCircle size={12}/>Non validée</span>}
-        </div>
       </div>
     </motion.div>
   );

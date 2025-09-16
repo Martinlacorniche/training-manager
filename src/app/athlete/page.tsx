@@ -399,6 +399,120 @@ const AbsenceCard = React.memo(function AbsenceCard({ a, onEdit }:{ a: AbsenceTy
   );
 });
 
+
+// ---------- Athlete Metrics (VMA / FTP avec édition)
+function paceFromKmh(kmh: number) {
+  if (!kmh || kmh <= 0) return "—";
+  const minPerKm = 60 / kmh;
+  const totalSec = Math.round(minPerKm * 60);
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  return `${m}:${String(s).padStart(2,"0")}/km`;
+}
+const PCTS = [60,70,80,85,90,95,100,110,120,130];
+
+function AthleteMetrics({ athleteId }: { athleteId: string }) {
+  const [vma, setVma] = React.useState<string>("");
+  const [ftp, setFtp] = React.useState<string>("");
+  const [loading, setLoading] = React.useState(false);
+
+  // Charger valeurs existantes
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase
+        .from("athlete_metrics")
+        .select("vma_kmh, ftp_w")
+        .eq("user_id", athleteId)
+        .single();
+      if (data) {
+        setVma(data.vma_kmh ? String(data.vma_kmh) : "");
+        setFtp(data.ftp_w ? String(data.ftp_w) : "");
+      }
+    })();
+  }, [athleteId]);
+
+  async function save() {
+    setLoading(true);
+    const payload = {
+      user_id: athleteId,
+      vma_kmh: vma ? Number(vma) : null,
+      ftp_w: ftp ? Number(ftp) : null,
+      updated_at: new Date().toISOString()
+    };
+    const { error } = await supabase
+      .from("athlete_metrics")
+      .upsert(payload, { onConflict: "user_id" });
+    setLoading(false);
+    if (error) alert(error.message);
+  }
+
+  const vmaNum = vma ? Number(vma) : null;
+  const ftpNum = ftp ? Number(ftp) : null;
+
+  return (
+    <div className="rounded-2xl border border-emerald-100 bg-white p-4 text-sm text-slate-700 space-y-3">
+
+      {/* Formulaire */}
+      <div className="grid grid-cols-2 gap-2">
+        <label className="text-xs text-slate-600">
+          VMA (km/h)
+          <input
+            type="number"
+            step="0.1"
+            value={vma}
+            onChange={e=>setVma(e.target.value)}
+            className="mt-1 w-full rounded-md border border-slate-200 px-2 py-1 text-sm"
+          />
+        </label>
+        <label className="text-xs text-slate-600">
+          FTP (w)
+          <input
+            type="number"
+            value={ftp}
+            onChange={e=>setFtp(e.target.value)}
+            className="mt-1 w-full rounded-md border border-slate-200 px-2 py-1 text-sm"
+          />
+        </label>
+      </div>
+      <button
+        onClick={save}
+        disabled={loading}
+        className="w-full py-1.5 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white text-sm"
+      >
+        {loading ? "Enregistrement…" : "Enregistrer"}
+      </button>
+
+      {/* Tableau des zones */}
+      {(vmaNum || ftpNum) && (
+        <table className="w-full text-xs border-collapse mt-3">
+          <thead>
+            <tr>
+              <th className="border-b text-left py-1">%</th>
+              <th className="border-b text-center">Allure VMA</th>
+              <th className="border-b text-center">FTP</th>
+            </tr>
+          </thead>
+          <tbody>
+            {PCTS.map(pct => {
+              const frac = pct/100;
+              const vmaPace = vmaNum ? paceFromKmh(vmaNum*frac) : "—";
+              const ftpVal = ftpNum ? Math.round(ftpNum*frac) + " w" : "—";
+              return (
+                <tr key={pct}>
+                  <td className="py-0.5">{pct}%</td>
+                  <td className="py-0.5 text-center">{vmaPace}</td>
+                  <td className="py-0.5 text-center">{ftpVal}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
+
 // ---------- Main page
 export default function AthletePage() {
   const router = useRouter();
@@ -564,7 +678,9 @@ export default function AthletePage() {
               <div>Charge semaine précédente : <span className="font-medium text-emerald-900">{prevWeekLoad.toFixed(1)}</span></div>
             </div>
           </div>
+        {athlete && <AthleteMetrics athleteId={athlete.id_auth} />}
         </aside>
+
 
         {/* Main week grid */}
         <section className="col-span-12 md:col-span-9">

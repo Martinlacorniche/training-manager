@@ -60,10 +60,30 @@ function fmtTime(h?: number) {
   return `${H}h${String(M).padStart(2,"0")}`;
 }
 
+function formatDuration(h?: number | null) {
+  if (!h && h !== 0) return "—";
+  const H = Math.floor(h);
+  const M = Math.round((h - H) * 60);
+  return `${H}h${String(M).padStart(2, "0")}`;
+}
+
+
 // ---------- types
 type UserType = { id_auth: string; name: string; coach_code?: string; coach_id?: string; ordre: number | null; };
 type SessionType = { id: string; user_id: string; sport?: string; title?: string; planned_hour?: number; planned_inter?: string; intensity?: string; status?: string; rpe?: number | null; athlete_comment?: string | null; date: string; };
-type AbsenceType = { id: string; user_id: string; date: string; type: string; name?: string | null; distance_km?: number | null; elevation_d_plus?: number | null; comment?: string | null; };
+type AbsenceType = {
+  id: string;
+  user_id: string;
+  date: string;
+  type: string;
+  name?: string | null;
+  distance_km?: number | null;
+  elevation_d_plus?: number | null;
+  comment?: string | null;
+  rpe?: number | null;
+  duration_hour?: number | null;
+};
+
 
 // ---------- Modal create/edit
 function SessionModal({ open, onClose, onSaved, initial, athlete, date }:{
@@ -272,6 +292,12 @@ const AbsenceCard = React.memo(function AbsenceCard({ a, onDelete }:{ a: Absence
               {a.elevation_d_plus ? `D+ ${a.elevation_d_plus} m` : ""}
             </div>
           )}
+          {(a.duration_hour || a.rpe) && (
+      <div className="text-[12px] text-slate-600 flex gap-2 flex-wrap">
+        {a.duration_hour ? <span>Durée {formatDuration(a.duration_hour)}</span> : null}
+        {a.rpe ? <span>RPE {a.rpe}</span> : null}
+      </div>
+    )}
           {a.comment && <div className="whitespace-pre-line">{a.comment}</div>}
         </div>
       )}
@@ -449,43 +475,90 @@ export default function CoachAthleteFocusV7_3() {
       setSessions((sess || []) as SessionType[]);
 
       const { data: abs } = await supabase
-        .from("absences_competitions")
-        .select("id,user_id,date,type,name,distance_km,elevation_d_plus,comment")
-        .eq("user_id", selectedAthleteId).gte("date", start).lte("date", end);
+  .from("absences_competitions")
+  .select("id,user_id,date,type,name,distance_km,elevation_d_plus,comment,rpe,duration_hour")
+  .eq("user_id", selectedAthleteId)
+  .gte("date", start)
+  .lte("date", end);
+
       setAbsences((abs || []) as AbsenceType[]);
     })();
   }, [selectedAthleteId, weekStart]);
 
   // prev week load + next race (based on displayed week)
-  useEffect(() => {
-    if (!selectedAthleteId) return;
-    (async () => {
-      const prevStart = weekStart.add(-7, "day").format("YYYY-MM-DD");
-      const prevEnd = weekStart.add(-1, "day").format("YYYY-MM-DD");
-      const { data: prevSessions } = await supabase
-        .from("sessions").select("planned_hour,rpe,status,user_id,date")
-        .eq("user_id", selectedAthleteId).gte("date", prevStart).lte("date", prevEnd);
-      const load = (prevSessions || []).filter(s=> s.status === "valide")
-        .reduce((acc:any, s:any)=> acc + ((Number(s.rpe)||0) * (Number(s.planned_hour)||0)), 0);
-      setPrevWeekLoad(load);
+  // prev week load + next race (based on displayed week)
+useEffect(() => {
+  if (!selectedAthleteId) return;
+  (async () => {
+    // 1. borne de la semaine précédente
+    const prevStart = weekStart.add(-7, "day").format("YYYY-MM-DD");
+    const prevEnd = weekStart.add(-1, "day").format("YYYY-MM-DD");
 
-      const base = weekStart.startOf("day");
-      const { data: nextComp } = await supabase
-        .from("absences_competitions")
-        .select("date,type").eq("user_id", selectedAthleteId)
-        .eq("type","competition").gte("date", base.format("YYYY-MM-DD"))
-        .order("date", { ascending: true }).limit(1);
-      if (nextComp && nextComp.length) {
-        const d = dayjs(nextComp[0].date).startOf("day");
-        if (d.isSame(base, "week")) setNextRaceText("cette semaine");
-        else {
-          const diffDays = d.diff(base, "day");
-          const weeks = Math.floor(diffDays / 7) + (diffDays % 7 > 0 ? 1 : 0);
-          setNextRaceText(`dans ${weeks} semaine${weeks>1?"s":""}`);
-        }
-      } else setNextRaceText("aucune à venir");
-    })();
-  }, [selectedAthleteId, weekStart]);
+    // 2. on récupère les séances de la semaine précédente
+    const { data: prevSessions } = await supabase
+      .from("sessions")
+      .select("planned_hour,rpe,status,user_id,date")
+      .eq("user_id", selectedAthleteId)
+      .gte("date", prevStart)
+      .lte("date", prevEnd);
+
+    // 3. charge issue des séances validées
+    const loadSessions = (prevSessions || [])
+      .filter((s) => s.status === "valide")
+      .reduce(
+        (acc, s) =>
+          acc + (Number(s.rpe) || 0) * (Number(s.planned_hour) || 0),
+        0
+      );
+
+    // 4. on récupère les compétitions de la semaine précédente
+    const { data: prevComps } = await supabase
+      .from("absences_competitions")
+      .select("duration_hour,rpe,type,date")
+      .eq("user_id", selectedAthleteId)
+      .gte("date", prevStart)
+      .lte("date", prevEnd)
+      .eq("type", "competition");
+
+    // 5. charge issue des compétitions
+    const loadCompet = (prevComps || []).reduce(
+      (acc, c) =>
+        acc + (Number(c.rpe) || 0) * (Number(c.duration_hour) || 0),
+      0
+    );
+
+    // 6. on set la somme
+    setPrevWeekLoad(loadSessions + loadCompet);
+
+    // 7. texte "prochaine compétition"
+    const base = weekStart.startOf("day");
+    const { data: nextComp } = await supabase
+      .from("absences_competitions")
+      .select("date,type")
+      .eq("user_id", selectedAthleteId)
+      .eq("type", "competition")
+      .gte("date", base.format("YYYY-MM-DD"))
+      .order("date", { ascending: true })
+      .limit(1);
+
+    if (nextComp && nextComp.length) {
+      const d = dayjs(nextComp[0].date).startOf("day");
+      if (d.isSame(base, "week")) {
+        setNextRaceText("cette semaine");
+      } else {
+        const diffDays = d.diff(base, "day");
+        const weeks =
+          Math.floor(diffDays / 7) + (diffDays % 7 > 0 ? 1 : 0);
+        setNextRaceText(
+          `dans ${weeks} semaine${weeks > 1 ? "s" : ""}`
+        );
+      }
+    } else {
+      setNextRaceText("aucune à venir");
+    }
+  })();
+}, [selectedAthleteId, weekStart]);
+
 
   const deleteSession = useCallback(async (id: string) => {
     if (!confirm("Supprimer cette séance ?")) return;
@@ -504,13 +577,53 @@ export default function CoachAthleteFocusV7_3() {
   }, [athletes]);
 
   const stats = useMemo(() => {
-    const total = sessions.length;
-    const validated = sessions.filter(s => s.status === "valide").length;
-    const time = sessions.reduce((acc, s) => acc + (Number(s.planned_hour) || 0), 0);
-    const load = sessions.filter(s => s.status === "valide").reduce((acc, s) => acc + ((Number(s.rpe) || 0) * (Number(s.planned_hour) || 0)), 0);
-    const progress = total ? Math.round((validated / total) * 100) : 0;
-    return { total, validated, time, load, progress };
-  }, [sessions]);
+  const totalSessions = sessions.length;
+  const validatedSessions = sessions.filter(s => s.status === "valide").length;
+
+  // temps séances
+  const timeSessions = sessions.reduce(
+    (acc, s) => acc + (Number(s.planned_hour) || 0),
+    0
+  );
+
+  // temps compet
+  const timeCompet = absences
+    .filter(a => a.type === "competition")
+    .reduce((acc, a) => acc + (Number(a.duration_hour) || 0), 0);
+
+  // charge séances
+  const loadSessions = sessions
+    .filter(s => s.status === "valide")
+    .reduce(
+      (acc, s) =>
+        acc + (Number(s.rpe) || 0) * (Number(s.planned_hour) || 0),
+      0
+    );
+
+  // charge compet
+  const loadCompet = absences
+    .filter(a => a.type === "competition")
+    .reduce(
+      (acc, a) =>
+        acc + (Number(a.rpe) || 0) * (Number(a.duration_hour) || 0),
+      0
+    );
+
+  const totalTime = timeSessions + timeCompet;
+  const totalLoad = loadSessions + loadCompet;
+
+  // ton % de complétion reste basé sur les séances planifiées
+  const progress = totalSessions ? Math.round((validatedSessions / totalSessions) * 100) : 0;
+
+  return {
+    total: totalSessions,
+    validated: validatedSessions,
+    time: totalTime,
+    load: totalLoad,
+    progress,
+  };
+}, [sessions, absences]);
+
 
   const athlete = athletes.find(a => a.id_auth === selectedAthleteId) || null;
 

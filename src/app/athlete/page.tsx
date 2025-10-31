@@ -62,7 +62,19 @@ function fmtTime(h?: number) {
 // ---------- types
 type UserType = { id_auth: string; name: string; coach_code?: string; coach_id?: string; ordre: number | null; };
 type SessionType = { id: string; user_id: string; sport?: string; title?: string; planned_hour?: number; planned_inter?: string; intensity?: string; status?: string; rpe?: number | null; athlete_comment?: string | null; date: string; };
-type AbsenceType = { id: string; user_id: string; date: string; type: string; name?: string | null; distance_km?: number | null; elevation_d_plus?: number | null; comment?: string | null; };
+type AbsenceType = {
+  id: string;
+  user_id: string;
+  date: string;
+  type: string;
+  name?: string | null;
+  distance_km?: number | null;
+  elevation_d_plus?: number | null;
+  comment?: string | null;
+  rpe?: number | null;
+  duration_hour?: number | null;
+};
+
 
 // ---------- Smooth height for comments (CSS only)
 function SmoothCollapsible({ open, children }:{ open: boolean; children: React.ReactNode; }) {
@@ -185,6 +197,18 @@ function AbsenceModal({ open, onClose, onSaved, initial, athleteId, date }:{
   const [distance, setDistance] = useState<string>(initial?.distance_km?.toString() || "");
   const [elev, setElev] = useState<string>(initial?.elevation_d_plus?.toString() || "");
   const [comment, setComment] = useState<string>(initial?.comment || "");
+
+  // 👉 nouveaux états
+  const [rpe, setRpe] = useState<string>(initial?.rpe != null ? String(initial.rpe) : "");
+  const [durHour, setDurHour] = useState<number>(() => {
+    if (initial?.duration_hour) return Math.floor(initial.duration_hour);
+    return 0;
+  });
+  const [durMin, setDurMin] = useState<number>(() => {
+    if (initial?.duration_hour) return Math.round((initial.duration_hour % 1) * 60);
+    return 0;
+  });
+
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -195,8 +219,25 @@ function AbsenceModal({ open, onClose, onSaved, initial, athleteId, date }:{
       setDistance(initial.distance_km?.toString() || "");
       setElev(initial.elevation_d_plus?.toString() || "");
       setComment(initial.comment || "");
+      setRpe(initial.rpe != null ? String(initial.rpe) : "");
+      if (initial.duration_hour != null) {
+        const h = Math.floor(initial.duration_hour);
+        const m = Math.round((initial.duration_hour - h) * 60);
+        setDurHour(h);
+        setDurMin(m);
+      } else {
+        setDurHour(0);
+        setDurMin(0);
+      }
     } else {
-      setType("off"); setName(""); setDistance(""); setElev(""); setComment("");
+      setType("off");
+      setName("");
+      setDistance("");
+      setElev("");
+      setComment("");
+      setRpe("");
+      setDurHour(0);
+      setDurMin(0);
     }
   }, [open, initial]);
 
@@ -205,6 +246,13 @@ function AbsenceModal({ open, onClose, onSaved, initial, athleteId, date }:{
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
+
+    // on ne calcule la durée que si c'est une compèt
+    const duration_hour =
+      type === "competition" ? durHour + durMin / 60 : null;
+    const rpeNum =
+      type === "competition" && rpe ? Number(rpe) : null;
+
     const payload: any = {
       user_id: athleteId,
       date,
@@ -212,15 +260,31 @@ function AbsenceModal({ open, onClose, onSaved, initial, athleteId, date }:{
       name: name || null,
       distance_km: distance ? Number(distance) : null,
       elevation_d_plus: elev ? Number(elev) : null,
-      comment: comment || null
+      comment: comment || null,
+      // 👉 nouveaux champs
+      rpe: rpeNum,
+      duration_hour,
     };
+
     try {
       let data: any, error: any;
-      if (isEdit) ({ data, error } = await supabase.from("absences_competitions").update(payload).eq("id", initial!.id).select().single());
-      else ({ data, error } = await supabase.from("absences_competitions").insert(payload).select().single());
+      if (isEdit) {
+        ({ data, error } = await supabase
+          .from("absences_competitions")
+          .update(payload)
+          .eq("id", initial!.id)
+          .select()
+          .single());
+      } else {
+        ({ data, error } = await supabase
+          .from("absences_competitions")
+          .insert(payload)
+          .select()
+          .single());
+      }
       if (error) throw error;
       if (data) onSaved(data as AbsenceType, isEdit);
-    } catch (err:any) {
+    } catch (err: any) {
       alert("Erreur: " + (err?.message || "inconnue"));
     } finally {
       setLoading(false);
@@ -230,9 +294,14 @@ function AbsenceModal({ open, onClose, onSaved, initial, athleteId, date }:{
   async function del() {
     if (!isEdit) return;
     if (!confirm("Supprimer cet élément ?")) return;
-    const { error } = await supabase.from("absences_competitions").delete().eq("id", initial!.id);
+    const { error } = await supabase
+      .from("absences_competitions")
+      .delete()
+      .eq("id", initial!.id);
     if (error) alert(error.message);
-    else { onClose(); }
+    else {
+      onClose();
+    }
   }
 
   return (
@@ -241,41 +310,141 @@ function AbsenceModal({ open, onClose, onSaved, initial, athleteId, date }:{
         <div className="fixed inset-0 z-50 grid place-items-center p-4">
           <div className="absolute inset-0 bg-black/40" onClick={onClose} />
           <form onSubmit={submit} className="relative w-full max-w-md rounded-2xl bg-white shadow-2xl p-5 space-y-3">
-            <h3 className="text-lg font-semibold text-slate-800">{isEdit ? "Modifier" : "Déclarer"} {type === "competition" ? "une compétition" : "un jour off"}</h3>
-            <label className="text-sm text-slate-700">Type
-              <select value={type} onChange={(e)=>setType(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 p-2">
+            <h3 className="text-lg font-semibold text-slate-800">
+              {isEdit ? "Modifier" : "Déclarer"}{" "}
+              {type === "competition" ? "une compétition" : "un jour off"}
+            </h3>
+
+            <label className="text-sm text-slate-700">
+              Type
+              <select
+                value={type}
+                onChange={(e) => setType(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-slate-200 p-2"
+              >
                 <option value="off">Off</option>
                 <option value="competition">Compétition</option>
               </select>
             </label>
+
             {type === "competition" && (
               <>
-                <label className="text-sm text-slate-700">Nom
-                  <input value={name} onChange={(e)=>setName(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 p-2"/>
+                <label className="text-sm text-slate-700">
+                  Nom
+                  <input
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    className="mt-1 w-full rounded-lg border border-slate-200 p-2"
+                  />
                 </label>
+
                 <div className="grid grid-cols-2 gap-3">
-                  <label className="text-sm text-slate-700">Distance (km)
-                    <input value={distance} onChange={(e)=>setDistance(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 p-2" inputMode="decimal"/>
+                  <label className="text-sm text-slate-700">
+                    Distance (km)
+                    <input
+                      value={distance}
+                      onChange={(e) => setDistance(e.target.value)}
+                      className="mt-1 w-full rounded-lg border border-slate-200 p-2"
+                      inputMode="decimal"
+                    />
                   </label>
-                  <label className="text-sm text-slate-700">D+ (m)
-                    <input value={elev} onChange={(e)=>setElev(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 p-2" inputMode="numeric"/>
+                  <label className="text-sm text-slate-700">
+                    D+ (m)
+                    <input
+                      value={elev}
+                      onChange={(e) => setElev(e.target.value)}
+                      className="mt-1 w-full rounded-lg border border-slate-200 p-2"
+                      inputMode="numeric"
+                    />
                   </label>
                 </div>
+
+                {/* 👉 Durée compétition */}
+                <div className="grid grid-cols-2 gap-3">
+                  <label className="text-sm text-slate-700">
+                    Heures
+                    <select
+                      value={durHour}
+                      onChange={(e) => setDurHour(Number(e.target.value))}
+                      className="mt-1 w-full rounded-lg border border-slate-200 p-2"
+                    >
+                      {Array.from({ length: 15 }, (_, i) => (
+                        <option key={i} value={i}>
+                          {i} h
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="text-sm text-slate-700">
+                    Minutes
+                    <select
+                      value={durMin}
+                      onChange={(e) => setDurMin(Number(e.target.value))}
+                      className="mt-1 w-full rounded-lg border border-slate-200 p-2"
+                    >
+                      {Array.from({ length: 12 }, (_, i) => (
+                        <option key={i} value={i * 5}>
+                          {String(i * 5).padStart(2, "0")} min
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+
+                {/* 👉 RPE compétition */}
+                <label className="text-sm text-slate-700">
+                  RPE (1–10)
+                  <input
+                    type="number"
+                    min={1}
+                    max={10}
+                    value={rpe}
+                    onChange={(e) => setRpe(e.target.value)}
+                    className="mt-1 w-full rounded-lg border border-slate-200 p-2"
+                    placeholder="7"
+                  />
+                </label>
               </>
             )}
-            <label className="text-sm text-slate-700">Commentaire (optionnel)
-              <textarea value={comment} onChange={(e)=>setComment(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 p-2 min-h-[80px]"/>
+
+            <label className="text-sm text-slate-700">
+              Commentaire (optionnel)
+              <textarea
+                value={comment}
+                onChange={(e) => setComment(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-slate-200 p-2 min-h-[80px]"
+              />
             </label>
+
             <div className="flex justify-between pt-1">
               {isEdit ? (
-                <button type="button" onClick={del} className="px-3 py-2 rounded-lg text-rose-700 border border-rose-200 hover:bg-rose-50 inline-flex items-center gap-2">
-                  <Trash size={16}/> Supprimer
+                <button
+                  type="button"
+                  onClick={del}
+                  className="px-3 py-2 rounded-lg text-rose-700 border border-rose-200 hover:bg-rose-50 inline-flex items-center gap-2"
+                >
+                  <Trash size={16} /> Supprimer
                 </button>
-              ) : <span />}
+              ) : (
+                <span />
+              )}
               <div className="flex gap-2">
-                <button type="button" onClick={onClose} className="px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700">Annuler</button>
-                <button disabled={loading} className="px-4 py-2 rounded-lg text-white bg-emerald-600 hover:bg-emerald-700">
-                  {loading ? "Enregistrement…" : (isEdit ? "Enregistrer" : "Créer")}
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700"
+                >
+                  Annuler
+                </button>
+                <button
+                  disabled={loading}
+                  className="px-4 py-2 rounded-lg text-white bg-emerald-600 hover:bg-emerald-700"
+                >
+                  {loading
+                    ? "Enregistrement…"
+                    : isEdit
+                    ? "Enregistrer"
+                    : "Créer"}
                 </button>
               </div>
             </div>
@@ -285,6 +454,7 @@ function AbsenceModal({ open, onClose, onSaved, initial, athleteId, date }:{
     </>
   );
 }
+
 
 // ---------- Cards
 const SessionCard = React.memo(function SessionCard({ s, onEdit, onDelete }:{ s: SessionType; onEdit: ()=>void; onDelete: ()=>void; }) {
@@ -378,6 +548,12 @@ const AbsenceCard = React.memo(function AbsenceCard({ a, onEdit }:{ a: AbsenceTy
               {a.distance_km ? `${a.distance_km} km` : ""}
               {a.distance_km && a.elevation_d_plus ? " • " : ""}
               {a.elevation_d_plus ? `D+ ${a.elevation_d_plus} m` : ""}
+            </div>
+          )}
+          {(a.duration_hour || a.rpe) && (
+            <div className="text-[12px] text-slate-600 flex gap-2 flex-wrap">
+              {a.duration_hour ? <span>Durée {fmtTime(a.duration_hour)}</span> : null}
+              {a.rpe ? <span>RPE {a.rpe}</span> : null}
             </div>
           )}
           {a.comment && <div className="whitespace-pre-wrap break-words">{a.comment}</div>}
@@ -559,9 +735,12 @@ export default function AthletePage() {
       setSessions((sess || []) as SessionType[]);
 
       const { data: abs } = await supabase
-        .from("absences_competitions")
-        .select("id,user_id,date,type,name,distance_km,elevation_d_plus,comment")
-        .eq("user_id", athlete.id_auth).gte("date", start).lte("date", end);
+  .from("absences_competitions")
+  .select("id,user_id,date,type,name,distance_km,elevation_d_plus,comment,rpe,duration_hour")
+  .eq("user_id", athlete.id_auth)
+  .gte("date", start)
+  .lte("date", end);
+
       setAbsences((abs || []) as AbsenceType[]);
     })();
   }, [athlete?.id_auth, weekStart]);
@@ -627,14 +806,44 @@ export default function AthletePage() {
     await supabase.from("sessions").update({ date: destDate }).eq("id", draggableId);
   }, [absencesByDay]);
 
-  const stats = useMemo(() => {
-    const total = sessions.length;
-    const validated = sessions.filter(s => s.status === "valide").length;
-    const time = sessions.reduce((acc, s) => acc + (Number(s.planned_hour) || 0), 0);
-    const load = sessions.filter(s => s.status === "valide").reduce((acc, s) => acc + ((Number(s.rpe) || 0) * (Number(s.planned_hour) || 0)), 0);
-    const progress = total ? Math.round((validated / total) * 100) : 0;
-    return { total, validated, time, load, progress };
-  }, [sessions]);
+ const stats = useMemo(() => {
+  const total = sessions.length;
+  const validated = sessions.filter(s => s.status === "valide").length;
+
+  const timeSessions = sessions.reduce(
+    (acc, s) => acc + (Number(s.planned_hour) || 0),
+    0
+  );
+  const timeCompet = absences
+    .filter(a => a.type === "competition")
+    .reduce((acc, a) => acc + (Number(a.duration_hour) || 0), 0);
+
+  const loadSessions = sessions
+    .filter(s => s.status === "valide")
+    .reduce(
+      (acc, s) =>
+        acc + (Number(s.rpe) || 0) * (Number(s.planned_hour) || 0),
+      0
+    );
+  const loadCompet = absences
+    .filter(a => a.type === "competition")
+    .reduce(
+      (acc, a) =>
+        acc + (Number(a.rpe) || 0) * (Number(a.duration_hour) || 0),
+      0
+    );
+
+  const progress = total ? Math.round((validated / total) * 100) : 0;
+
+  return {
+    total,
+    validated,
+    time: timeSessions + timeCompet,
+    load: loadSessions + loadCompet,
+    progress,
+  };
+}, [sessions, absences]);
+
 
   return (
     <main className={`${jakarta.className} min-h-screen bg-gradient-to-br from-emerald-50 via-sky-50 to-white text-slate-800`}>

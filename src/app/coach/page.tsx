@@ -82,7 +82,9 @@ type AbsenceType = {
   comment?: string | null;
   rpe?: number | null;
   duration_hour?: number | null;
+  status?: string | null; // "finisher" | "dnf"
 };
+
 
 
 // ---------- Modal create/edit
@@ -272,7 +274,18 @@ const SessionCard = React.memo(function SessionCard({ s, onEdit, onDelete }:{ s:
 
 const AbsenceCard = React.memo(function AbsenceCard({ a, onDelete }:{ a: AbsenceType; onDelete: ()=>void; }) {
   const isComp = a.type === "competition";
-  const cls = isComp ? "bg-amber-50 ring-amber-200 text-amber-800" : "bg-slate-50 ring-slate-200 text-slate-700";
+
+  let cls = "bg-slate-50 ring-slate-200 text-slate-700";
+  if (isComp) {
+    if (a.status === "finisher") {
+      cls = "bg-emerald-50 ring-emerald-200 text-emerald-800";
+    } else if (a.status === "dnf") {
+      cls = "bg-rose-50 ring-rose-200 text-rose-800";
+    } else {
+      cls = "bg-amber-50 ring-amber-200 text-amber-800";
+    }
+  }
+
   const title = isComp ? "Compétition" : "Repos";
   return (
     <motion.div layout initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 6 }} transition={{ duration: 0.2 }} whileHover={{ y: -1 }}
@@ -476,7 +489,7 @@ export default function CoachAthleteFocusV7_3() {
 
       const { data: abs } = await supabase
   .from("absences_competitions")
-  .select("id,user_id,date,type,name,distance_km,elevation_d_plus,comment,rpe,duration_hour")
+  .select("id,user_id,date,type,name,distance_km,elevation_d_plus,comment,rpe,duration_hour,status")
   .eq("user_id", selectedAthleteId)
   .gte("date", start)
   .lte("date", end);

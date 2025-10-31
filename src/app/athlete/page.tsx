@@ -73,7 +73,9 @@ type AbsenceType = {
   comment?: string | null;
   rpe?: number | null;
   duration_hour?: number | null;
+  status?: string | null; // "finisher" | "dnf"
 };
+
 
 
 // ---------- Smooth height for comments (CSS only)
@@ -208,6 +210,7 @@ function AbsenceModal({ open, onClose, onSaved, initial, athleteId, date }:{
     if (initial?.duration_hour) return Math.round((initial.duration_hour % 1) * 60);
     return 0;
   });
+  const [status, setStatus] = useState<string>(initial?.status || "");
 
   const [loading, setLoading] = useState(false);
 
@@ -229,6 +232,7 @@ function AbsenceModal({ open, onClose, onSaved, initial, athleteId, date }:{
         setDurHour(0);
         setDurMin(0);
       }
+      setStatus(initial.status || "");
     } else {
       setType("off");
       setName("");
@@ -238,6 +242,7 @@ function AbsenceModal({ open, onClose, onSaved, initial, athleteId, date }:{
       setRpe("");
       setDurHour(0);
       setDurMin(0);
+      setStatus("");
     }
   }, [open, initial]);
 
@@ -247,7 +252,6 @@ function AbsenceModal({ open, onClose, onSaved, initial, athleteId, date }:{
     e.preventDefault();
     setLoading(true);
 
-    // on ne calcule la durée que si c'est une compèt
     const duration_hour =
       type === "competition" ? durHour + durMin / 60 : null;
     const rpeNum =
@@ -261,9 +265,9 @@ function AbsenceModal({ open, onClose, onSaved, initial, athleteId, date }:{
       distance_km: distance ? Number(distance) : null,
       elevation_d_plus: elev ? Number(elev) : null,
       comment: comment || null,
-      // 👉 nouveaux champs
       rpe: rpeNum,
       duration_hour,
+      status: type === "competition" ? (status || null) : null,
     };
 
     try {
@@ -359,7 +363,7 @@ function AbsenceModal({ open, onClose, onSaved, initial, athleteId, date }:{
                   </label>
                 </div>
 
-                {/* 👉 Durée compétition */}
+                {/* Durée compétition */}
                 <div className="grid grid-cols-2 gap-3">
                   <label className="text-sm text-slate-700">
                     Heures
@@ -391,7 +395,7 @@ function AbsenceModal({ open, onClose, onSaved, initial, athleteId, date }:{
                   </label>
                 </div>
 
-                {/* 👉 RPE compétition */}
+                {/* RPE compétition */}
                 <label className="text-sm text-slate-700">
                   RPE (1–10)
                   <input
@@ -403,6 +407,20 @@ function AbsenceModal({ open, onClose, onSaved, initial, athleteId, date }:{
                     className="mt-1 w-full rounded-lg border border-slate-200 p-2"
                     placeholder="7"
                   />
+                </label>
+
+                {/* Statut compétition */}
+                <label className="text-sm text-slate-700">
+                  Statut
+                  <select
+                    value={status}
+                    onChange={(e) => setStatus(e.target.value)}
+                    className="mt-1 w-full rounded-lg border border-slate-200 p-2"
+                  >
+                    <option value="">—</option>
+                    <option value="finisher">Finisher</option>
+                    <option value="dnf">DNF</option>
+                  </select>
                 </label>
               </>
             )}
@@ -454,6 +472,7 @@ function AbsenceModal({ open, onClose, onSaved, initial, athleteId, date }:{
     </>
   );
 }
+
 
 
 // ---------- Cards
@@ -528,9 +547,23 @@ const SessionCard = React.memo(function SessionCard({ s, onEdit, onDelete }:{ s:
 });
 
 
-const AbsenceCard = React.memo(function AbsenceCard({ a, onEdit }:{ a: AbsenceType; onEdit: ()=>void; }) {
+const AbsenceCard = React.memo(function AbsenceCard({ a, onEdit }:{
+  a: AbsenceType;
+  onEdit: () => void;
+}) {
   const isComp = a.type === "competition";
-  const cls = isComp ? "bg-amber-50 ring-amber-200 text-amber-800" : "bg-slate-50 ring-slate-200 text-slate-700";
+
+  let cls = "bg-slate-50 ring-slate-200 text-slate-700";
+  if (isComp) {
+    if (a.status === "finisher") {
+      cls = "bg-emerald-50 ring-emerald-200 text-emerald-800";
+    } else if (a.status === "dnf") {
+      cls = "bg-rose-50 ring-rose-200 text-rose-800";
+    } else {
+      cls = "bg-amber-50 ring-amber-200 text-amber-800";
+    }
+  }
+
   const title = isComp ? "Compétition" : "Repos";
   return (
     <div className="relative rounded-2xl bg-white shadow-sm border border-emerald-100 p-3 overflow-visible">
@@ -559,21 +592,26 @@ const AbsenceCard = React.memo(function AbsenceCard({ a, onEdit }:{ a: AbsenceTy
           {a.comment && <div className="whitespace-pre-wrap break-words">{a.comment}</div>}
         </div>
       )}
-      {!isComp && a.comment && <div className="mt-2 text-[12px] leading-tight text-slate-700 whitespace-pre-wrap break-words max-h-24 overflow-y-auto">{a.comment}</div>}
 
-      {/* Actions en bas: icône stylo */}
+      {!isComp && a.comment && (
+        <div className="mt-2 text-[12px] leading-tight text-slate-700 whitespace-pre-wrap break-words max-h-24 overflow-y-auto">
+          {a.comment}
+        </div>
+      )}
+
       <div className="mt-2 pt-2 border-t border-emerald-100 flex items-center justify-end">
         <button
           onClick={onEdit}
           className="p-1.5 rounded-md hover:bg-emerald-50"
           title="Modifier"
         >
-          <PencilSimple size={16}/>
+          <PencilSimple size={16} />
         </button>
       </div>
     </div>
   );
 });
+
 
 
 // ---------- Athlete Metrics (VMA / FTP avec édition)
@@ -736,7 +774,7 @@ export default function AthletePage() {
 
       const { data: abs } = await supabase
   .from("absences_competitions")
-  .select("id,user_id,date,type,name,distance_km,elevation_d_plus,comment,rpe,duration_hour")
+  .select("id,user_id,date,type,name,distance_km,elevation_d_plus,comment,rpe,duration_hour,status")
   .eq("user_id", athlete.id_auth)
   .gte("date", start)
   .lte("date", end);
@@ -746,35 +784,69 @@ export default function AthletePage() {
   }, [athlete?.id_auth, weekStart]);
 
   // prev week load + next race (based on displayed week)
-  useEffect(() => {
-    (async () => {
-      if (!athlete?.id_auth) return;
-      const prevStart = weekStart.add(-7, "day").format("YYYY-MM-DD");
-      const prevEnd = weekStart.add(-1, "day").format("YYYY-MM-DD");
-      const { data: prevSessions } = await supabase
-        .from("sessions").select("planned_hour,rpe,status,user_id,date")
-        .eq("user_id", athlete.id_auth).gte("date", prevStart).lte("date", prevEnd);
-      const load = (prevSessions || []).filter(s=> s.status === "valide")
-        .reduce((acc:any, s:any)=> acc + ((Number(s.rpe)||0) * (Number(s.planned_hour)||0)), 0);
-      setPrevWeekLoad(load);
+ // prev week load + next race (based on displayed week)
+useEffect(() => {
+  (async () => {
+    if (!athlete?.id_auth) return;
+    const prevStart = weekStart.add(-7, "day").format("YYYY-MM-DD");
+    const prevEnd = weekStart.add(-1, "day").format("YYYY-MM-DD");
 
-      const base = weekStart.startOf("day");
-      const { data: nextComp } = await supabase
-        .from("absences_competitions")
-        .select("date,type").eq("user_id", athlete.id_auth)
-        .eq("type","competition").gte("date", base.format("YYYY-MM-DD"))
-        .order("date", { ascending: true }).limit(1);
-      if (nextComp && nextComp.length) {
-        const d = dayjs(nextComp[0].date).startOf("day");
-        if (d.isSame(base, "week")) setNextRaceText("cette semaine");
-        else {
-          const diffDays = d.diff(base, "day");
-          const weeks = Math.floor(diffDays / 7) + (diffDays % 7 > 0 ? 1 : 0);
-          setNextRaceText(`dans ${weeks} semaine${weeks>1?"s":""}`);
-        }
-      } else setNextRaceText("aucune à venir");
-    })();
-  }, [athlete?.id_auth, weekStart]);
+    // 1. séances validées de la semaine précédente
+    const { data: prevSessions } = await supabase
+      .from("sessions")
+      .select("planned_hour,rpe,status,user_id,date")
+      .eq("user_id", athlete.id_auth)
+      .gte("date", prevStart)
+      .lte("date", prevEnd);
+
+    const loadSessions = (prevSessions || [])
+      .filter((s) => s.status === "valide")
+      .reduce(
+        (acc, s) =>
+          acc + (Number(s.rpe) || 0) * (Number(s.planned_hour) || 0),
+        0
+      );
+
+    // 2. compétitions de la semaine précédente
+    const { data: prevComps } = await supabase
+      .from("absences_competitions")
+      .select("duration_hour,rpe,type,date")
+      .eq("user_id", athlete.id_auth)
+      .gte("date", prevStart)
+      .lte("date", prevEnd)
+      .eq("type", "competition");
+
+    const loadCompet = (prevComps || []).reduce(
+      (acc, c) =>
+        acc + (Number(c.rpe) || 0) * (Number(c.duration_hour) || 0),
+      0
+    );
+
+    setPrevWeekLoad(loadSessions + loadCompet);
+
+    // 3. texte "prochaine compétition"
+    const base = weekStart.startOf("day");
+    const { data: nextComp } = await supabase
+      .from("absences_competitions")
+      .select("date,type")
+      .eq("user_id", athlete.id_auth)
+      .eq("type", "competition")
+      .gte("date", base.format("YYYY-MM-DD"))
+      .order("date", { ascending: true })
+      .limit(1);
+
+    if (nextComp && nextComp.length) {
+      const d = dayjs(nextComp[0].date).startOf("day");
+      if (d.isSame(base, "week")) setNextRaceText("cette semaine");
+      else {
+        const diffDays = d.diff(base, "day");
+        const weeks = Math.floor(diffDays / 7) + (diffDays % 7 > 0 ? 1 : 0);
+        setNextRaceText(`dans ${weeks} semaine${weeks > 1 ? "s" : ""}`);
+      }
+    } else setNextRaceText("aucune à venir");
+  })();
+}, [athlete?.id_auth, weekStart]);
+
 
   async function logout() {
     await supabase.auth.signOut();

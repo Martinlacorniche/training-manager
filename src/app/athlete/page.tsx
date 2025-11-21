@@ -631,12 +631,21 @@ export default function AthletePage() {
   }, [absencesByDay]);
 
  const stats = useMemo(() => {
-  const total = sessions.length;
-  const validated = sessions.filter(s => s.status === "valide").length;
-  const timeSessions = sessions.reduce((acc, s) => acc + (Number(s.planned_hour) || 0), 0);
-  const loadSessions = sessions.filter(s => s.status === "valide").reduce((acc, s) => acc + (Number(s.rpe) || 0) * (Number(s.planned_hour) || 0), 0);
-  return { total, validated, time: timeSessions, load: loadSessions }; // Simplifié sans compet pour l'instant
-}, [sessions]);
+    const total = sessions.length;
+    const validated = sessions.filter(s => s.status === "valide").length;
+    
+    const timeSessions = sessions.reduce((acc, s) => acc + (Number(s.planned_hour) || 0), 0);
+    
+    const loadSessions = sessions
+      .filter(s => s.status === "valide")
+      .reduce((acc, s) => acc + (Number(s.rpe) || 0) * (Number(s.planned_hour) || 0), 0);
+
+    // AJOUT DU CALCUL DE PROGRESSION
+    const progress = total > 0 ? Math.round((validated / total) * 100) : 0;
+
+    // AJOUT DE LA PROPRIÉTÉ 'progress' DANS LE RETOUR
+    return { total, validated, time: timeSessions, load: loadSessions, progress }; 
+  }, [sessions]);
 
   return (
     <main className={`${jakarta.className} min-h-screen bg-slate-100 text-slate-800`}>

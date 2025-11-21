@@ -27,7 +27,7 @@ const SPORT_COLORS: Record<string, string> = {
 
 type Athlete = { id_auth: string; name: string };
 
-// --- HELPER: CONVERTIR 4.8 -> 4h48 ---
+// Helper: 4.5 -> 4h30
 function fmtDuration(decimal: number) {
   const totalMinutes = Math.round(decimal * 60);
   const h = Math.floor(totalMinutes / 60);
@@ -35,7 +35,7 @@ function fmtDuration(decimal: number) {
   return `${h}h${m.toString().padStart(2, "0")}`;
 }
 
-export default function StatsSemaine() {
+export default function StatsCoach() {
   const [athletes, setAthletes] = useState<Athlete[]>([]);
   const [selectedAthleteId, setSelectedAthleteId] = useState<string | null>(null);
   const [year, setYear] = useState(dayjs().year());
@@ -43,10 +43,7 @@ export default function StatsSemaine() {
   const [rawData, setRawData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // State pour le survol synchronisé
-  const [activeIndex, setActiveIndex] = useState<number | undefined>(undefined);
-
-  // 1. Charger la liste des athlètes
+  // 1. Charger la liste des athlètes du Coach
   useEffect(() => {
     const fetchAthletes = async () => {
       const { data: { session } } = await supabase.auth.getSession();
@@ -140,16 +137,10 @@ export default function StatsSemaine() {
   const topHours = [...detailData].sort((a, b) => b.totalHours - a.totalHours).slice(0, 3);
   const topLoad = [...detailData].sort((a, b) => b.load - a.load).slice(0, 3);
 
-  // --- FORMAT TOOLTIP AVEC HEURES:MINUTES ---
   const formatTooltip = (value: number, name: string) => {
      const val = Number(value);
      if (name === "Charge") return [Math.round(val), "Charge"];
-     // Utilisation de fmtDuration pour l'affichage
      return [fmtDuration(val), name];
-  };
-
-  const handlePodiumHover = (weekIndex: number) => {
-      setActiveIndex(weekIndex - 1);
   };
 
   return (
@@ -194,11 +185,7 @@ export default function StatsSemaine() {
                             <ResponsiveContainer width="100%" height="85%">
                                 <ComposedChart 
                                     data={detailData} 
-                                    activeIndex={activeIndex}
-                                    onMouseMove={(state: any) => {
-                                        if (state.isTooltipActive) setActiveIndex(state.activeTooltipIndex);
-                                        else setActiveIndex(undefined);
-                                    }}
+                                    margin={{ top: 10, right: 0, left: -20, bottom: 0 }}
                                 >
                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9"/>
                                     <XAxis dataKey="name" tick={{fontSize:10, fill:"#94a3b8"}} tickLine={false} interval={3}/>
@@ -230,17 +217,11 @@ export default function StatsSemaine() {
                                 </div>
                                 <div className="space-y-3">
                                     {topHours.map((w, i) => (
-                                        <div 
-                                            key={w.name} 
-                                            onMouseEnter={() => handlePodiumHover(w.weekIndex)}
-                                            onMouseLeave={() => setActiveIndex(undefined)}
-                                            className="flex items-center justify-between p-3 bg-slate-50 rounded-xl hover:bg-emerald-50 hover:border-emerald-200 border border-transparent transition cursor-pointer"
-                                        >
+                                        <div key={w.name} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-transparent">
                                             <div className="flex items-center gap-3">
                                                 <div className={`font-bold text-lg w-6 ${i===0?"text-yellow-500": i===1?"text-slate-400":"text-orange-400"}`}>#{i+1}</div>
                                                 <div className="text-sm font-semibold text-slate-700">Semaine {w.weekIndex}</div>
                                             </div>
-                                            {/* Formatage Heure:Minute ici */}
                                             <div className="font-mono font-bold text-emerald-600">{fmtDuration(w.totalHours)}</div>
                                         </div>
                                     ))}
@@ -255,12 +236,7 @@ export default function StatsSemaine() {
                                 </div>
                                 <div className="space-y-3">
                                     {topLoad.map((w, i) => (
-                                        <div 
-                                            key={w.name}
-                                            onMouseEnter={() => handlePodiumHover(w.weekIndex)}
-                                            onMouseLeave={() => setActiveIndex(undefined)}
-                                            className="flex items-center justify-between p-3 bg-slate-50 rounded-xl hover:bg-amber-50 hover:border-amber-200 border border-transparent transition cursor-pointer"
-                                        >
+                                        <div key={w.name} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-transparent">
                                             <div className="flex items-center gap-3">
                                                 <div className={`font-bold text-lg w-6 ${i===0?"text-yellow-500": i===1?"text-slate-400":"text-orange-400"}`}>#{i+1}</div>
                                                 <div className="text-sm font-semibold text-slate-700">Semaine {w.weekIndex}</div>
@@ -274,7 +250,7 @@ export default function StatsSemaine() {
                     </>
                 )}
 
-                {/* --- VUE COMPARAISON --- */}
+                {/* --- VUE COMPARAISON (ALL ATHLETES) --- */}
                 {viewMode === "compare" && (
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm h-[500px]">
@@ -285,7 +261,6 @@ export default function StatsSemaine() {
                                     <XAxis type="number" hide/>
                                     <YAxis dataKey="name" type="category" tick={{fontSize:12, fontWeight:700, fill:"#475569"}} width={80} tickLine={false} axisLine={false}/>
                                     <Tooltip cursor={{fill: '#f1f5f9'}} contentStyle={{borderRadius:'10px', border:'none'}}/>
-                                    {/* Formatage Heure:Minute aussi sur le graphique de comparaison */}
                                     <Bar 
                                         dataKey="totalHours" 
                                         name="Heures" 

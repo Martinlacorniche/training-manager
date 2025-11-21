@@ -44,9 +44,6 @@ export default function StatsAthlete() {
   const [rawData, setRawData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // State pour le survol synchronisé (Podium -> Graph)
-  const [activeIndex, setActiveIndex] = useState<number | undefined>(undefined);
-
   // 1. Chargement des données
   useEffect(() => {
     const fetchData = async () => {
@@ -130,11 +127,6 @@ export default function StatsAthlete() {
      return [fmtDuration(val), name];
   };
 
-  // Gestion du survol
-  const handlePodiumHover = (weekIndex: number) => {
-      setActiveIndex(weekIndex - 1);
-  };
-
   return (
     <main className={`${jakarta.className} min-h-screen bg-slate-50 text-slate-800 pb-10`}>
       
@@ -170,11 +162,6 @@ export default function StatsAthlete() {
                     <ResponsiveContainer width="100%" height="85%">
                         <ComposedChart 
                             data={chartData} 
-                            activeIndex={activeIndex}
-                            onMouseMove={(state: any) => {
-                                if (state.isTooltipActive) setActiveIndex(state.activeTooltipIndex);
-                                else setActiveIndex(undefined);
-                            }}
                             margin={{ top: 10, right: 0, left: -20, bottom: 0 }}
                         >
                             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9"/>
@@ -221,8 +208,6 @@ export default function StatsAthlete() {
                             {topHours.map((w, i) => (
                                 <div 
                                     key={w.name} 
-                                    onMouseEnter={() => handlePodiumHover(w.weekIndex)}
-                                    onMouseLeave={() => setActiveIndex(undefined)}
                                     className="flex items-center justify-between p-3 bg-slate-50 rounded-xl hover:bg-emerald-50 hover:border-emerald-200 border border-transparent transition cursor-pointer"
                                 >
                                     <div className="flex items-center gap-3">
@@ -246,8 +231,6 @@ export default function StatsAthlete() {
                             {topLoad.map((w, i) => (
                                 <div 
                                     key={w.name}
-                                    onMouseEnter={() => handlePodiumHover(w.weekIndex)}
-                                    onMouseLeave={() => setActiveIndex(undefined)}
                                     className="flex items-center justify-between p-3 bg-slate-50 rounded-xl hover:bg-amber-50 hover:border-amber-200 border border-transparent transition cursor-pointer"
                                 >
                                     <div className="flex items-center gap-3">

@@ -60,7 +60,7 @@ function intensityBar(level?: string) {
   }
 }
 
-function fmtTime(h?: number) {
+function fmtTime(h?: number | null) {
   if (h === undefined || h === null) return "";
   const H = Math.floor(h || 0);
   const M = Math.round(((h || 0) % 1) * 60);

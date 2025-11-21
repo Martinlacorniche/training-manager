@@ -1,4 +1,3 @@
-
 "use client";
 import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { supabase } from "@/lib/supabaseClient";
@@ -17,13 +16,39 @@ const jakarta = Plus_Jakarta_Sans({ subsets: ["latin"], weight: ["500","600","70
 import {
   PencilSimple, Trash, Plus, Info, ChartLineUp,
   CaretLeft, CaretRight, CheckCircle, XCircle,
-  ChartLineUp as LoadIcon, Bicycle, SwimmingPool, Mountains, PersonSimpleRun, Clock, SignOut
+  ChartLineUp as LoadIcon, Bicycle, SwimmingPool, Mountains, PersonSimpleRun, Clock, SignOut,
+  WarningCircle, Fire, Smiley, SmileySad, SmileyMeh, Notebook, X, Question
 } from "@phosphor-icons/react";
 
 // Animations
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 
-// ---------- helpers
+// ---------- HELPERS INTELLIGENTS & COULEURS ----------
+
+const EST_RPE: Record<string, number> = { basse: 3, moyenne: 6, haute: 9 };
+function getPlannedLoad(s: SessionType) {
+  const rpe = EST_RPE[s.intensity || "moyenne"] || 6;
+  return (s.planned_hour || 0) * rpe;
+}
+
+function getSessionAlert(s: SessionType): string | null {
+  if (s.athlete_comment && /(mal|douleur|blessure|gêne|bob)/i.test(s.athlete_comment)) return "douleur";
+  if (s.status === "valide" && s.intensity === "basse" && (s.rpe || 0) > 8) return "surmenage";
+  return null;
+}
+
+function getSportStyle(s?: string) {
+  switch (s) {
+    case "Vélo": return { bg: "bg-emerald-100", text: "text-emerald-900", border: "border-emerald-300", icon: "text-emerald-700" };
+    case "Run": return { bg: "bg-slate-200", text: "text-slate-800", border: "border-slate-400", icon: "text-slate-600" };
+    case "Natation": return { bg: "bg-cyan-100", text: "text-cyan-900", border: "border-cyan-300", icon: "text-cyan-700" };
+    case "Trail": return { bg: "bg-lime-100", text: "text-lime-900", border: "border-lime-300", icon: "text-lime-700" };
+    case "Renfo":
+    case "Muscu": return { bg: "bg-orange-100", text: "text-orange-900", border: "border-orange-300", icon: "text-orange-700" };
+    default: return { bg: "bg-gray-100", text: "text-gray-800", border: "border-gray-300", icon: "text-gray-600" };
+  }
+}
+
 function sportIcon(s?: string, size: number = 16) {
   switch (s) {
     case "Vélo": return <Bicycle size={size} />;
@@ -35,20 +60,10 @@ function sportIcon(s?: string, size: number = 16) {
     default: return <ChartLineUp size={size} />;
   }
 }
-function sportBadgeClasses(s?: string) {
-  switch (s) {
-    case "Vélo": return "bg-sky-50 text-sky-700 ring-sky-200";
-    case "Run": return "bg-emerald-50 text-emerald-700 ring-emerald-200";
-    case "Natation": return "bg-cyan-50 text-cyan-700 ring-cyan-200";
-    case "Trail": return "bg-green-50 text-green-700 ring-green-200";
-    case "Renfo":
-    case "Muscu": return "bg-amber-50 text-amber-700 ring-amber-200";
-    default: return "bg-gray-50 text-gray-700 ring-gray-200";
-  }
-}
+
 function intensityBar(level?: string) {
   switch (level) {
-    case "haute": return "bg-red-400";
+    case "haute": return "bg-red-500";
     case "moyenne": return "bg-amber-400";
     default: return "bg-emerald-500";
   }
@@ -59,7 +74,6 @@ function fmtTime(h?: number) {
   const M = Math.round(((h || 0) % 1) * 60);
   return `${H}h${String(M).padStart(2,"0")}`;
 }
-
 function formatDuration(h?: number | null) {
   if (!h && h !== 0) return "—";
   const H = Math.floor(h);
@@ -67,375 +81,359 @@ function formatDuration(h?: number | null) {
   return `${H}h${String(M).padStart(2, "0")}`;
 }
 
-
-// ---------- types
-type UserType = { id_auth: string; name: string; coach_code?: string; coach_id?: string; ordre: number | null; };
+// ---------- TYPES ----------
+type UserType = { id_auth: string; name: string; coach_code?: string; coach_id?: string; ordre: number | null; alert?: boolean };
 type SessionType = { id: string; user_id: string; sport?: string; title?: string; planned_hour?: number; planned_inter?: string; intensity?: string; status?: string; rpe?: number | null; athlete_comment?: string | null; date: string; };
-type AbsenceType = {
-  id: string;
-  user_id: string;
-  date: string;
-  type: string;
-  name?: string | null;
-  distance_km?: number | null;
-  elevation_d_plus?: number | null;
-  comment?: string | null;
-  rpe?: number | null;
-  duration_hour?: number | null;
-  status?: string | null; // "finisher" | "dnf"
-};
+type AbsenceType = { id: string; user_id: string; date: string; type: string; name?: string | null; distance_km?: number | null; elevation_d_plus?: number | null; comment?: string | null; rpe?: number | null; duration_hour?: number | null; status?: string | null; };
+type WeeklyReviewType = { week_start: string; rpe_life: number; comment: string; };
 
+// ---------- COMPONENTS ----------
 
+// 1. RPE POPOVER
+function RpeGuidePopover({ open, onClose }:{ open:boolean; onClose:()=>void }) {
+    const ref = useRef<HTMLDivElement>(null);
+    useEffect(() => {
+        function handleClickOutside(event: MouseEvent) {
+            if (ref.current && !ref.current.contains(event.target as Node)) onClose();
+        }
+        if(open) document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, [open, onClose]);
 
-// ---------- Modal create/edit
-function SessionModal({ open, onClose, onSaved, initial, athlete, date }:{
-  open: boolean; onClose: ()=>void; onSaved: (s: SessionType, isEdit: boolean)=>void;
-  initial?: SessionType | null; athlete: UserType; date: string;
-}) {
-  const [sport, setSport] = useState("Run");
-  const [title, setTitle] = useState("");
-  const [plannedHour, setPlannedHour] = useState(0);
-  const [plannedMinute, setPlannedMinute] = useState(0);
-  const [intensity, setIntensity] = useState("moyenne");
-  const [planned_inter, setPlannedInter] = useState("");
+    const rows = [
+        { score: 10, label: "Maximal", desc: "Sprint final, nausée", bg: "bg-purple-100", text: "text-purple-900" },
+        { score: 9, label: "Agonie", desc: "Tenable qqs secondes", bg: "bg-red-100", text: "text-red-900" },
+        { score: 8, label: "Extrême", desc: "Impossible de parler", bg: "bg-red-50", text: "text-red-800" },
+        { score: 7, label: "Très dur", desc: "Un mot à la fois", bg: "bg-orange-100", text: "text-orange-900" },
+        { score: 6, label: "Dur", desc: "Quelques mots", bg: "bg-orange-50", text: "text-orange-800" },
+        { score: 5, label: "Un peu dur", desc: "Conversation hachée", bg: "bg-amber-100", text: "text-amber-900" },
+        { score: 4, label: "Moyen", desc: "On raconte que l'essentiel", bg: "bg-amber-50", text: "text-amber-800" },
+        { score: 3, label: "Facile (Z2)", desc: "Conversation facile", bg: "bg-emerald-100", text: "text-emerald-900" },
+        { score: 2, label: "Très facile", desc: "Respiration nasale", bg: "bg-emerald-50", text: "text-emerald-800" },
+        { score: 1, label: "Récup", desc: "Marche / Effort nul", bg: "bg-slate-100", text: "text-slate-700" },
+    ];
 
-  useEffect(() => {
-    if (!open) return;
-    if (initial) {
-      const ph = initial.planned_hour || 0;
-      setSport(initial.sport || "Run");
-      setTitle(initial.title || "");
-      setPlannedHour(Math.floor(ph));
-      setPlannedMinute(Math.round((ph % 1) * 60));
-      setIntensity(initial.intensity || "moyenne");
-      setPlannedInter(initial.planned_inter || "");
-    } else {
-      setSport("Run"); setTitle(""); setPlannedHour(0); setPlannedMinute(0);
-      setIntensity("moyenne"); setPlannedInter("");
-    }
-  }, [open, initial]);
-
-  const [loading, setLoading] = useState(false);
-  if (!open) return null;
-  const isEdit = !!initial;
-
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    setLoading(true);
-    const payload: any = { user_id: athlete.id_auth, date, sport, title, planned_hour: plannedHour + plannedMinute / 60, planned_inter, intensity };
-    try {
-      let data: any, error: any;
-      if (isEdit) ({ data, error } = await supabase.from("sessions").update(payload).eq("id", initial!.id).select().single());
-      else ({ data, error } = await supabase.from("sessions").insert(payload).select().single());
-      if (error) throw error;
-      if (data) onSaved(data as SessionType, isEdit);
-    } catch (err:any) {
-      alert("Erreur: " + (err?.message || "inconnue"));
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  return (
-    <AnimatePresence>
-      {open && (
-        <motion.div className="fixed inset-0 z-50 grid place-items-center p-4" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}>
-          <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-          <motion.form
-            onSubmit={submit}
-            initial={{ opacity: 0, scale: 0.98 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.98 }}
-            transition={{ duration: 0.18 }}
-            className="relative w-full max-w-md rounded-2xl bg-white shadow-2xl p-5 space-y-3"
-          >
-            <h3 className="text-lg font-semibold text-slate-800">{isEdit ? "Modifier la séance" : `Nouvelle séance – ${athlete.name}`}</h3>
-            <div className="grid grid-cols-2 gap-3">
-              <label className="text-sm text-slate-700">Sport
-                <select value={sport} onChange={(e)=>setSport(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 p-2 focus:outline-none focus:ring-2 focus:ring-emerald-300">
-                  <option>Run</option><option>Vélo</option><option>Natation</option><option>Renfo</option><option>Muscu</option><option>Trail</option><option>Autre</option>
-                </select>
-              </label>
-              <label className="text-sm text-slate-700">Intensité
-                <select value={intensity} onChange={(e)=>setIntensity(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 p-2 focus:outline-none focus:ring-2 focus:ring-emerald-300">
-                  <option value="basse">Basse</option><option value="moyenne">Moyenne</option><option value="haute">Haute</option>
-                </select>
-              </label>
-            </div>
-            <label className="text-sm text-slate-700">Titre
-              <input value={title} onChange={(e)=>setTitle(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 p-2 focus:outline-none focus:ring-2 focus:ring-emerald-300"/>
-            </label>
-            <div className="grid grid-cols-2 gap-3">
-              <label className="text-sm text-slate-700">Heures
-                <select value={plannedHour} onChange={(e)=>setPlannedHour(Number(e.target.value))} className="mt-1 w-full rounded-lg border border-slate-200 p-2 focus:outline-none focus:ring-2 focus:ring-emerald-300">
-                  {Array.from({length:15}, (_,i)=> <option key={i} value={i}>{i} h</option>)}
-                </select>
-              </label>
-              <label className="text-sm text-slate-700">Minutes
-                <select value={plannedMinute} onChange={(e)=>setPlannedMinute(Number(e.target.value))} className="mt-1 w-full rounded-lg border border-slate-200 p-2 focus:outline-none focus:ring-2 focus:ring-emerald-300">
-                  {Array.from({length:12}, (_,i)=> <option key={i} value={i*5}>{String(i*5).padStart(2,"0")} min</option>)}
-                </select>
-              </label>
-            </div>
-            <label className="text-sm text-slate-700">Consignes du coach
-              <textarea value={planned_inter} onChange={(e)=>setPlannedInter(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 p-2 min-h-[90px] focus:outline-none focus:ring-2 focus:ring-emerald-300"/>
-            </label>
-            <div className="flex justify-end gap-2 pt-1">
-              <button type="button" onClick={onClose} className="px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700">Annuler</button>
-              <button disabled={loading} className="px-4 py-2 rounded-lg text-white bg-emerald-600 hover:bg-emerald-700">
-                {loading ? "Enregistrement…" : (isEdit ? "Enregistrer" : "Créer")}
-              </button>
-            </div>
-          </motion.form>
-        </motion.div>
-      )}
-    </AnimatePresence>
-  );
+    return (
+        <AnimatePresence>
+            {open && (
+                <motion.div 
+                    initial={{ opacity: 0, y: 10, scale: 0.95 }} 
+                    animate={{ opacity: 1, y: 0, scale: 1 }} 
+                    exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                    transition={{ duration: 0.15 }}
+                    className="absolute top-full right-0 mt-2 z-50 w-72 bg-white rounded-xl shadow-xl border border-slate-200 overflow-hidden"
+                    ref={ref}
+                >
+                    <div className="bg-slate-50 px-3 py-2 border-b border-slate-100 text-xs font-bold text-slate-500 uppercase tracking-wide flex justify-between items-center">
+                        <span>Échelle RPE</span>
+                        <span className="text-[10px] font-normal normal-case text-slate-400">Ressenti Perçu</span>
+                    </div>
+                    <div className="max-h-[400px] overflow-y-auto">
+                        {rows.map(r => (
+                            <div key={r.score} className={`flex items-center text-xs border-b last:border-0 border-slate-50`}>
+                                <div className={`w-8 py-2 text-center font-bold ${r.bg} ${r.text}`}>{r.score}</div>
+                                <div className="flex-1 px-3 py-1.5">
+                                    <div className={`font-bold ${r.text}`}>{r.label}</div>
+                                    <div className="text-[10px] text-slate-500">{r.desc}</div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </motion.div>
+            )}
+        </AnimatePresence>
+    );
 }
 
-// ---------- Smooth height animation helper
+// 2. Modal Séance
+function SessionModal({ open, onClose, onSaved, initial, athlete, date }:{ open: boolean; onClose: ()=>void; onSaved: (s: SessionType, isEdit: boolean)=>void; initial?: SessionType | null; athlete: UserType; date: string; }) {
+    const [sport, setSport] = useState("Run");
+    const [title, setTitle] = useState("");
+    const [plannedHour, setPlannedHour] = useState(0);
+    const [plannedMinute, setPlannedMinute] = useState(0);
+    const [intensity, setIntensity] = useState("moyenne");
+    const [planned_inter, setPlannedInter] = useState("");
+    const [loading, setLoading] = useState(false);
+  
+    useEffect(() => {
+      if (!open) return;
+      if (initial) {
+        const ph = initial.planned_hour || 0;
+        setSport(initial.sport || "Run");
+        setTitle(initial.title || "");
+        setPlannedHour(Math.floor(ph));
+        setPlannedMinute(Math.round((ph % 1) * 60));
+        setIntensity(initial.intensity || "moyenne");
+        setPlannedInter(initial.planned_inter || "");
+      } else {
+        setSport("Run"); setTitle(""); setPlannedHour(0); setPlannedMinute(0);
+        setIntensity("moyenne"); setPlannedInter("");
+      }
+    }, [open, initial]);
+  
+    if (!open) return null;
+    const isEdit = !!initial;
+  
+    async function submit(e: React.FormEvent) {
+      e.preventDefault();
+      setLoading(true);
+      const payload: any = { user_id: athlete.id_auth, date, sport, title, planned_hour: plannedHour + plannedMinute / 60, planned_inter, intensity };
+      try {
+        let data: any, error: any;
+        if (isEdit) ({ data, error } = await supabase.from("sessions").update(payload).eq("id", initial!.id).select().single());
+        else ({ data, error } = await supabase.from("sessions").insert(payload).select().single());
+        if (error) throw error;
+        if (data) onSaved(data as SessionType, isEdit);
+      } catch (err:any) {
+        alert("Erreur: " + (err?.message || "inconnue"));
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    return (
+      <AnimatePresence>
+        {open && (
+          <motion.div className="fixed inset-0 z-50 grid place-items-center p-4" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}>
+            <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+            <motion.form onSubmit={submit} initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.98 }} transition={{ duration: 0.18 }} className="relative w-full max-w-md rounded-2xl bg-white shadow-2xl p-5 space-y-3">
+              <h3 className="text-lg font-semibold text-slate-800">{isEdit ? "Modifier la séance" : `Nouvelle séance – ${athlete.name}`}</h3>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="text-sm text-slate-700">Sport
+                  <select value={sport} onChange={(e)=>setSport(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 p-2 focus:outline-none focus:ring-2 focus:ring-emerald-300">
+                    <option>Run</option><option>Vélo</option><option>Natation</option><option>Renfo</option><option>Muscu</option><option>Trail</option><option>Autre</option>
+                  </select>
+                </label>
+                <label className="text-sm text-slate-700">Intensité
+                  <select value={intensity} onChange={(e)=>setIntensity(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 p-2 focus:outline-none focus:ring-2 focus:ring-emerald-300">
+                    <option value="basse">Basse</option><option value="moyenne">Moyenne</option><option value="haute">Haute</option>
+                  </select>
+                </label>
+              </div>
+              <label className="text-sm text-slate-700">Titre <input value={title} onChange={(e)=>setTitle(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 p-2 focus:outline-none focus:ring-2 focus:ring-emerald-300"/></label>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="text-sm text-slate-700">Heures <select value={plannedHour} onChange={(e)=>setPlannedHour(Number(e.target.value))} className="mt-1 w-full rounded-lg border border-slate-200 p-2 focus:outline-none focus:ring-2 focus:ring-emerald-300">{Array.from({length:15}, (_,i)=> <option key={i} value={i}>{i} h</option>)}</select></label>
+                <label className="text-sm text-slate-700">Minutes <select value={plannedMinute} onChange={(e)=>setPlannedMinute(Number(e.target.value))} className="mt-1 w-full rounded-lg border border-slate-200 p-2 focus:outline-none focus:ring-2 focus:ring-emerald-300">{Array.from({length:12}, (_,i)=> <option key={i} value={i*5}>{String(i*5).padStart(2,"0")} min</option>)}</select></label>
+              </div>
+              <label className="text-sm text-slate-700">Consignes <textarea value={planned_inter} onChange={(e)=>setPlannedInter(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 p-2 min-h-[90px] focus:outline-none focus:ring-2 focus:ring-emerald-300"/></label>
+              <div className="flex justify-end gap-2 pt-1">
+                <button type="button" onClick={onClose} className="px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700">Annuler</button>
+                <button disabled={loading} className="px-4 py-2 rounded-lg text-white bg-emerald-600 hover:bg-emerald-700">{loading ? "..." : "OK"}</button>
+              </div>
+            </motion.form>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    );
+}
+
 function SmoothCollapsible({ open, children }:{ open: boolean; children: React.ReactNode; }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const [height, setHeight] = useState<number | "auto">(0);
-
-  useEffect(() => {
-    if (open && ref.current) {
-      setHeight(ref.current.scrollHeight);
-      const to = setTimeout(() => setHeight("auto"), 220);
-      return () => clearTimeout(to);
-    }
-    if (!open) {
-      if (ref.current) setHeight(ref.current.scrollHeight);
-      const to = setTimeout(() => setHeight(0), 0);
-      return () => clearTimeout(to);
-    }
-  }, [open]);
-
-  return (
-    <motion.div style={{ overflow: "hidden" }} initial={false} animate={{ height }} transition={{ duration: 0.22, ease: [0.2, 0, 0, 1] }}>
-      <div ref={ref}>{children}</div>
-    </motion.div>
-  );
+    const ref = useRef<HTMLDivElement>(null);
+    const [height, setHeight] = useState<number | "auto">(0);
+    useEffect(() => {
+      if (open && ref.current) { setHeight(ref.current.scrollHeight); setTimeout(() => setHeight("auto"), 220); }
+      if (!open) { if (ref.current) setHeight(ref.current.scrollHeight); setTimeout(() => setHeight(0), 0); }
+    }, [open]);
+    return (<motion.div style={{ overflow: "hidden" }} initial={false} animate={{ height }} transition={{ duration: 0.22 }}> <div ref={ref}>{children}</div></motion.div>);
 }
 
-// ---------- Cards
+// 3. Panneau Latéral Historique
+function LifeHistoryPanel({ open, onClose, athleteId }:{ open: boolean; onClose: ()=>void; athleteId: string; }) {
+    const [history, setHistory] = useState<WeeklyReviewType[]>([]);
+    const [loading, setLoading] = useState(false);
+
+    useEffect(() => {
+        if (open && athleteId) {
+            setLoading(true);
+            supabase.from("weekly_reviews")
+                .select("*")
+                .eq("user_id", athleteId)
+                .order("week_start", { ascending: false })
+                .limit(5)
+                .then(({ data }) => {
+                    if (data) setHistory(data as WeeklyReviewType[]);
+                    setLoading(false);
+                });
+        }
+    }, [open, athleteId]);
+
+    return (
+        <AnimatePresence>
+            {open && (
+                <>
+                    <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} onClick={onClose} className="fixed inset-0 bg-black/30 z-40 backdrop-blur-sm" />
+                    <motion.div 
+                        initial={{x:"100%"}} animate={{x:0}} exit={{x:"100%"}} transition={{type:"spring", stiffness:300, damping:30}}
+                        className="fixed inset-y-0 right-0 w-full max-w-sm bg-white shadow-2xl z-50 p-6 border-l border-slate-100 flex flex-col"
+                    >
+                        <div className="flex items-center justify-between mb-6">
+                            <h3 className="text-xl font-bold text-slate-800 flex items-center gap-2"><Notebook size={24} className="text-emerald-600"/> Historique Vie</h3>
+                            <button onClick={onClose} className="p-2 rounded-full hover:bg-slate-100"><X size={20}/></button>
+                        </div>
+                        {loading ? (
+                            <div className="text-slate-400 text-sm italic">Chargement...</div>
+                        ) : (
+                            <div className="space-y-4 overflow-y-auto flex-1">
+                                {history.length === 0 ? (
+                                    <div className="text-slate-400 text-sm text-center py-10">Aucun bilan enregistré récemment.</div>
+                                ) : (
+                                    history.map((rev) => (
+                                        <div key={rev.week_start} className="border border-slate-100 rounded-xl p-4 bg-slate-50/50">
+                                            <div className="flex items-center justify-between mb-2">
+                                                <div className="text-xs uppercase font-bold text-slate-400">
+                                                    Sem. du {dayjs(rev.week_start).format("DD/MM")}
+                                                </div>
+                                                <div className={`px-2 py-0.5 rounded-full text-[10px] font-bold border 
+                                                    ${rev.rpe_life <= 3 ? "bg-emerald-100 text-emerald-700 border-emerald-200" : 
+                                                      rev.rpe_life <= 6 ? "bg-amber-100 text-amber-700 border-amber-200" : 
+                                                      "bg-rose-100 text-rose-700 border-rose-200"}`}>
+                                                    Charge {rev.rpe_life}/10
+                                                </div>
+                                            </div>
+                                            {rev.comment ? (
+                                                <div className="text-sm text-slate-700 italic">"{rev.comment}"</div>
+                                            ) : (
+                                                <div className="text-xs text-slate-300 italic">Pas de commentaire</div>
+                                            )}
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        )}
+                    </motion.div>
+                </>
+            )}
+        </AnimatePresence>
+    );
+}
+
+// 4. SessionCard
 const SessionCard = React.memo(function SessionCard({ s, onEdit, onDelete }:{ s: SessionType; onEdit: ()=>void; onDelete: ()=>void; }) {
   const [showCoachNote, setShowCoachNote] = useState(false);
-
-  const statusTint =
-    s.status === "valide" ? "bg-emerald-50 border-emerald-200"
-    : s.status === "non_valide" ? "bg-rose-50 border-rose-200"
-    : "bg-white border-emerald-100";
-
-  const statusOverlay =
-    s.status === "valide" ? "after:bg-emerald-100/40"
-    : s.status === "non_valide" ? "after:bg-rose-100/40"
-    : "after:bg-transparent";
+  const style = getSportStyle(s.sport);
+  const alertType = getSessionAlert(s);
+  let borderClass = "";
+  if (alertType) borderClass = "border-2 border-rose-500 shadow-red-100";
+  else if (s.status === "valide") borderClass = "border border-emerald-400 ring-1 ring-emerald-400 shadow-sm";
+  else borderClass = "border border-transparent";
 
   return (
     <motion.div layout initial={{opacity:0,y:6}} animate={{opacity:1,y:0}} exit={{opacity:0,y:6}} transition={{duration:0.2}} whileHover={{y:-1}}
-      className={`card relative rounded-2xl shadow-sm border p-3 overflow-hidden ${statusTint} ${statusOverlay} after:absolute after:inset-0 after:pointer-events-none`}>
-      <div className="flex items-start justify-between gap-2">
-        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[12px] ring-1 ${sportBadgeClasses(s.sport)}`}>
-          {sportIcon(s.sport, 14)} <span className="font-medium">{s.sport}</span>
-        </span>
-        {s.planned_inter && (
-          <button onClick={()=>setShowCoachNote(v=>!v)} aria-expanded={showCoachNote} title="Voir les consignes du coach" className="p-2 rounded-lg hover:bg-emerald-50">
-            <Info size={16}/>
-          </button>
-        )}
+      className={`relative rounded-xl p-3 mb-2 overflow-hidden transition-all shadow-sm ${style.bg} ${borderClass}`}>
+      <div className="flex items-start justify-between gap-1 mb-1.5">
+        <div className="flex items-center gap-1.5">
+           <span className={`${style.icon}`}>{sportIcon(s.sport, 16)}</span>
+           <span className={`text-[11px] font-bold uppercase tracking-wider ${style.text}`}>{s.sport}</span>
+        </div>
+        <div className="flex gap-1">
+             {alertType && <div className="text-rose-600 animate-pulse"><WarningCircle size={18} weight="fill" /></div>}
+             {s.planned_inter && <button onClick={()=>setShowCoachNote(v=>!v)} className={`${style.text} hover:bg-white/50 rounded p-0.5`}><Info size={15}/></button>}
+             <button onClick={onEdit} className={`${style.text} opacity-60 hover:opacity-100 rounded p-0.5`}><PencilSimple size={15}/></button>
+             <button onClick={onDelete} className={`${style.text} opacity-60 hover:text-rose-600 rounded p-0.5`}><Trash size={15}/></button>
+        </div>
       </div>
-      <div className={`mt-2 h-1 rounded-full ${intensityBar(s.intensity)}`} />
-      {s.title && <div className="mt-2 text-sm font-semibold text-slate-800 break-words">{s.title}</div>}
-      {s.planned_hour !== undefined && <div className="mt-1 text-[12px] text-slate-600">{fmtTime(s.planned_hour)}</div>}
+      <div className={`h-1 w-12 rounded-full mb-2 ${intensityBar(s.intensity)}`} />
+      {s.title && <div className={`text-sm font-bold leading-tight mb-1 ${style.text}`}>{s.title}</div>}
+      <div className={`flex items-center justify-between text-xs font-medium ${style.text} opacity-90`}>
+        <div className="flex items-center gap-1"><Clock size={12}/> {fmtTime(s.planned_hour)}</div>
+        {s.status === "valide" && s.rpe ? (
+            <div className="flex items-center gap-1 font-bold">{alertType === "surmenage" && <Fire size={12} className="text-rose-500"/>}<span>RPE {s.rpe}</span></div>
+        ) : (<div className="opacity-60 italic text-[10px]">Prev. RPE ~{EST_RPE[s.intensity || "moyenne"] || 6}</div>)}
+      </div>
       {(s.athlete_comment || s.rpe) && (
-        <div className="mt-1 text-[12px] italic text-slate-600 break-words">
-          {s.athlete_comment ? `“${s.athlete_comment}”` : ""}{s.rpe && s.athlete_comment ? " • " : ""}{s.rpe ? `RPE ${s.rpe}` : ""}
+        <div className={`mt-2 p-2 bg-white/80 rounded-lg text-[11px] italic text-slate-700 border border-white/50 ${alertType === "douleur" ? "border-rose-300 bg-rose-50 text-rose-800 font-medium" : ""}`}>
+          {s.athlete_comment ? `“${s.athlete_comment}”` : ""}{!s.athlete_comment && s.rpe ? `Ressenti: ${s.rpe}/10` : ""}
         </div>
       )}
       <AnimatePresence initial={false}>
         {s.planned_inter && (
           <SmoothCollapsible open={showCoachNote}>
-            <div className="mt-2 rounded-md bg-emerald-50/50 p-2 text-[13px] text-slate-700 whitespace-pre-line">
-              {s.planned_inter}
-            </div>
+            <div className={`mt-2 pt-2 border-t border-black/5 text-[11px] whitespace-pre-line ${style.text}`}><span className="font-bold">Coach:</span> {s.planned_inter}</div>
           </SmoothCollapsible>
         )}
       </AnimatePresence>
-      <div className="mt-2 pt-2 border-t border-emerald-100 flex items-center justify-between text-[12px]">
-        <div className="flex gap-1">
-          <button onClick={onEdit} className="p-1.5 rounded-lg hover:bg-emerald-50 active:scale-[0.98]" aria-label="Modifier"><PencilSimple size={16}/></button>
-          <button onClick={onDelete} className="p-1.5 rounded-lg hover:bg-rose-50 active:scale-[0.98]" aria-label="Supprimer"><Trash size={16}/></button>
-        </div>
-      </div>
     </motion.div>
   );
 });
 
+// 5. AbsenceCard
 const AbsenceCard = React.memo(function AbsenceCard({ a, onDelete }:{ a: AbsenceType; onDelete: ()=>void; }) {
-  const isComp = a.type === "competition";
-
-  let cls = "bg-slate-50 ring-slate-200 text-slate-700";
-  if (isComp) {
-    if (a.status === "finisher") {
-      cls = "bg-emerald-50 ring-emerald-200 text-emerald-800";
-    } else if (a.status === "dnf") {
-      cls = "bg-rose-50 ring-rose-200 text-rose-800";
-    } else {
-      cls = "bg-amber-50 ring-amber-200 text-amber-800";
+    const isComp = a.type === "competition";
+    let cls = "bg-slate-50 border-slate-200 text-slate-500";
+    if (isComp) {
+      if (a.status === "finisher") cls = "bg-emerald-50 border-emerald-200 text-emerald-800";
+      else if (a.status === "dnf") cls = "bg-rose-50 border-rose-200 text-rose-800";
+      else cls = "bg-amber-50 border-amber-200 text-amber-800";
     }
-  }
-
-  const title = isComp ? "Compétition" : "Repos";
-  return (
-    <motion.div layout initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 6 }} transition={{ duration: 0.2 }} whileHover={{ y: -1 }}
-      className="card rounded-2xl bg-white shadow-sm border border-emerald-100 p-3 overflow-hidden">
-      <div className="flex items-start justify-between gap-2">
-        <span className={`inline-flex items-center gap-2 px-2.5 py-1 rounded-full text-[12px] ring-1 ${cls}`}>
-          <span className="font-medium">{title}</span>
-        </span>
-      </div>
-      {isComp && (
-        <div className="mt-2 text-[13px] text-slate-700 space-y-0.5">
-          {a.name && <div className="font-medium">{a.name}</div>}
-          {(a.distance_km || a.elevation_d_plus) && (
-            <div className="text-[12px] text-slate-600">
-              {a.distance_km ? `${a.distance_km} km` : ""}
-              {a.distance_km && a.elevation_d_plus ? " • " : ""}
-              {a.elevation_d_plus ? `D+ ${a.elevation_d_plus} m` : ""}
-            </div>
-          )}
-          {(a.duration_hour || a.rpe) && (
-      <div className="text-[12px] text-slate-600 flex gap-2 flex-wrap">
-        {a.duration_hour ? <span>Durée {formatDuration(a.duration_hour)}</span> : null}
-        {a.rpe ? <span>RPE {a.rpe}</span> : null}
-      </div>
-    )}
-          {a.comment && <div className="whitespace-pre-line">{a.comment}</div>}
+    const title = isComp ? "Compétition" : "Repos / Off";
+    return (
+      <motion.div layout initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 6 }} whileHover={{ y: -1 }} className={`rounded-xl border shadow-sm p-3 mb-2 overflow-hidden ${cls}`}>
+        <div className="flex items-start justify-between gap-2 mb-1">
+          <span className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-wide">{title}</span>
+          <button onClick={onDelete} className="opacity-50 hover:opacity-100 hover:text-rose-600"><Trash size={14}/></button>
         </div>
-      )}
-      {!isComp && a.comment && <div className="mt-2 text-[13px] text-slate-700 whitespace-pre-line">{a.comment}</div>}
-      <div className="mt-2 pt-2 border-t border-emerald-100 flex justify-end">
-        <button onClick={onDelete} className="p-1.5 rounded-lg hover:bg-rose-50 active:scale-[0.98]" aria-label="Supprimer"><Trash size={16}/></button>
-      </div>
-    </motion.div>
-  );
-});
-// ---------- Athlete Metrics Editor (Coach)
+        {isComp && (
+          <div className="text-xs space-y-1">
+            {a.name && <div className="font-bold text-sm">{a.name}</div>}
+            <div className="opacity-80">{a.distance_km ? `${a.distance_km}km` : ""}{a.distance_km && a.elevation_d_plus ? " • " : ""}{a.elevation_d_plus ? `${a.elevation_d_plus}d+` : ""}</div>
+            {(a.duration_hour || a.rpe) && <div className="opacity-80"> {formatDuration(a.duration_hour)} {a.rpe ? `• RPE ${a.rpe}` : ""} </div>}
+          </div>
+        )}
+        {!isComp && a.comment && <div className="text-xs italic mt-1 opacity-80">"{a.comment}"</div>}
+      </motion.div>
+    );
+  });
+
+// ... (AthleteMetricsCoach inchangé)
 function paceFromKmh(kmh: number) {
-  if (!kmh || kmh <= 0) return "—";
-  const minPerKm = 60 / kmh;
-  const totalSec = Math.round(minPerKm * 60);
-  const m = Math.floor(totalSec / 60);
-  const s = totalSec % 60;
-  return `${m}:${String(s).padStart(2,"0")}/km`;
-}
-const PCTS = [60,70,80,85,90,95,100,110,120,130];
-
-function AthleteMetricsCoach({ athleteId }: { athleteId: string }) {
-  const [vma, setVma] = React.useState<string>("");
-  const [ftp, setFtp] = React.useState<string>("");
-  const [loading, setLoading] = React.useState(false);
-
-  useEffect(() => {
-    if (!athleteId) return;
-    (async () => {
-      const { data } = await supabase
-        .from("athlete_metrics")
-        .select("vma_kmh, ftp_w")
-        .eq("user_id", athleteId)
-        .single();
-      if (data) {
-        setVma(data.vma_kmh ? String(data.vma_kmh) : "");
-        setFtp(data.ftp_w ? String(data.ftp_w) : "");
-      } else {
-        setVma("");
-        setFtp("");
-      }
-    })();
-  }, [athleteId]);
-
-  async function save() {
-    setLoading(true);
-    const payload = {
-      user_id: athleteId,
-      vma_kmh: vma ? Number(vma) : null,
-      ftp_w: ftp ? Number(ftp) : null,
-      updated_at: new Date().toISOString()
-    };
-    const { error } = await supabase
-      .from("athlete_metrics")
-      .upsert(payload, { onConflict: "user_id" });
-    setLoading(false);
-    if (error) alert(error.message);
+    if (!kmh || kmh <= 0) return "—";
+    const minPerKm = 60 / kmh;
+    const totalSec = Math.round(minPerKm * 60);
+    const m = Math.floor(totalSec / 60);
+    const s = totalSec % 60;
+    return `${m}:${String(s).padStart(2,"0")}/km`;
+  }
+  const PCTS = [60,70,80,85,90,95,100,110,120,130];
+  function AthleteMetricsCoach({ athleteId }: { athleteId: string }) {
+    const [vma, setVma] = React.useState<string>("");
+    const [ftp, setFtp] = React.useState<string>("");
+    const [loading, setLoading] = React.useState(false);
+    useEffect(() => {
+      if (!athleteId) return;
+      (async () => {
+        const { data } = await supabase.from("athlete_metrics").select("vma_kmh, ftp_w").eq("user_id", athleteId).single();
+        if (data) { setVma(data.vma_kmh ? String(data.vma_kmh) : ""); setFtp(data.ftp_w ? String(data.ftp_w) : ""); }
+        else { setVma(""); setFtp(""); }
+      })();
+    }, [athleteId]);
+    async function save() {
+      setLoading(true);
+      const payload = { user_id: athleteId, vma_kmh: vma ? Number(vma) : null, ftp_w: ftp ? Number(ftp) : null, updated_at: new Date().toISOString() };
+      const { error } = await supabase.from("athlete_metrics").upsert(payload, { onConflict: "user_id" });
+      setLoading(false);
+      if (error) alert(error.message);
+    }
+    const vmaNum = vma ? Number(vma) : null;
+    const ftpNum = ftp ? Number(ftp) : null;
+    return (
+      <div className="mt-4 rounded-xl border border-emerald-100 bg-white p-3 text-sm text-slate-700 space-y-2 shadow-sm">
+        <div className="grid grid-cols-2 gap-2">
+          <label className="text-[10px] uppercase text-slate-500 font-bold">VMA (km/h)<input type="number" step="0.1" value={vma} onChange={e=>setVma(e.target.value)} className="mt-0.5 w-full rounded border border-slate-200 px-1 py-0.5 text-xs"/></label>
+          <label className="text-[10px] uppercase text-slate-500 font-bold">FTP (w)<input type="number" value={ftp} onChange={e=>setFtp(e.target.value)} className="mt-0.5 w-full rounded border border-slate-200 px-1 py-0.5 text-xs"/></label>
+        </div>
+        <button onClick={save} disabled={loading} className="w-full py-1 rounded bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold">{loading ? "..." : "Sauvegarder Profil"}</button>
+        {(vmaNum || ftpNum) && (
+          <table className="w-full text-[10px] border-collapse mt-1">
+            <thead><tr><th className="border-b text-left py-0.5">%</th><th className="border-b text-center">VMA</th><th className="border-b text-center">FTP</th></tr></thead>
+            <tbody>{PCTS.map(pct => { const frac = pct/100; return (<tr key={pct}><td className="py-0.5 font-medium text-slate-500">{pct}%</td><td className="py-0.5 text-center">{vmaNum ? paceFromKmh(vmaNum*frac) : "-"}</td><td className="py-0.5 text-center">{ftpNum ? Math.round(ftpNum*frac) + "w" : "-"}</td></tr>); })}</tbody>
+          </table>
+        )}
+      </div>
+    );
   }
 
-  const vmaNum = vma ? Number(vma) : null;
-  const ftpNum = ftp ? Number(ftp) : null;
-
-  return (
-    <div className="mt-4 rounded-2xl border border-emerald-100 bg-white p-4 text-sm text-slate-700 space-y-3">
-
-      <div className="grid grid-cols-2 gap-2">
-        <label className="text-xs text-slate-600">
-          VMA (km/h)
-          <input
-            type="number"
-            step="0.1"
-            value={vma}
-            onChange={e=>setVma(e.target.value)}
-            className="mt-1 w-full rounded-md border border-slate-200 px-2 py-1 text-sm"
-          />
-        </label>
-        <label className="text-xs text-slate-600">
-          FTP (w)
-          <input
-            type="number"
-            value={ftp}
-            onChange={e=>setFtp(e.target.value)}
-            className="mt-1 w-full rounded-md border border-slate-200 px-2 py-1 text-sm"
-          />
-        </label>
-      </div>
-      <button
-        onClick={save}
-        disabled={loading}
-        className="w-full py-1.5 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white text-sm"
-      >
-        {loading ? "Enregistrement…" : "Enregistrer"}
-      </button>
-
-      {(vmaNum || ftpNum) && (
-        <table className="w-full text-xs border-collapse mt-3">
-          <thead>
-            <tr>
-              <th className="border-b text-left py-1">%</th>
-              <th className="border-b text-center">Allure VMA</th>
-              <th className="border-b text-center">FTP</th>
-            </tr>
-          </thead>
-          <tbody>
-            {PCTS.map(pct => {
-              const frac = pct/100;
-              const vmaPace = vmaNum ? paceFromKmh(vmaNum*frac) : "—";
-              const ftpVal = ftpNum ? Math.round(ftpNum*frac) + " w" : "—";
-              return (
-                <tr key={pct}>
-                  <td className="py-0.5">{pct}%</td>
-                  <td className="py-0.5 text-center">{vmaPace}</td>
-                  <td className="py-0.5 text-center">{ftpVal}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      )}
-    </div>
-  );
-}
-
-// ---------- Main page
-export default function CoachAthleteFocusV7_3() {
+// ---------- MAIN PAGE ----------
+export default function CoachAthleteFocusV13() {
   const router = useRouter();
   const prefersReduced = useReducedMotion();
 
@@ -449,15 +447,23 @@ export default function CoachAthleteFocusV7_3() {
 
   const [sessions, setSessions] = useState<SessionType[]>([]);
   const [absences, setAbsences] = useState<AbsenceType[]>([]);
+  
+  // Données hebdo
+  const [weeklyReview, setWeeklyReview] = useState<WeeklyReviewType | null>(null);
 
+  // UI State
   const [modalOpen, setModalOpen] = useState(false);
   const [modalDate, setModalDate] = useState<string>(dayjs().format("YYYY-MM-DD"));
   const [editSession, setEditSession] = useState<SessionType | null>(null);
+  const [lifeHistoryOpen, setLifeHistoryOpen] = useState(false);
+  
+  // RPE Help state
+  const [showRpeHelp, setShowRpeHelp] = useState(false);
 
   const [prevWeekLoad, setPrevWeekLoad] = useState<number>(0);
   const [nextRaceText, setNextRaceText] = useState<string>("");
 
-  // boot
+  // Boot & Alert Check
   useEffect(() => {
     (async () => {
       const { data: { session } } = await supabase.auth.getSession();
@@ -469,109 +475,70 @@ export default function CoachAthleteFocusV7_3() {
         .from("users").select("id_auth,name,ordre,coach_code,coach_id")
         .eq("role", "athlete").eq("coach_id", session.user.id)
         .order("ordre", { ascending: true });
+      
       const list = (athletesList || []) as UserType[];
-      setAthletes(list);
-      setSelectedAthleteId(prev => prev ?? list[0]?.id_auth ?? null);
+      
+      // Check alertes
+      const alertsMap: Record<string, boolean> = {};
+      const sevenDaysAgo = dayjs().subtract(7, 'day').format("YYYY-MM-DD");
+      
+      await Promise.all(list.map(async (ath) => {
+         const { data: badSess } = await supabase.from("sessions")
+            .select("athlete_comment, rpe, intensity")
+            .eq("user_id", ath.id_auth)
+            .gte("date", sevenDaysAgo)
+            .or("athlete_comment.ilike.%mal%,athlete_comment.ilike.%douleur%,athlete_comment.ilike.%blessure%,athlete_comment.ilike.%gêne%");
+         
+         if (badSess && badSess.length > 0) alertsMap[ath.id_auth] = true;
+      }));
+      
+      const listWithAlerts = list.map(a => ({ ...a, alert: alertsMap[a.id_auth] || false }));
+      setAthletes(listWithAlerts);
+      
+      if (!selectedAthleteId) setSelectedAthleteId(list[0]?.id_auth ?? null);
     })();
   }, [router]);
 
-  // load week data
+  // Load data
   useEffect(() => {
     if (!selectedAthleteId) return;
     (async () => {
       const start = weekStart.format("YYYY-MM-DD");
       const end = weekStart.add(6, "day").format("YYYY-MM-DD");
-      const { data: sess } = await supabase
-        .from("sessions")
-        .select("id,user_id,sport,title,planned_hour,planned_inter,intensity,status,rpe,athlete_comment,date")
-        .eq("user_id", selectedAthleteId).gte("date", start).lte("date", end);
+      const { data: sess } = await supabase.from("sessions").select("*").eq("user_id", selectedAthleteId).gte("date", start).lte("date", end);
       setSessions((sess || []) as SessionType[]);
 
-      const { data: abs } = await supabase
-  .from("absences_competitions")
-  .select("id,user_id,date,type,name,distance_km,elevation_d_plus,comment,rpe,duration_hour,status")
-  .eq("user_id", selectedAthleteId)
-  .gte("date", start)
-  .lte("date", end);
-
+      const { data: abs } = await supabase.from("absences_competitions").select("*").eq("user_id", selectedAthleteId).gte("date", start).lte("date", end);
       setAbsences((abs || []) as AbsenceType[]);
+
+      const { data: review } = await supabase.from("weekly_reviews").select("rpe_life, comment").eq("user_id", selectedAthleteId).eq("week_start", start).single();
+      setWeeklyReview(review as WeeklyReviewType);
     })();
   }, [selectedAthleteId, weekStart]);
 
-  // prev week load + next race (based on displayed week)
-  // prev week load + next race (based on displayed week)
-useEffect(() => {
-  if (!selectedAthleteId) return;
-  (async () => {
-    // 1. borne de la semaine précédente
-    const prevStart = weekStart.add(-7, "day").format("YYYY-MM-DD");
-    const prevEnd = weekStart.add(-1, "day").format("YYYY-MM-DD");
+  // Stats comparatives
+  useEffect(() => {
+    if (!selectedAthleteId) return;
+    (async () => {
+      const prevStart = weekStart.add(-7, "day").format("YYYY-MM-DD");
+      const prevEnd = weekStart.add(-1, "day").format("YYYY-MM-DD");
+      const { data: prevSessions } = await supabase.from("sessions").select("planned_hour,rpe,status").eq("user_id", selectedAthleteId).gte("date", prevStart).lte("date", prevEnd);
+      const loadSessions = (prevSessions || []).filter((s) => s.status === "valide").reduce((acc, s) => acc + (Number(s.rpe) || 0) * (Number(s.planned_hour) || 0), 0);
+      setPrevWeekLoad(loadSessions);
 
-    // 2. on récupère les séances de la semaine précédente
-    const { data: prevSessions } = await supabase
-      .from("sessions")
-      .select("planned_hour,rpe,status,user_id,date")
-      .eq("user_id", selectedAthleteId)
-      .gte("date", prevStart)
-      .lte("date", prevEnd);
-
-    // 3. charge issue des séances validées
-    const loadSessions = (prevSessions || [])
-      .filter((s) => s.status === "valide")
-      .reduce(
-        (acc, s) =>
-          acc + (Number(s.rpe) || 0) * (Number(s.planned_hour) || 0),
-        0
-      );
-
-    // 4. on récupère les compétitions de la semaine précédente
-    const { data: prevComps } = await supabase
-      .from("absences_competitions")
-      .select("duration_hour,rpe,type,date")
-      .eq("user_id", selectedAthleteId)
-      .gte("date", prevStart)
-      .lte("date", prevEnd)
-      .eq("type", "competition");
-
-    // 5. charge issue des compétitions
-    const loadCompet = (prevComps || []).reduce(
-      (acc, c) =>
-        acc + (Number(c.rpe) || 0) * (Number(c.duration_hour) || 0),
-      0
-    );
-
-    // 6. on set la somme
-    setPrevWeekLoad(loadSessions + loadCompet);
-
-    // 7. texte "prochaine compétition"
-    const base = weekStart.startOf("day");
-    const { data: nextComp } = await supabase
-      .from("absences_competitions")
-      .select("date,type")
-      .eq("user_id", selectedAthleteId)
-      .eq("type", "competition")
-      .gte("date", base.format("YYYY-MM-DD"))
-      .order("date", { ascending: true })
-      .limit(1);
-
-    if (nextComp && nextComp.length) {
-      const d = dayjs(nextComp[0].date).startOf("day");
-      if (d.isSame(base, "week")) {
-        setNextRaceText("cette semaine");
-      } else {
-        const diffDays = d.diff(base, "day");
-        const weeks =
-          Math.floor(diffDays / 7) + (diffDays % 7 > 0 ? 1 : 0);
-        setNextRaceText(
-          `dans ${weeks} semaine${weeks > 1 ? "s" : ""}`
-        );
-      }
-    } else {
-      setNextRaceText("aucune à venir");
-    }
-  })();
-}, [selectedAthleteId, weekStart]);
-
+      const base = weekStart.startOf("day");
+      const { data: nextComp } = await supabase.from("absences_competitions").select("date,type").eq("user_id", selectedAthleteId).eq("type", "competition").gte("date", base.format("YYYY-MM-DD")).order("date", { ascending: true }).limit(1);
+      if (nextComp && nextComp.length) {
+        const d = dayjs(nextComp[0].date).startOf("day");
+        if (d.isSame(base, "week")) setNextRaceText("cette semaine");
+        else {
+           const diff = d.diff(base, "day");
+           const w = Math.floor(diff/7) + (diff%7>0?1:0);
+           setNextRaceText(`dans ${w} sem.`);
+        }
+      } else setNextRaceText("-");
+    })();
+  }, [selectedAthleteId, weekStart]);
 
   const deleteSession = useCallback(async (id: string) => {
     if (!confirm("Supprimer cette séance ?")) return;
@@ -590,179 +557,164 @@ useEffect(() => {
   }, [athletes]);
 
   const stats = useMemo(() => {
-  const totalSessions = sessions.length;
-  const validatedSessions = sessions.filter(s => s.status === "valide").length;
+    const validatedSessions = sessions.filter(s => s.status === "valide");
+    const loadRealized = validatedSessions.reduce((acc, s) => acc + (Number(s.rpe) || 0) * (Number(s.planned_hour) || 0), 0);
+    const timeRealized = validatedSessions.reduce((acc, s) => acc + (Number(s.planned_hour) || 0), 0);
+    const totalPlannedHours = sessions.reduce((acc, s) => acc + (Number(s.planned_hour)||0), 0);
+    const totalPlannedLoad = sessions.reduce((acc, s) => acc + getPlannedLoad(s), 0);
 
-  // temps séances
-  const timeSessions = sessions.reduce(
-    (acc, s) => acc + (Number(s.planned_hour) || 0),
-    0
-  );
-
-  // temps compet
-  const timeCompet = absences
-    .filter(a => a.type === "competition")
-    .reduce((acc, a) => acc + (Number(a.duration_hour) || 0), 0);
-
-  // charge séances
-  const loadSessions = sessions
-    .filter(s => s.status === "valide")
-    .reduce(
-      (acc, s) =>
-        acc + (Number(s.rpe) || 0) * (Number(s.planned_hour) || 0),
-      0
-    );
-
-  // charge compet
-  const loadCompet = absences
-    .filter(a => a.type === "competition")
-    .reduce(
-      (acc, a) =>
-        acc + (Number(a.rpe) || 0) * (Number(a.duration_hour) || 0),
-      0
-    );
-
-  const totalTime = timeSessions + timeCompet;
-  const totalLoad = loadSessions + loadCompet;
-
-  // ton % de complétion reste basé sur les séances planifiées
-  const progress = totalSessions ? Math.round((validatedSessions / totalSessions) * 100) : 0;
-
-  return {
-    total: totalSessions,
-    validated: validatedSessions,
-    time: totalTime,
-    load: totalLoad,
-    progress,
-  };
-}, [sessions, absences]);
-
+    return { count: sessions.length, valCount: validatedSessions.length, loadRealized, loadPlanned: totalPlannedLoad, timeRealized, timePlanned: totalPlannedHours };
+  }, [sessions]);
 
   const athlete = athletes.find(a => a.id_auth === selectedAthleteId) || null;
-
-  const progressVariants = prefersReduced
-    ? {}
-    : { initial: { width: 0 }, animate: { width: `${stats.progress}%`, transition: { duration: 0.45 } } };
-
-  async function logout() {
-    await supabase.auth.signOut();
-    router.push("/login");
-  }
+  async function logout() { await supabase.auth.signOut(); router.push("/login"); }
 
   return (
-    <main className={`${jakarta.className} min-h-screen bg-gradient-to-br from-emerald-50 via-sky-50 to-white text-slate-800`}>
-      {/* Header */}
-      <header className="sticky top-0 z-20 border-b border-emerald-100 bg-white/80 backdrop-blur">
-        <div className="max-w-screen-2xl mx-auto px-3 py-3 flex items-center gap-3">
-          <div className="text-sm text-emerald-900">Bonjour {coach?.name?.split(" ")[0] || "Coach"}</div>
-          <div className="mx-auto flex items-center gap-2">
-            <button onClick={() => setWeekOffset(w => w - 1)} className="p-2 rounded-full bg-emerald-50 hover:bg-emerald-100 border border-emerald-100" aria-label="Semaine précédente"><CaretLeft size={18}/></button>
-            <div className="text-sm font-semibold text-emerald-900">Semaine du {weekStart.format("DD/MM/YYYY")}</div>
-            <button onClick={() => setWeekOffset(w => w + 1)} className="p-2 rounded-full bg-emerald-50 hover:bg-emerald-100 border border-emerald-100" aria-label="Semaine suivante"><CaretRight size={18}/></button>
+    <main className={`${jakarta.className} min-h-screen bg-slate-100 text-slate-800 flex flex-col`}>
+      <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/90 backdrop-blur-md shadow-sm">
+        <div className="max-w-[1600px] mx-auto px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+             <div className="bg-emerald-600 text-white px-2 py-1 rounded font-bold text-sm tracking-tight">COACH</div>
+             <div className="text-sm font-medium text-slate-600 hidden md:block">Bonjour {coach?.name?.split(" ")[0]}</div>
           </div>
-          <div className="flex items-center gap-2">
-            {coach?.coach_code && (
-              <div className="text-xs text-emerald-900 bg-emerald-50 border border-emerald-100 rounded-md px-2 py-1">Code coach : <span className="font-semibold">{coach.coach_code}</span></div>
-            )}
-            <a href="/coach/stats/" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-md border border-emerald-200 bg-white hover:bg-emerald-50 text-emerald-900">
-              <ChartLineUp size={14}/> Stats
-            </a>
-            {/* Déconnexion */}
-            <button onClick={logout} className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-md border border-rose-200 bg-white hover:bg-rose-50 text-rose-700">
-              <SignOut size={14}/> 
-            </button>
+          
+          <div className="flex items-center bg-slate-100 rounded-full p-1 gap-2 border border-slate-200">
+            <button onClick={() => setWeekOffset(w => w - 1)} className="p-1.5 rounded-full hover:bg-white hover:shadow-sm transition"><CaretLeft size={18}/></button>
+            <div className="text-sm font-bold text-slate-700 w-32 text-center">S{weekStart.isoWeek()} • {weekStart.format("DD MMM")}</div>
+            <button onClick={() => setWeekOffset(w => w + 1)} className="p-1.5 rounded-full hover:bg-white hover:shadow-sm transition"><CaretRight size={18}/></button>
+          </div>
+
+          <div className="flex items-center gap-2 relative">
+             {/* STATS GLOBALES */}
+             <a href="/coach/stats" target="_blank" rel="noopener noreferrer" className="p-2 rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-slate-50" title="Statistiques Globales">
+                <ChartLineUp size={20} weight="bold"/>
+             </a>
+
+             {/* AIDE RPE AVEC POPOVER */}
+             <div className="relative">
+                <button onClick={()=>setShowRpeHelp(!showRpeHelp)} className={`p-2 rounded-lg transition ${showRpeHelp ? "bg-emerald-100 text-emerald-700" : "text-slate-400 hover:text-emerald-600 hover:bg-slate-50"}`} title="Aide RPE">
+                    <Question size={20} weight="bold"/>
+                </button>
+                <RpeGuidePopover open={showRpeHelp} onClose={()=>setShowRpeHelp(false)} />
+             </div>
+             
+             <button onClick={logout} className="text-rose-500 hover:bg-rose-50 p-2 rounded-lg"><SignOut size={18}/></button>
           </div>
         </div>
       </header>
 
-      {/* Layout wider: sidebar smaller, content larger */}
-      <div className="max-w-screen-2xl mx-auto px-3 py-5 grid grid-cols-12 gap-4">
-        {/* Sidebar Athletes */}
-        <aside className="col-span-12 md:col-span-2">
-          <div className="mb-2 text-xs uppercase tracking-wide text-emerald-800/70">Athlètes</div>
-          <div className="space-y-2">
-            {athletes.map((a, i) => {
-  const active = a.id_auth === selectedAthleteId;
-  const [firstName, ...rest] = (a.name || "").split(" ");
-  const lastName = rest.join(" ");
-  return (
-    <div key={a.id_auth} className={`p-2 rounded-xl border ${active ? "border-emerald-300 bg-white" : "border-emerald-100 bg-white/70 hover:bg-white"}`}>
-      <div className="flex items-center gap-2">
-        <button onClick={() => setSelectedAthleteId(a.id_auth)} className="flex-1 text-left">
-          <div className="text-sm font-semibold text-emerald-950 truncate">{firstName}</div>
-          <div className="text-[12px] text-emerald-900 truncate">{lastName}</div>
-        </button>
-        <div className="flex gap-1">
-          <button onClick={() => moveAthlete(i, -1)} disabled={i === 0} className="p-1 rounded-lg disabled:opacity-30 hover:bg-emerald-100" aria-label="Monter">↑</button>
-          <button onClick={() => moveAthlete(i, 1)} disabled={i === athletes.length - 1} className="p-1 rounded-lg disabled:opacity-30 hover:bg-emerald-100" aria-label="Descendre">↓</button>
-        </div>
-      </div>
-
-      {/* 👉 Ici on injecte le tableau si sélectionné */}
-      {active && (
-        <div className="mt-2">
-          <AthleteMetricsCoach athleteId={a.id_auth} />
-        </div>
-      )}
-    </div>
-  );
-})}
-
+      <div className="flex-1 max-w-[1600px] w-full mx-auto p-4 grid grid-cols-12 gap-6">
+        <aside className="col-span-12 md:col-span-3 lg:col-span-2 flex flex-col gap-4">
+          <div>
+              <div className="text-[11px] font-bold uppercase text-slate-400 mb-2 tracking-wider px-1">Mes Athlètes</div>
+              <div className="space-y-1">
+                {athletes.map((a, i) => {
+                    const active = a.id_auth === selectedAthleteId;
+                    const [fName, ...lName] = a.name.split(" ");
+                    return (
+                        <div key={a.id_auth} className={`w-full p-2.5 rounded-xl border transition-all flex items-center gap-2 group ${active ? "border-emerald-500 bg-emerald-50 shadow-sm ring-1 ring-emerald-200" : "border-transparent bg-white hover:shadow-sm"}`}>
+                            <button onClick={() => setSelectedAthleteId(a.id_auth)} className="flex-1 text-left">
+                                <div className={`text-sm font-bold ${active?"text-emerald-900":"text-slate-700"}`}>{fName} <span className="font-normal text-xs">{lName.join(" ")}</span></div>
+                                {active && <div className="text-[10px] text-emerald-600 font-medium">Sélectionné</div>}
+                            </button>
+                             {a.alert && (<div title="Attention" className="bg-rose-500 text-white p-1.5 rounded-full shadow-sm shadow-rose-200 animate-pulse"><WarningCircle weight="bold" size={14} /></div>)}
+                            <div className="flex flex-col gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <button onClick={() => moveAthlete(i, -1)} disabled={i === 0} className="text-[10px] px-1 hover:bg-slate-200 rounded">▲</button>
+                                <button onClick={() => moveAthlete(i, 1)} disabled={i === athletes.length - 1} className="text-[10px] px-1 hover:bg-slate-200 rounded">▼</button>
+                            </div>
+                        </div>
+                    );
+                })}
+              </div>
           </div>
+          {selectedAthleteId && <AthleteMetricsCoach athleteId={selectedAthleteId} />}
         </aside>
 
-        {/* Main content */}
-        <section className="col-span-12 md:col-span-10 space-y-5">
-          {/* Athlete stats header */}
+        <section className="col-span-12 md:col-span-9 lg:col-span-10 space-y-6">
           {athlete && (
-            <div className="rounded-2xl border border-emerald-100 bg-white p-4">
-              <div className="flex items-center gap-4">
+            <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div className="flex-1">
-                  <div className="font-semibold text-emerald-950 text-lg">{athlete.name}</div>
-                  <div className="text-xs text-emerald-800/80">Prochaine compétition : {nextRaceText}</div>
-                  <div className="text-xs text-emerald-800/80 mt-0.5">Charge semaine précédente : {prevWeekLoad.toFixed(1)}</div>
+                    <div className="flex items-baseline gap-2">
+                        <h2 className="text-xl font-bold text-slate-800">{athlete.name}</h2>
+                        {stats.valCount === stats.count && stats.count > 0 && <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-[10px] font-bold rounded-full uppercase tracking-wide">Semaine Complète</span>}
+                    </div>
+                    <div className="text-xs text-slate-500 mt-1 flex gap-3">
+                        <span>Prochaine course: <strong className="text-slate-700">{nextRaceText}</strong></span>
+                        <span>Charge S-1: <strong className="text-slate-700">{prevWeekLoad.toFixed(0)}</strong></span>
+                    </div>
                 </div>
-                <div className="flex items-center gap-6 text-sm text-emerald-900">
-                  <div className="flex items-center gap-2"><CheckCircle size={16} className="text-emerald-600"/><span>{stats.validated}/{stats.total}</span></div>
-                  <div className="flex items-center gap-2"><Clock size={16} className="text-slate-700"/><span>{fmtTime(stats.time)}</span></div>
-                  <div className="flex items-center gap-2"><LoadIcon size={16} className="text-amber-600"/><span>{stats.load.toFixed(1)}</span></div>
-                </div>
-              </div>
-              <div className="mt-3 h-2 w-full rounded-full bg-emerald-100 overflow-hidden">
-                <motion.div className="h-full bg-emerald-500 rounded-full" initial="initial" animate="animate" {...progressVariants} />
-              </div>
 
+                {/* BLOC CHARGE VIE PERSO */}
+                <div className="flex items-center gap-4 px-4 border-l border-r border-slate-100">
+                    <div className="flex flex-col items-center min-w-[100px]">
+                        <div className="flex items-center gap-2 mb-1">
+                             <span className="text-[10px] uppercase font-bold text-slate-400">Charge Vie Perso</span>
+                             {/* Bouton Historique */}
+                             <button onClick={()=>setLifeHistoryOpen(true)} className="text-slate-400 hover:text-emerald-600" title="Historique"><Notebook size={14}/></button>
+                        </div>
+                        {weeklyReview ? (
+                            <div className="relative group cursor-help">
+                                <div className={`px-3 py-1 rounded-full text-xs font-bold border flex items-center gap-1.5 
+                                    ${weeklyReview.rpe_life <= 3 ? "bg-emerald-100 text-emerald-700 border-emerald-200" : 
+                                      weeklyReview.rpe_life <= 6 ? "bg-amber-100 text-amber-700 border-amber-200" : 
+                                      "bg-rose-100 text-rose-700 border-rose-200 animate-pulse"}`}>
+                                    {weeklyReview.rpe_life <= 3 ? <Smiley size={16}/> : weeklyReview.rpe_life <= 6 ? <SmileyMeh size={16}/> : <SmileySad size={16}/>}
+                                    <span>{weeklyReview.rpe_life}/10</span>
+                                </div>
+                                {weeklyReview.comment && (
+                                    <div className="absolute top-full mt-2 left-1/2 -translate-x-1/2 w-64 p-3 bg-slate-800 text-white text-xs rounded-xl shadow-xl z-50 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none text-center leading-relaxed">"{weeklyReview.comment}"</div>
+                                )}
+                            </div>
+                        ) : (<div className="text-xs text-slate-300 italic">Non renseigné</div>)}
+                    </div>
+                </div>
+
+                <div className="flex gap-8 pr-4">
+                    <div className="flex flex-col w-32">
+                        <div className="flex justify-between text-[10px] uppercase font-bold text-slate-400 mb-1">
+                            <span>Charge</span>
+                            <span className={stats.loadRealized > stats.loadPlanned ? "text-emerald-600" : "text-slate-600"}>{stats.loadRealized.toFixed(0)} <span className="text-slate-300">/ {stats.loadPlanned.toFixed(0)}</span></span>
+                        </div>
+                        <div className="h-2 bg-slate-100 rounded-full overflow-hidden relative">
+                            <div className="absolute top-0 left-0 h-full bg-slate-200 w-full" /> 
+                            <motion.div className="absolute top-0 left-0 h-full bg-emerald-500 rounded-full" initial={{width:0}} animate={{width: `${Math.min((stats.loadRealized/Math.max(stats.loadPlanned,1))*100, 100)}%`}} />
+                        </div>
+                    </div>
+                    <div className="flex flex-col w-32">
+                         <div className="flex justify-between text-[10px] uppercase font-bold text-slate-400 mb-1">
+                            <span>Volume</span>
+                            <span>{fmtTime(stats.timeRealized)} <span className="text-slate-300">/ {fmtTime(stats.timePlanned)}</span></span>
+                        </div>
+                         <div className="h-2 bg-slate-100 rounded-full overflow-hidden relative">
+                            <motion.div className="absolute top-0 left-0 h-full bg-blue-500 rounded-full" initial={{width:0}} animate={{width: `${Math.min((stats.timeRealized/Math.max(stats.timePlanned,0.1))*100, 100)}%`}} />
+                        </div>
+                    </div>
+                </div>
             </div>
-            
           )}
 
-          {/* Week grid */}
-          <div className="grid grid-cols-7 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-7 gap-3">
             {weekDays.map((d) => {
               const iso = d.format("YYYY-MM-DD");
+              const isToday = iso === dayjs().format("YYYY-MM-DD");
               const daySessions = sessions.filter((s) => s.date === iso);
               const dayAbs = absences.filter((a) => a.date === iso);
               return (
-                <div key={iso} className="rounded-2xl border border-emerald-100 bg-white p-3 flex flex-col min-h-[220px]">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="text-xs font-medium text-emerald-900">{d.format("ddd DD/MM")}</div>
-                    <motion.button whileTap={{ scale: 0.96, rotate: 90 }} onClick={() => { setModalDate(iso); setEditSession(null); setModalOpen(true); }} className="p-2 rounded-lg hover:bg-emerald-50" aria-label="Ajouter">
-                      <Plus size={18}/>
-                    </motion.button>
+                <div key={iso} className={`flex flex-col gap-2 min-h-[200px] p-2 rounded-xl border transition-colors ${isToday ? "bg-blue-50 border-blue-300" : "bg-slate-50 border-slate-200"}`}>
+                  <div className="flex items-center justify-between px-1">
+                    <div className={`text-xs font-bold uppercase ${isToday ? "text-blue-700" : "text-slate-400"}`}>{d.format("ddd DD")}</div>
+                    <button onClick={() => { setModalDate(iso); setEditSession(null); setModalOpen(true); }} className="text-slate-300 hover:text-emerald-600 hover:bg-emerald-50 rounded p-1 transition"><Plus size={16}/></button>
                   </div>
-                  <div className="space-y-2">
+                  <div className="space-y-2 flex-1">
                     <AnimatePresence initial={false}>
                       {dayAbs.map((a) => (
-                        <AbsenceCard key={a.id} a={a} onDelete={async () => {
-                          if (!confirm("Supprimer ?")) return;
-                          await supabase.from("absences_competitions").delete().eq("id", a.id);
-                          setAbsences((prev) => prev.filter((x) => x.id !== a.id));
-                        }} />
+                        <AbsenceCard key={a.id} a={a} onDelete={async () => { if (!confirm("Supprimer ?")) return; await supabase.from("absences_competitions").delete().eq("id", a.id); setAbsences((prev) => prev.filter((x) => x.id !== a.id)); }} />
                       ))}
                       {daySessions.map((s) => (
                         <SessionCard key={s.id} s={s} onEdit={() => { setModalDate(s.date); setEditSession(s); setModalOpen(true); }} onDelete={() => deleteSession(s.id)} />
                       ))}
                     </AnimatePresence>
+                    {daySessions.length === 0 && dayAbs.length === 0 && (<div className="h-full border-2 border-dashed border-slate-200 rounded-lg flex items-center justify-center opacity-30"><span className="text-[10px] text-slate-400 font-medium">Repos</span></div>)}
                   </div>
                 </div>
               );
@@ -771,7 +723,9 @@ useEffect(() => {
         </section>
       </div>
 
-      {/* Modal */}
+      {/* Drawer Historique */}
+      {selectedAthleteId && <LifeHistoryPanel open={lifeHistoryOpen} onClose={()=>setLifeHistoryOpen(false)} athleteId={selectedAthleteId} />}
+
       {athlete && (
         <SessionModal
           open={modalOpen}

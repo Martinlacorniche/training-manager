@@ -5,8 +5,10 @@ import { useRouter } from "next/navigation";
 import dayjs from "dayjs";
 import "dayjs/locale/fr";
 import isoWeek from "dayjs/plugin/isoWeek";
+import isBetween from "dayjs/plugin/isBetween"; // Correction: Ajout du plugin isBetween
 dayjs.locale("fr");
 dayjs.extend(isoWeek);
+dayjs.extend(isBetween); // Correction: Extension du plugin isBetween
 
 // Font
 import { Plus_Jakarta_Sans } from "next/font/google";
@@ -27,6 +29,11 @@ import { AnimatePresence, motion } from "framer-motion";
 // ---------- HELPERS & STYLES (COHÉRENCE COACH) ----------
 
 const EST_RPE: Record<string, number> = { basse: 3, moyenne: 6, haute: 9 };
+
+function getPlannedLoad(s: SessionType) {
+  const rpe = EST_RPE[s.intensity || "moyenne"] || 6;
+  return (s.planned_hour || 0) * rpe;
+}
 
 function getSportStyle(s?: string) {
   switch (s) {
@@ -76,10 +83,11 @@ type AbsenceType = {
   rpe?: number | null; duration_hour?: number | null; status?: string | null;
 };
 type WeeklyReviewType = { week_start: string; rpe_life: number; comment: string; };
+type WeeklyThematicType = { user_id: string; week_start: string; thematic: string; }; // <<< AJOUTÉ
 
 // ---------- COMPONENTS ----------
 
-// 1. RPE GUIDE (Popover) - CORRIGÉ
+// 1. RPE GUIDE (Popover)
 function RpeGuidePopover({ open, onClose }:{ open:boolean; onClose:()=>void }) {
     // Tableau de référence
     const rows = [
@@ -98,7 +106,6 @@ function RpeGuidePopover({ open, onClose }:{ open:boolean; onClose:()=>void }) {
     if(!open) return null;
 
     return (
-        // CHANGEMENT ICI : top-full (en bas) et right-0 (aligné à droite pour s'étendre vers la gauche)
         <div className="absolute top-full right-0 mt-2 z-50 w-72 bg-white rounded-xl shadow-2xl border border-slate-200 overflow-hidden">
             <div className="bg-slate-50 px-3 py-2 border-b border-slate-100 text-xs font-bold text-slate-500 flex justify-between items-center">
                 <span>Échelle RPE</span>
@@ -291,9 +298,8 @@ function ValidateModal({ open, onClose, onSaved, initial }:{ open: boolean; onCl
   );
 }
 
-// ---------- Modal Absence (inchangée fonctionnellement, juste style)
+// ---------- Modal Absence
 function AbsenceModal({ open, onClose, onSaved, initial, athleteId, date }:{ open: boolean; onClose: ()=>void; onSaved: (a: AbsenceType, isEdit: boolean)=>void; initial?: AbsenceType | null; athleteId: string; date: string; }) {
-  // ... (Logique identique, je simplifie le rendu pour la lisibilité, reprends ton code de base si besoin de détails spécifiques, mais ici je mets le style "Coach")
   const isEdit = !!initial;
   const [type, setType] = useState<string>(initial?.type || "off");
   const [name, setName] = useState<string>(initial?.name || "");
@@ -377,29 +383,23 @@ function AbsenceModal({ open, onClose, onSaved, initial, athleteId, date }:{ ope
   );
 }
 
-// ---------- Cards (Nouveau Design "Coach-Like")
+// ---------- Cards (Miroir du coach, pour l'homogénéité)
 const SessionCard = React.memo(function SessionCard({ s, onEdit, onDelete }:{ s: SessionType; onEdit: ()=>void; onDelete: ()=>void; }) {
-  const [showComment, setShowComment] = useState(false);
   const style = getSportStyle(s.sport);
   const isPast = dayjs(s.date).isBefore(dayjs(), 'day');
 
-  // Logique Bordure/Alerte (Miroir du coach)
- let borderClass = "border border-transparent";
-  // Alerte Douleur ?
+  // Logique Bordure/Alerte
+  let borderClass = "border border-transparent";
   const hasPain = s.athlete_comment && /(mal|douleur|blessure|gêne|bob)/i.test(s.athlete_comment);
   const hasBadRpe = s.status === "valide" && s.intensity === "basse" && (s.rpe || 0) > 8;
   
   if (hasPain || hasBadRpe) {
-    // 1. ALERTE DOULEUR / SURMENAGE (PRIORITAIRE)
     borderClass = "border-2 border-rose-500 shadow-red-100";
   }
   else if (s.status === "valide") {
-    // 2. SÉANCE VALIDÉE
     borderClass = "border border-emerald-400 ring-1 ring-emerald-400 shadow-sm";
   }
   else if (isPast) {
-    // 3. NOUVEL INDICATEUR : NON VALIDÉE & PASSÉE
-    // Utilisation de l'ambre/orange pour signaler un "manque"
     borderClass = "border-2 border-amber-500 shadow-amber-100";
   }
 
@@ -412,7 +412,6 @@ const SessionCard = React.memo(function SessionCard({ s, onEdit, onDelete }:{ s:
            <span className={`text-[11px] font-bold uppercase tracking-wider ${style.text}`}>{s.sport}</span>
         </div>
         <div className="flex gap-1">
-             {/* Indicateur Alerte visuel pour l'athlète aussi */}
              {(hasPain || hasBadRpe) && <div className="text-rose-600 animate-pulse"><WarningCircle size={16} weight="fill"/></div>}
              <button onClick={onEdit} className={`${style.text} opacity-60 hover:opacity-100 p-0.5 hover:bg-white/50 rounded`} title="Valider/Modifier"><PencilSimple size={15}/></button>
              <button onClick={onDelete} className={`${style.text} opacity-60 hover:text-rose-600 p-0.5 hover:bg-white/50 rounded`} title="Supprimer"><Trash size={15}/></button>
@@ -485,7 +484,136 @@ const AbsenceCard = React.memo(function AbsenceCard({ a, onEdit }:{ a: AbsenceTy
   );
 });
 
-// ---------- Athlete Metrics (VMA / FTP) (inchangé, style clean)
+// ---------- CALENDRIER THÉMATIQUE (LECTURE SEULE)
+function AthleteThematicCalendar({ athleteId }:{ athleteId: string; }) {
+    const [monthOffset, setMonthOffset] = useState(0);
+    const [thematics, setThematics] = useState<WeeklyThematicType[]>([]);
+    const [races, setRaces] = useState<AbsenceType[]>([]);
+    const [sessions, setSessions] = useState<SessionType[]>([]);
+    
+    const [loading, setLoading] = useState(false);
+
+    const currentMonth = useMemo(() => dayjs().add(monthOffset, "month").startOf("month"), [monthOffset]);
+    const calendarStart = useMemo(() => currentMonth.startOf("week"), [currentMonth]);
+    const numWeeks = useMemo(() => {
+        const end = currentMonth.endOf("month").endOf("week");
+        return end.diff(calendarStart, 'week') + 1;
+    }, [currentMonth, calendarStart]);
+    const weeks = useMemo(() => Array.from({ length: numWeeks }, (_, i) => calendarStart.add(i, "week")), [numWeeks, calendarStart]);
+    const weeksKeys = useMemo(() => weeks.map(w => w.startOf("isoWeek").format("YYYY-MM-DD")), [weeks]);
+
+    // Charger les données
+    useEffect(() => {
+        if (!athleteId) return;
+        const monthStart = calendarStart.format("YYYY-MM-DD");
+        const monthEnd = calendarStart.add(numWeeks, "week").add(6, "day").format("YYYY-MM-DD");
+        
+        setLoading(true);
+        Promise.all([
+            supabase.from("weekly_thematics").select("week_start, thematic").eq("user_id", athleteId).gte("week_start", monthStart).lte("week_start", monthEnd),
+            supabase.from("absences_competitions").select("date, name, type").eq("user_id", athleteId).eq("type", "competition").gte("date", monthStart).lte("date", monthEnd),
+            supabase.from("sessions").select("date, planned_hour, intensity").eq("user_id", athleteId).gte("date", monthStart).lte("date", monthEnd),
+        ]).then(([thematicsRes, racesRes, sessionsRes]) => {
+            // Filtrage des entrées nulles
+            setThematics((thematicsRes.data?.filter(t => t) || []) as WeeklyThematicType[]); 
+            setRaces((racesRes.data || []) as AbsenceType[]);
+            setSessions((sessionsRes.data || []) as SessionType[]);
+            setLoading(false);
+        }).catch(err => {
+            console.error("Erreur chargement calendrier thématique:", err);
+            setLoading(false);
+        });
+    }, [athleteId, calendarStart, numWeeks]);
+
+    // Calculer la charge prévue par semaine (IC et Heures)
+    const weeklyMetrics = useMemo(() => {
+        const metrics: Record<string, { load: number, hours: number }> = {};
+        for(const key of weeksKeys) metrics[key] = { load: 0, hours: 0 };
+
+        sessions.forEach(s => {
+            const weekStart = dayjs(s.date).startOf('isoWeek').format("YYYY-MM-DD");
+            if (metrics[weekStart]) {
+                metrics[weekStart].hours += s.planned_hour || 0;
+                // Calcul de l'IC (Indice de Charge)
+                const rpe = EST_RPE[s.intensity || "moyenne"] || 6;
+                metrics[weekStart].load += (s.planned_hour || 0) * rpe;
+            }
+        });
+        return metrics;
+    }, [sessions, weeksKeys]);
+
+    const getThematic = useCallback((week_start: string) => {
+        return thematics.find(t => t.week_start === week_start)?.thematic || "";
+    }, [thematics]);
+
+    const getRace = useCallback((week_start: string) => {
+        const weekEnd = dayjs(week_start).add(6, 'day').format('YYYY-MM-DD');
+        return races.find(r => dayjs(r.date).isBetween(dayjs(week_start).subtract(1, 'day'), dayjs(weekEnd).add(1, 'day'), 'day')) || null;
+    }, [races]);
+
+    const isCurrentWeek = (week_start: string) => dayjs(week_start).isSame(dayjs(), 'week');
+
+    return (
+        <div className="rounded-2xl bg-white p-4 border border-slate-200 shadow-sm mb-4">
+            <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-slate-800 flex items-center gap-2"><ChartLineUp size={20} className="text-blue-600"/> Mon Plan Général</h3>
+                <div className="flex items-center bg-slate-100 rounded-full p-1 gap-2 border border-slate-200">
+                    <button onClick={() => setMonthOffset(m => m - 1)} className="p-1.5 rounded-full hover:bg-white hover:shadow-sm transition"><CaretLeft size={18}/></button>
+                    <div className="text-sm font-bold text-slate-700 w-32 text-center">{currentMonth.format("MMMM YYYY").toUpperCase()}</div>
+                    <button onClick={() => setMonthOffset(m => m + 1)} className="p-1.5 rounded-full hover:bg-white hover:shadow-sm transition"><CaretRight size={18}/></button>
+                </div>
+            </div>
+
+            {loading ? (
+                <div className="text-slate-400 text-sm italic py-4 text-center">Chargement...</div>
+            ) : (
+                <div className="grid grid-cols-7 gap-2">
+                    {weeksKeys.map((week_start) => {
+                        const thematic = getThematic(week_start);
+                        const race = getRace(week_start);
+                        const isCurrent = isCurrentWeek(week_start);
+                        const metrics = weeklyMetrics[week_start];
+                        const displayRaceName = race?.name;
+                        
+                        let baseClasses = 'bg-slate-50 border-slate-200';
+                        let textClasses = 'text-slate-500';
+                        if (isCurrent) { baseClasses = 'bg-blue-100 border-blue-400 shadow-md'; textClasses = 'text-blue-800'; }
+                        else if (thematic) { baseClasses = 'bg-emerald-50 border-emerald-200'; textClasses = 'text-emerald-800'; }
+                        else if (displayRaceName) { baseClasses = 'bg-amber-50 border-amber-200'; textClasses = 'text-amber-800'; }
+
+
+                        return (
+                            <div key={week_start} 
+                                // Rendu statique, pas de onClick pour l'édition
+                                className={`group relative flex flex-col justify-between h-20 p-2 rounded-lg transition-all border ${baseClasses} cursor-default`}>
+                                
+                                <div className={`text-xs font-bold ${textClasses}`}>
+                                    S{dayjs(week_start).isoWeek()}
+                                </div>
+
+                                <div className={`text-[11px] font-medium leading-tight mt-0.5 truncate ${textClasses}`}>
+                                    {thematic || displayRaceName || "—"} 
+                                </div>
+                                
+                                {/* AFFICHAGE DE L'INDICE DE CHARGE (IC) & HEURES */}
+                                {metrics && metrics.hours > 0 && (
+                                    <div className={`mt-0.5 flex justify-between text-[10px] font-semibold p-0.5 rounded-full ${isCurrent ? 'text-blue-900' : 'text-slate-600'} `}>
+                                        <span className="font-bold">IC: {metrics.load.toFixed(0)}</span>
+                                        <span>H: {fmtTime(metrics.hours)}</span>
+                                    </div>
+                                )}
+
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
+        </div>
+    );
+}
+
+
+// ---------- Athlete Metrics (VMA / FTP)
 function paceFromKmh(kmh: number) {
   if (!kmh || kmh <= 0) return "—";
   const minPerKm = 60 / kmh;
@@ -519,12 +647,12 @@ function AthleteMetrics({ athleteId }: { athleteId: string }) {
   const ftpNum = ftp ? Number(ftp) : null;
 
   return (
-    <div className="mt-4 rounded-2xl border border-emerald-100 bg-white p-4 text-sm text-slate-700 space-y-3 shadow-sm">
+    <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-700 space-y-3 shadow-sm">
       <div className="grid grid-cols-2 gap-2">
         <label className="text-[10px] uppercase font-bold text-slate-500">VMA (km/h)<input type="number" step="0.1" value={vma} onChange={e=>setVma(e.target.value)} className="mt-1 w-full rounded border border-slate-200 px-2 py-1 text-sm"/></label>
         <label className="text-[10px] uppercase font-bold text-slate-500">FTP (w)<input type="number" value={ftp} onChange={e=>setFtp(e.target.value)} className="mt-1 w-full rounded border border-slate-200 px-2 py-1 text-sm"/></label>
       </div>
-      <button onClick={save} disabled={loading} className="w-full py-1.5 rounded bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold uppercase tracking-wide">{loading ? "..." : "Sauvegarder"}</button>
+      <button onClick={save} disabled={loading} className="w-full py-1.5 rounded bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold uppercase tracking-wide">{loading ? "..." : "Sauvegarder"}</button>
       {(vmaNum || ftpNum) && (
         <table className="w-full text-xs border-collapse mt-2">
           <thead><tr><th className="border-b text-left py-1 text-slate-400">%</th><th className="border-b text-center text-slate-400">Allure</th><th className="border-b text-center text-slate-400">Watt</th></tr></thead>
@@ -534,6 +662,7 @@ function AthleteMetrics({ athleteId }: { athleteId: string }) {
     </div>
   );
 }
+
 
 // ---------- Main page
 export default function AthletePage() {
@@ -600,7 +729,7 @@ export default function AthletePage() {
       const prevEnd = weekStart.add(-1, "day").format("YYYY-MM-DD");
       const { data: prevSessions } = await supabase.from("sessions").select("planned_hour,rpe,status").eq("user_id", athlete.id_auth).gte("date", prevStart).lte("date", prevEnd);
       const loadSessions = (prevSessions || []).filter((s) => s.status === "valide").reduce((acc, s) => acc + (Number(s.rpe) || 0) * (Number(s.planned_hour) || 0), 0);
-      setPrevWeekLoad(loadSessions); // Pas de compet dans le calcul simplifie ici, on peut rajouter si besoin
+      setPrevWeekLoad(loadSessions); 
 
       const base = weekStart.startOf("day");
       const { data: nextComp } = await supabase.from("absences_competitions").select("date,type").eq("user_id", athlete.id_auth).eq("type", "competition").gte("date", base.format("YYYY-MM-DD")).order("date", { ascending: true }).limit(1);
@@ -746,6 +875,8 @@ export default function AthletePage() {
 
         {/* Main Grid */}
         <section className="col-span-12 md:col-span-9">
+          {athlete && <AthleteThematicCalendar athleteId={athlete.id_auth} />} {/* <<< Calendrier Thématique Lecture Seule */}
+
           <DragDropContext onDragEnd={onDragEnd}>
             <div className="grid grid-cols-1 md:grid-cols-7 gap-3">
               {weekDays.map((d) => {

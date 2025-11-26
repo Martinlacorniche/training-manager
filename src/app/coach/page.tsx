@@ -5,8 +5,10 @@ import { useRouter } from "next/navigation";
 import dayjs from "dayjs";
 import "dayjs/locale/fr";
 import isoWeek from "dayjs/plugin/isoWeek";
+import isBetween from "dayjs/plugin/isBetween"; 
 dayjs.locale("fr");
 dayjs.extend(isoWeek);
+dayjs.extend(isBetween); 
 
 // Font
 import { Plus_Jakarta_Sans } from "next/font/google";
@@ -86,6 +88,7 @@ type UserType = { id_auth: string; name: string; coach_code?: string; coach_id?:
 type SessionType = { id: string; user_id: string; sport?: string; title?: string; planned_hour?: number; planned_inter?: string; intensity?: string; status?: string; rpe?: number | null; athlete_comment?: string | null; date: string; };
 type AbsenceType = { id: string; user_id: string; date: string; type: string; name?: string | null; distance_km?: number | null; elevation_d_plus?: number | null; comment?: string | null; rpe?: number | null; duration_hour?: number | null; status?: string | null; };
 type WeeklyReviewType = { week_start: string; rpe_life: number; comment: string; };
+type WeeklyThematicType = { user_id: string; week_start: string; thematic: string; };
 
 // ---------- COMPONENTS ----------
 
@@ -312,8 +315,7 @@ const SessionCard = React.memo(function SessionCard({ s, onEdit, onDelete }:{ s:
   const [showCoachNote, setShowCoachNote] = useState(false);
   const style = getSportStyle(s.sport);
   const alertType = getSessionAlert(s);
-  // Ligne ~265 dans SessionCard
-  const isPast = dayjs(s.date).isBefore(dayjs(), 'day'); // La date de la séance est-elle avant aujourd'hui ?
+  const isPast = dayjs(s.date).isBefore(dayjs(), 'day');
 
   let borderClass = "";
   if (alertType) {
@@ -324,7 +326,6 @@ const SessionCard = React.memo(function SessionCard({ s, onEdit, onDelete }:{ s:
     borderClass = "border border-emerald-400 ring-1 ring-emerald-400 shadow-sm";
   } else if (isPast) {
     // 3. NOUVEL INDICATEUR : NON VALIDÉE & PASSÉE
-    // J'utilise l'orange pour la distinguer de l'alerte surmenage (rose)
     borderClass = "border-2 border-amber-500 shadow-amber-100";
   } else {
     // 4. PLANIFIÉE FUTURE / JOUR J (Bordure Neutre)
@@ -398,7 +399,7 @@ const AbsenceCard = React.memo(function AbsenceCard({ a, onDelete }:{ a: Absence
     );
   });
 
-// ... (AthleteMetricsCoach inchangé)
+// 6. AthleteMetricsCoach
 function paceFromKmh(kmh: number) {
     if (!kmh || kmh <= 0) return "—";
     const minPerKm = 60 / kmh;
@@ -445,6 +446,192 @@ function paceFromKmh(kmh: number) {
       </div>
     );
   }
+
+// NOUVEAU COMPOSANT : Calendrier Thématique
+function CoachThematicCalendar({ athleteId }:{ athleteId: string; }) {
+    const [monthOffset, setMonthOffset] = useState(0);
+    const [thematics, setThematics] = useState<WeeklyThematicType[]>([]);
+    const [races, setRaces] = useState<AbsenceType[]>([]);
+    const [sessions, setSessions] = useState<SessionType[]>([]);
+    
+    const [loading, setLoading] = useState(false);
+    const [editing, setEditing] = useState<{ week_start: string, thematic: string } | null>(null);
+    const ref = useRef<HTMLInputElement>(null);
+
+    const currentMonth = useMemo(() => dayjs().add(monthOffset, "month").startOf("month"), [monthOffset]);
+    const calendarStart = useMemo(() => currentMonth.startOf("week"), [currentMonth]);
+    const numWeeks = useMemo(() => {
+        const end = currentMonth.endOf("month").endOf("week");
+        return end.diff(calendarStart, 'week') + 1;
+    }, [currentMonth, calendarStart]);
+    const weeks = useMemo(() => Array.from({ length: numWeeks }, (_, i) => calendarStart.add(i, "week")), [numWeeks, calendarStart]);
+    const weeksKeys = useMemo(() => weeks.map(w => w.startOf("isoWeek").format("YYYY-MM-DD")), [weeks]);
+
+    // Charger les thématiques, courses et sessions pour la charge
+    useEffect(() => {
+        if (!athleteId) return;
+        const monthStart = calendarStart.format("YYYY-MM-DD");
+        const monthEnd = calendarStart.add(numWeeks, "week").add(6, "day").format("YYYY-MM-DD");
+        
+        setLoading(true);
+        Promise.all([
+            supabase.from("weekly_thematics").select("week_start, thematic").eq("user_id", athleteId).gte("week_start", monthStart).lte("week_start", monthEnd),
+            supabase.from("absences_competitions").select("date, name, type").eq("user_id", athleteId).eq("type", "competition").gte("date", monthStart).lte("date", monthEnd),
+            supabase.from("sessions").select("date, planned_hour, intensity").eq("user_id", athleteId).gte("date", monthStart).lte("date", monthEnd),
+        ]).then(([thematicsRes, racesRes, sessionsRes]) => {
+            // CORRECTION: Filtrage des entrées nulles pour éviter le TypeError
+            setThematics((thematicsRes.data?.filter(t => t) || []) as WeeklyThematicType[]); 
+            setRaces((racesRes.data || []) as AbsenceType[]);
+            setSessions((sessionsRes.data || []) as SessionType[]);
+            setLoading(false);
+        }).catch(err => {
+            console.error("Erreur chargement calendrier thématique:", err);
+            setLoading(false);
+        });
+    }, [athleteId, calendarStart, numWeeks]);
+
+    // Calculer la charge prévue par semaine (Load et Heures)
+    const weeklyMetrics = useMemo(() => {
+        const metrics: Record<string, { load: number, hours: number }> = {};
+        for(const key of weeksKeys) metrics[key] = { load: 0, hours: 0 };
+
+        sessions.forEach(s => {
+            const weekStart = dayjs(s.date).startOf('isoWeek').format("YYYY-MM-DD");
+            if (metrics[weekStart]) {
+                metrics[weekStart].hours += s.planned_hour || 0;
+                metrics[weekStart].load += getPlannedLoad(s);
+            }
+        });
+        return metrics;
+    }, [sessions, weeksKeys]);
+
+    // Focus sur l'input d'édition
+    useEffect(() => {
+        if (editing && ref.current) ref.current.focus();
+    }, [editing]);
+
+    // Fonctions CRUD Thématique
+    const getThematic = useCallback((week_start: string) => {
+        return thematics.find(t => t.week_start === week_start)?.thematic || "";
+    }, [thematics]);
+
+    const getRace = useCallback((week_start: string) => {
+        const weekEnd = dayjs(week_start).add(6, 'day').format('YYYY-MM-DD');
+        return races.find(r => dayjs(r.date).isBetween(dayjs(week_start).subtract(1, 'day'), dayjs(weekEnd).add(1, 'day'), 'day')) || null;
+    }, [races]);
+
+    const handleSave = async (week_start: string, thematic: string) => {
+        const trimmedThematic = thematic.trim();
+        const currentThematic = getThematic(week_start);
+
+        if (!trimmedThematic) {
+            // Suppression
+            if (currentThematic) {
+                await supabase.from("weekly_thematics").delete().eq("user_id", athleteId).eq("week_start", week_start);
+                setThematics(prev => prev.filter(t => t.week_start !== week_start));
+            }
+        } else {
+            const payload: WeeklyThematicType = { user_id: athleteId, week_start, thematic: trimmedThematic };
+            let data: WeeklyThematicType | null = null;
+            if (currentThematic) {
+                // Mise à jour
+                const { data: d } = await supabase.from("weekly_thematics").update(payload).eq("user_id", athleteId).eq("week_start", week_start).select().single();
+                data = d as WeeklyThematicType;
+                setThematics(prev => prev.map(t => t.week_start === week_start ? data! : t));
+            } else {
+                // Insertion
+                const { data: d } = await supabase.from("weekly_thematics").insert(payload).select().single();
+                data = d as WeeklyThematicType;
+                setThematics(prev => [...prev, data!]);
+            }
+        }
+        setEditing(null);
+    };
+
+    const handleCellClick = (week_start: string) => {
+        const currentThematic = getThematic(week_start);
+        setEditing({ week_start, thematic: currentThematic });
+    };
+
+    const handleEditChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (editing) setEditing({ ...editing, thematic: e.target.value });
+    };
+
+    const isCurrentWeek = (week_start: string) => dayjs(week_start).isSame(dayjs(), 'week');
+
+    return (
+        <div className="rounded-2xl bg-white p-4 border border-slate-200 shadow-sm">
+            <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-slate-800 flex items-center gap-2"><ChartLineUp size={20} className="text-emerald-600"/> Planification Thématique</h3>
+                <div className="flex items-center bg-slate-100 rounded-full p-1 gap-2 border border-slate-200">
+                    <button onClick={() => setMonthOffset(m => m - 1)} className="p-1.5 rounded-full hover:bg-white hover:shadow-sm transition"><CaretLeft size={18}/></button>
+                    <div className="text-sm font-bold text-slate-700 w-32 text-center">{currentMonth.format("MMMM YYYY").toUpperCase()}</div>
+                    <button onClick={() => setMonthOffset(m => m + 1)} className="p-1.5 rounded-full hover:bg-white hover:shadow-sm transition"><CaretRight size={18}/></button>
+                </div>
+            </div>
+
+            {loading ? (
+                <div className="text-slate-400 text-sm italic py-4 text-center">Chargement...</div>
+            ) : (
+                <div className="grid grid-cols-7 gap-2">
+                    {weeksKeys.map((week_start) => {
+                        const thematic = getThematic(week_start);
+                        const race = getRace(week_start);
+                        const isEditing = editing?.week_start === week_start;
+                        const isCurrent = isCurrentWeek(week_start);
+                        const metrics = weeklyMetrics[week_start];
+                        const displayRaceName = race?.name;
+                        
+                        let baseClasses = 'bg-slate-50 hover:bg-slate-100 border-slate-200';
+                        let textClasses = 'text-slate-500';
+                        if (isCurrent) { baseClasses = 'bg-blue-100 border-blue-400 shadow-md'; textClasses = 'text-blue-800'; }
+                        else if (thematic) { baseClasses = 'bg-emerald-50 hover:bg-emerald-100 border-emerald-200'; textClasses = 'text-emerald-800'; }
+                        else if (displayRaceName) { baseClasses = 'bg-amber-50 hover:bg-amber-100 border-amber-200'; textClasses = 'text-amber-800'; }
+
+
+                        return (
+                            <div key={week_start} 
+                                onClick={() => handleCellClick(week_start)}
+                                className={`group relative flex flex-col justify-between h-20 p-2 rounded-lg cursor-pointer transition-all border ${baseClasses}`}>
+                                
+                                <div className={`text-xs font-bold ${textClasses}`}>
+                                    S{dayjs(week_start).isoWeek()}
+                                </div>
+
+                                {isEditing ? (
+                                    <form onSubmit={(e) => { e.preventDefault(); handleSave(week_start, editing.thematic); }}>
+                                        <input
+                                            ref={ref}
+                                            value={editing.thematic}
+                                            onChange={handleEditChange}
+                                            onBlur={(e) => handleSave(week_start, e.target.value)}
+                                            className="w-full text-xs p-1 bg-white rounded shadow-sm border border-slate-300 focus:outline-none focus:ring-1 focus:ring-emerald-400"
+                                            placeholder="Thématique..."
+                                        />
+                                    </form>
+                                ) : (
+                                    <div className={`text-[11px] font-medium leading-tight mt-0.5 truncate ${textClasses}`}>
+                                        {thematic || displayRaceName || "—"}
+                                    </div>
+                                )}
+                                
+                                {/* AFFICHAGE DE L'INDICE DE CHARGE (IC) & HEURES */}
+                                {metrics && metrics.hours > 0 && !isEditing && (
+                                    <div className={`mt-0.5 flex justify-between text-[10px] font-semibold p-0.5 rounded-full ${isCurrent ? 'text-blue-900' : 'text-slate-600'} `}>
+                                        <span className="font-bold">IC: {metrics.load.toFixed(0)}</span> {/* MODIFIÉ : Ld -> IC */}
+                                        <span>H: {fmtTime(metrics.hours)}</span>
+                                    </div>
+                                )}
+
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
+        </div>
+    );
+}
+
 
 // ---------- MAIN PAGE ----------
 export default function CoachAthleteFocusV13() {
@@ -541,7 +728,7 @@ export default function CoachAthleteFocusV13() {
       setPrevWeekLoad(loadSessions);
 
       const base = weekStart.startOf("day");
-      const { data: nextComp } = await supabase.from("absences_competitions").select("date,type").eq("user_id", selectedAthleteId).eq("type", "competition").gte("date", base.format("YYYY-MM-DD")).order("date", { ascending: true }).limit(1);
+      const { data: nextComp } = await supabase.from("absences_competitions").select("date,name,type").eq("user_id", selectedAthleteId).eq("type", "competition").gte("date", base.format("YYYY-MM-DD")).order("date", { ascending: true }).limit(1);
       if (nextComp && nextComp.length) {
         const d = dayjs(nextComp[0].date).startOf("day");
         if (d.isSame(base, "week")) setNextRaceText("cette semaine");
@@ -706,6 +893,10 @@ export default function CoachAthleteFocusV13() {
                 </div>
             </div>
           )}
+          
+          {/* NOUVEAU : CALENDRIER THÉMATIQUE */}
+          {selectedAthleteId && <CoachThematicCalendar athleteId={selectedAthleteId} />}
+
 
           <div className="grid grid-cols-1 md:grid-cols-7 gap-3">
             {weekDays.map((d) => {

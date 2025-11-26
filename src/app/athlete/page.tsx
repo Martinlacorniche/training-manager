@@ -381,15 +381,27 @@ function AbsenceModal({ open, onClose, onSaved, initial, athleteId, date }:{ ope
 const SessionCard = React.memo(function SessionCard({ s, onEdit, onDelete }:{ s: SessionType; onEdit: ()=>void; onDelete: ()=>void; }) {
   const [showComment, setShowComment] = useState(false);
   const style = getSportStyle(s.sport);
+  const isPast = dayjs(s.date).isBefore(dayjs(), 'day');
 
   // Logique Bordure/Alerte (Miroir du coach)
-  let borderClass = "border border-transparent";
+ let borderClass = "border border-transparent";
   // Alerte Douleur ?
   const hasPain = s.athlete_comment && /(mal|douleur|blessure|gêne|bob)/i.test(s.athlete_comment);
   const hasBadRpe = s.status === "valide" && s.intensity === "basse" && (s.rpe || 0) > 8;
   
-  if (hasPain || hasBadRpe) borderClass = "border-2 border-rose-500 shadow-red-100";
-  else if (s.status === "valide") borderClass = "border border-emerald-400 ring-1 ring-emerald-400 shadow-sm";
+  if (hasPain || hasBadRpe) {
+    // 1. ALERTE DOULEUR / SURMENAGE (PRIORITAIRE)
+    borderClass = "border-2 border-rose-500 shadow-red-100";
+  }
+  else if (s.status === "valide") {
+    // 2. SÉANCE VALIDÉE
+    borderClass = "border border-emerald-400 ring-1 ring-emerald-400 shadow-sm";
+  }
+  else if (isPast) {
+    // 3. NOUVEL INDICATEUR : NON VALIDÉE & PASSÉE
+    // Utilisation de l'ambre/orange pour signaler un "manque"
+    borderClass = "border-2 border-amber-500 shadow-amber-100";
+  }
 
   return (
     <div className={`relative rounded-xl p-3 mb-2 overflow-hidden transition-all shadow-sm ${style.bg} ${borderClass}`}>

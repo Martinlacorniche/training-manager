@@ -312,10 +312,24 @@ const SessionCard = React.memo(function SessionCard({ s, onEdit, onDelete }:{ s:
   const [showCoachNote, setShowCoachNote] = useState(false);
   const style = getSportStyle(s.sport);
   const alertType = getSessionAlert(s);
+  // Ligne ~265 dans SessionCard
+  const isPast = dayjs(s.date).isBefore(dayjs(), 'day'); // La date de la séance est-elle avant aujourd'hui ?
+
   let borderClass = "";
-  if (alertType) borderClass = "border-2 border-rose-500 shadow-red-100";
-  else if (s.status === "valide") borderClass = "border border-emerald-400 ring-1 ring-emerald-400 shadow-sm";
-  else borderClass = "border border-transparent";
+  if (alertType) {
+    // 1. ALERTE DOULEUR / SURMENAGE (PRIORITAIRE)
+    borderClass = "border-2 border-rose-500 shadow-red-100";
+  } else if (s.status === "valide") {
+    // 2. SÉANCE VALIDÉE
+    borderClass = "border border-emerald-400 ring-1 ring-emerald-400 shadow-sm";
+  } else if (isPast) {
+    // 3. NOUVEL INDICATEUR : NON VALIDÉE & PASSÉE
+    // J'utilise l'orange pour la distinguer de l'alerte surmenage (rose)
+    borderClass = "border-2 border-amber-500 shadow-amber-100";
+  } else {
+    // 4. PLANIFIÉE FUTURE / JOUR J (Bordure Neutre)
+    borderClass = "border border-transparent";
+  }
 
   return (
     <motion.div layout initial={{opacity:0,y:6}} animate={{opacity:1,y:0}} exit={{opacity:0,y:6}} transition={{duration:0.2}} whileHover={{y:-1}}

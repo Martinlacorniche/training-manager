@@ -18,21 +18,18 @@ const jakarta = Plus_Jakarta_Sans({ subsets: ["latin"], weight: ["500","600","70
 import {
   PencilSimple, Trash, Plus, Info, ChartLineUp,
   CaretLeft, CaretRight, CheckCircle, XCircle,
-  ChartLineUp as LoadIcon, Bicycle, SwimmingPool, Mountains, PersonSimpleRun, Clock, SignOut,
+  Bicycle, SwimmingPool, Mountains, PersonSimpleRun, Clock, SignOut,
   WarningCircle, Fire, Smiley, SmileySad, SmileyMeh, Notebook, X, Question, Check
 } from "@phosphor-icons/react";
 
 // Animations
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 
-// ---------- HELPERS INTELLIGENTS & COULEURS ----------
+// ---------- HELPERS & CONSTANTES ----------
 
 const EST_RPE: Record<string, number> = { basse: 3, moyenne: 6, haute: 9 };
-function getPlannedLoad(s: SessionType) {
-  const rpe = EST_RPE[s.intensity || "moyenne"] || 6;
-  return (s.planned_hour || 0) * rpe;
-}
 
+// Liste étendue pour éviter les collisions de totems
 const TOTEMS_LIST = [
   "🦊", "🦁", "🐯", "🐻", "🐨", "🐼", "🦖", "🐙", "🦄", "🤖", 
   "👽", "👾", "🐉", "🦥", "🦦", "🦉", "🦈", "🦅", "🦍", "🐺",
@@ -42,30 +39,16 @@ const TOTEMS_LIST = [
   "🐩", "🐈", "🐓", "🦃", "🦚", "🦜", "🦢", "🦩", "🕊️", "🐇"
 ];
 
-// On utilise l'ID unique (uid) au lieu du nom pour garantir une meilleure répartition
+// Générateur de Totem basé sur l'ID unique (Stable & Varié)
 function getTotem(uid: string) {
     let hash = 0;
-    // L'ID est long et complexe, ça crée une "empreinte" numérique très variée
-    for (let i = 0; i < uid.length; i++) {
-        hash = uid.charCodeAt(i) + ((hash << 5) - hash);
-    }
+    for (let i = 0; i < uid.length; i++) hash = uid.charCodeAt(i) + ((hash << 5) - hash);
     return TOTEMS_LIST[Math.abs(hash) % TOTEMS_LIST.length];
 }
 
-// Helper pour générer une couleur "Fun" et constante basée sur le nom
-function getAvatarColor(name: string) {
-    const colors = [
-        "bg-blue-500", "bg-violet-500", "bg-fuchsia-500", "bg-rose-500", 
-        "bg-orange-500", "bg-amber-500", "bg-emerald-500", "bg-cyan-500", "bg-indigo-500"
-    ];
-    let hash = 0;
-    for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
-    return colors[Math.abs(hash) % colors.length];
-}
-
-// Helper pour les initiales (ex: "Benjamin Jouen" -> "BJ")
-function getInitials(name: string) {
-    return name.split(" ").map(n => n[0]).slice(0, 2).join("").toUpperCase();
+function getPlannedLoad(s: SessionType) {
+  const rpe = EST_RPE[s.intensity || "moyenne"] || 6;
+  return (s.planned_hour || 0) * rpe;
 }
 
 function getSessionAlert(s: SessionType): string | null {
@@ -127,7 +110,6 @@ type WeeklyThematicType = { user_id: string; week_start: string; thematic: strin
 
 // ---------- COMPONENTS ----------
 
-// 1. RPE POPOVER (inchangé)
 function RpeGuidePopover({ open, onClose }:{ open:boolean; onClose:()=>void }) {
     const ref = useRef<HTMLDivElement>(null);
     useEffect(() => {
@@ -183,7 +165,6 @@ function RpeGuidePopover({ open, onClose }:{ open:boolean; onClose:()=>void }) {
     );
 }
 
-// 2. Modal Séance (inchangé)
 function SessionModal({ open, onClose, onSaved, initial, athlete, date }:{ open: boolean; onClose: ()=>void; onSaved: (s: SessionType, isEdit: boolean)=>void; initial?: SessionType | null; athlete: UserType; date: string; }) {
     const [sport, setSport] = useState("Run");
     const [title, setTitle] = useState("");
@@ -275,7 +256,6 @@ function SmoothCollapsible({ open, children }:{ open: boolean; children: React.R
     return (<motion.div style={{ overflow: "hidden" }} initial={false} animate={{ height }} transition={{ duration: 0.22 }}> <div ref={ref}>{children}</div></motion.div>);
 }
 
-// 3. Panneau Latéral Historique (inchangé)
 function LifeHistoryPanel({ open, onClose, athleteId }:{ open: boolean; onClose: ()=>void; athleteId: string; }) {
     const [history, setHistory] = useState<WeeklyReviewType[]>([]);
     const [loading, setLoading] = useState(false);
@@ -345,7 +325,6 @@ function LifeHistoryPanel({ open, onClose, athleteId }:{ open: boolean; onClose:
     );
 }
 
-// 4. SessionCard (inchangé)
 const SessionCard = React.memo(function SessionCard({ s, onEdit, onDelete }:{ s: SessionType; onEdit: ()=>void; onDelete: ()=>void; }) {
   const [showCoachNote, setShowCoachNote] = useState(false);
   const style = getSportStyle(s.sport);
@@ -402,7 +381,6 @@ const SessionCard = React.memo(function SessionCard({ s, onEdit, onDelete }:{ s:
   );
 });
 
-// 5. AbsenceCard (inchangé)
 const AbsenceCard = React.memo(function AbsenceCard({ a, onDelete }:{ a: AbsenceType; onDelete: ()=>void; }) {
     const isComp = a.type === "competition";
     let cls = "bg-slate-50 border-slate-200 text-slate-500";
@@ -430,7 +408,6 @@ const AbsenceCard = React.memo(function AbsenceCard({ a, onDelete }:{ a: Absence
     );
   });
 
-// 6. AthleteMetricsCoach (inchangé)
 function paceFromKmh(kmh: number) {
     if (!kmh || kmh <= 0) return "—";
     const minPerKm = 60 / kmh;
@@ -478,7 +455,6 @@ function paceFromKmh(kmh: number) {
     );
   }
 
-// NOUVEAU COMPOSANT : Calendrier Thématique (inchangé)
 function CoachThematicCalendar({ athleteId }:{ athleteId: string; }) {
     const [monthOffset, setMonthOffset] = useState(0);
     const [thematics, setThematics] = useState<WeeklyThematicType[]>([]);
@@ -866,7 +842,7 @@ export default function CoachAthleteFocusV13() {
                 {athletes.map((a, i) => {
                     const active = a.id_auth === selectedAthleteId;
                     const [fName, ...lName] = a.name.split(" ");
-                    const totem = getTotem(a.id_auth);
+                    const totem = getTotem(a.id_auth); // Génération du Totem Unique
 
                     return (
                         <motion.div 
@@ -1050,7 +1026,7 @@ export default function CoachAthleteFocusV13() {
           </div>
         </section>
 
-        {/* COLONNE DROITE : FEED LIVE CHAT MODERNISÉ */}
+        {/* COLONNE DROITE : FEED LIVE CHAT MODERNISÉ (STICKY) */}
         <aside className="col-span-12 md:col-span-2 flex flex-col h-[calc(100vh-120px)] sticky top-24">
              {/* En-tête style "App de messagerie" */}
              <div className="flex items-center justify-between px-3 py-3 bg-white rounded-t-2xl border border-b-0 border-slate-200 shadow-sm z-10">
@@ -1149,7 +1125,7 @@ export default function CoachAthleteFocusV13() {
                                             <div className="flex items-center gap-1">
                                                 <div className="flex gap-0.5">
                                                     {[...Array(3)].map((_,i) => (
-                                                        <div key={i} className={`w-1 h-1 rounded-full ${i < Math.ceil(s.rpe/3.33) ? "bg-emerald-500" : "bg-emerald-200"}`}/>
+                                                        <div key={i} className={`w-1 h-1 rounded-full ${i < Math.ceil((s.rpe || 0)/3.33) ? "bg-emerald-500" : "bg-emerald-200"}`}/>
                                                     ))}
                                                 </div>
                                                 <span className="text-[9px] font-bold text-emerald-600">RPE {s.rpe}</span>

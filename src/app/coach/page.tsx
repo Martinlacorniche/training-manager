@@ -103,7 +103,7 @@ function formatDuration(h?: number | null) {
 
 // ---------- TYPES ----------
 type UserType = { id_auth: string; name: string; coach_code?: string; coach_id?: string; ordre: number | null; alert?: boolean };
-type SessionType = { id: string; user_id: string; sport?: string; title?: string; planned_hour?: number; planned_inter?: string; intensity?: string; status?: string; rpe?: number | null; athlete_comment?: string | null; date: string; };
+type SessionType = { id: string; user_id: string; sport?: string; title?: string; planned_hour?: number; planned_inter?: string; intensity?: string; status?: string; rpe?: number | null; athlete_comment?: string | null; date: string; strava_activity_id?: number | null; strava_imported?: boolean | null; strava_distance?: number | null; strava_elevation?: number | null; strava_avg_hr?: number | null; strava_avg_watts?: number | null; };
 type AbsenceType = { id: string; user_id: string; date: string; type: string; name?: string | null; distance_km?: number | null; elevation_d_plus?: number | null; comment?: string | null; rpe?: number | null; duration_hour?: number | null; status?: string | null; };
 type WeeklyReviewType = { week_start: string; rpe_life: number; comment: string; };
 type WeeklyThematicType = { user_id: string; week_start: string; thematic: string; };
@@ -327,6 +327,7 @@ function LifeHistoryPanel({ open, onClose, athleteId }:{ open: boolean; onClose:
 
 const SessionCard = React.memo(function SessionCard({ s, onEdit, onDelete }:{ s: SessionType; onEdit: ()=>void; onDelete: ()=>void; }) {
   const [showCoachNote, setShowCoachNote] = useState(false);
+  const [showStravaTooltip, setShowStravaTooltip] = useState(false);
   const style = getSportStyle(s.sport);
   const alertType = getSessionAlert(s);
   const isPast = dayjs(s.date).isBefore(dayjs(), 'day');
@@ -344,7 +345,7 @@ const SessionCard = React.memo(function SessionCard({ s, onEdit, onDelete }:{ s:
 
   return (
     <motion.div layout initial={{opacity:0,y:6}} animate={{opacity:1,y:0}} exit={{opacity:0,y:6}} transition={{duration:0.2}} whileHover={{y:-1}}
-      className={`relative rounded-xl p-3 mb-2 overflow-hidden transition-all shadow-sm ${style.bg} ${borderClass}`}>
+      className={`relative rounded-xl p-3 mb-2 transition-all shadow-sm ${style.bg} ${borderClass}`}>
       <div className="flex items-start justify-between gap-1 mb-1.5">
         <div className="flex items-center gap-1.5">
            <span className={`${style.icon}`}>{sportIcon(s.sport, 16)}</span>
@@ -365,6 +366,32 @@ const SessionCard = React.memo(function SessionCard({ s, onEdit, onDelete }:{ s:
             <div className="flex items-center gap-1 font-bold">{alertType === "surmenage" && <Fire size={12} className="text-rose-500"/>}<span>RPE {s.rpe}</span></div>
         ) : (<div className="opacity-60 italic text-[10px]">Prev. RPE ~{EST_RPE[s.intensity || "moyenne"] || 6}</div>)}
       </div>
+
+      {s.strava_activity_id && (
+        <div className="relative mt-1 inline-block"
+          onMouseEnter={() => setShowStravaTooltip(true)}
+          onMouseLeave={() => setShowStravaTooltip(false)}
+        >
+          {s.strava_imported ? (
+            <span className="inline-flex items-center gap-0.5 bg-orange-100 text-orange-600 border border-orange-300 rounded px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide cursor-default">
+              ⚡ Strava
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-0.5 bg-orange-100 text-orange-600 border border-orange-300 rounded px-1.5 py-0.5 text-[9px] font-black cursor-default">
+              ⚡
+            </span>
+          )}
+          {showStravaTooltip && (
+            <div className="absolute bottom-full left-0 mb-1.5 z-50 bg-slate-800 text-white rounded-lg px-3 py-2 text-[11px] font-medium shadow-xl whitespace-nowrap">
+              {s.strava_distance != null && <div>📍 {s.strava_distance} km</div>}
+              {s.strava_elevation != null && s.strava_elevation > 0 && <div>⛰️ {s.strava_elevation} m D+</div>}
+              {s.strava_avg_hr != null && <div>❤️ {Math.round(s.strava_avg_hr)} bpm moy.</div>}
+              {s.strava_avg_watts != null && <div>⚡ {Math.round(s.strava_avg_watts)} w moy.</div>}
+              <div className="absolute top-full left-3 border-4 border-transparent border-t-slate-800"/>
+            </div>
+          )}
+        </div>
+      )}
       {(s.athlete_comment || s.rpe) && (
         <div className={`mt-2 p-2 bg-white/80 rounded-lg text-[11px] italic text-slate-700 border border-white/50 ${alertType === "douleur" ? "border-rose-300 bg-rose-50 text-rose-800 font-medium" : ""}`}>
           {s.athlete_comment ? `“${s.athlete_comment}”` : ""}{!s.athlete_comment && s.rpe ? `Ressenti: ${s.rpe}/10` : ""}

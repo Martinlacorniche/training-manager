@@ -76,7 +76,7 @@ function fmtTime(h?: number | null) {
 
 // ---------- TYPES ----------
 type UserType = { id_auth: string; name: string; coach_code?: string; coach_id?: string; ordre: number | null; };
-type SessionType = { id: string; user_id: string; sport?: string; title?: string; planned_hour?: number; planned_inter?: string; intensity?: string; status?: string; rpe?: number | null; athlete_comment?: string | null; date: string; };
+type SessionType = { id: string; user_id: string; sport?: string; title?: string; planned_hour?: number; planned_inter?: string; intensity?: string; status?: string; rpe?: number | null; athlete_comment?: string | null; date: string; strava_activity_id?: number | null; strava_distance?: number | null; strava_elevation?: number | null; strava_avg_hr?: number | null; strava_avg_watts?: number | null; };
 type AbsenceType = {
   id: string; user_id: string; date: string; type: string; name?: string | null;
   distance_km?: number | null; elevation_d_plus?: number | null; comment?: string | null;
@@ -285,6 +285,7 @@ function ValidateModal({ open, onClose, onSaved, initial }:{ open: boolean; onCl
               <textarea value={comment} onChange={(e)=>setComment(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 p-2 min-h-[90px] bg-slate-50 focus:bg-white transition" placeholder="Sensations, douleurs..."/>
             </label>
 
+
             <div className="flex justify-end gap-3 pt-2">
               <button type="button" onClick={onClose} className="px-4 py-2 rounded-lg bg-white border border-slate-200 text-slate-700 font-medium hover:bg-slate-50">Annuler</button>
               <button disabled={loading} className="px-6 py-2 rounded-lg text-white bg-emerald-600 hover:bg-emerald-700 font-bold shadow-md shadow-emerald-200">
@@ -426,12 +427,18 @@ const SessionCard = React.memo(function SessionCard({ s, onEdit, onDelete }:{ s:
       
       {/* Metrics */}
       <div className={`flex items-center justify-between text-xs font-medium ${style.text} opacity-90`}>
-        <div className="flex items-center gap-1"><Clock size={12}/> {fmtTime(s.planned_hour)}</div>
+        <div className="flex items-center gap-1">
+          <Clock size={12}/> {fmtTime(s.planned_hour)}
+        </div>
         {s.status === "valide" && s.rpe ? (
             <div className="flex items-center gap-1 font-bold">
                {hasBadRpe && <Fire size={12} className="text-rose-500"/>}
                <span>RPE {s.rpe}</span>
             </div>
+        ) : s.status === "valide" ? (
+            <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-700 border border-amber-300 rounded px-1.5 py-0.5 text-[9px] font-black uppercase">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse inline-block"/> RPE ?
+            </span>
         ) : (
             <div className="opacity-60 italic text-[10px]">Prévu ~{EST_RPE[s.intensity || "moyenne"] || 6}</div>
         )}

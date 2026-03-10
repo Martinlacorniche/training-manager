@@ -3,12 +3,15 @@ import { useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { Bike, BikeIcon } from "lucide-react";
+import { Plus_Jakarta_Sans } from "next/font/google";
+
+const jakarta = Plus_Jakarta_Sans({ subsets: ["latin"], weight: ["400","500","600","700","800"], display: "swap" });
 
 export default function Login() {
   const router = useRouter();
   const [form, setForm] = useState({ email: "", password: "" });
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setForm({ ...form, [e.target.name]: e.target.value });
@@ -17,92 +20,75 @@ export default function Login() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setLoading(true);
 
-    const { data, error } = await supabase.auth.signInWithPassword({
+    const { error } = await supabase.auth.signInWithPassword({
       email: form.email,
       password: form.password,
     });
 
-    if (error) {
-      setError(error.message || "Erreur de connexion.");
-      return;
-    }
-
+    setLoading(false);
+    if (error) { setError("Email ou mot de passe incorrect."); return; }
     router.push("/");
   };
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-emerald-400 via-blue-400 to-blue-600 p-2 sm:p-6 flex flex-col items-center">
+    <main className={`${jakarta.className} min-h-screen bg-slate-100 flex flex-col items-center justify-center px-4`}>
 
-      <div className="flex flex-col items-center">
-        {/* Logo avec icône vélo */}
-        <div className="mb-4 relative w-fit mx-auto">
+      <div className="w-full max-w-sm">
+
+        <div className="flex flex-col items-center mb-8">
           <Image
             src="/coach-logo.jpg"
-            width={120}
-            height={120}
-            alt="Logo NG Sports"
-            className="rounded-full shadow-lg border-4 border-white object-cover -mb-2 mt-2"
-            priority
+            width={56} height={56}
+            alt="Logo C'est Ludique"
+            className="rounded-full border border-slate-200 object-cover mb-4 shadow-sm"
           />
-          <BikeIcon
-            size={34}
-            className="absolute -right-7 top-5 text-blue-700 drop-shadow-lg animate-bounce"
-            strokeWidth={2.2}
-          />
+          <h1 className="text-xl font-extrabold text-slate-800 tracking-tight">C&apos;est Ludique</h1>
+          <p className="text-slate-500 text-sm mt-1">Bienvenue, connecte-toi pour continuer</p>
         </div>
-        <div className="bg-white/90 rounded-2xl shadow-2xl p-8 w-full max-w-md flex flex-col items-center relative">
-          <h2 className="text-2xl font-bold text-emerald-600 mb-2 tracking-tight flex items-center gap-2">
-  <Bike className="inline mb-1 text-blue-700" size={28} />
-  Connexion
-</h2>
 
-          <p className="mb-6 text-blue-700 text-center font-semibold tracking-wide">
-            Viens transpirer avec NG Sport Coaching !
-          </p>
-          <form onSubmit={handleSubmit} className="flex flex-col gap-3 w-full">
+        <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-6">
+          <form onSubmit={handleSubmit} className="flex flex-col gap-3">
             <input
-              name="email"
-              type="email"
-              placeholder="Adresse e-mail"
-              value={form.email}
-              onChange={handleChange}
-              required
-              className="p-2 rounded-xl border border-emerald-200 focus:ring-2 focus:ring-blue-300 transition"
+              name="email" type="email" placeholder="Adresse e-mail"
+              value={form.email} onChange={handleChange} required
+              className="w-full bg-slate-50 border border-slate-200 text-slate-800 placeholder-slate-400 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400/40 focus:border-emerald-400 transition"
             />
             <input
-              name="password"
-              type="password"
-              placeholder="Mot de passe"
-              value={form.password}
-              onChange={handleChange}
-              required
-              className="p-2 rounded-xl border border-emerald-200 focus:ring-2 focus:ring-blue-300 transition"
+              name="password" type="password" placeholder="Mot de passe"
+              value={form.password} onChange={handleChange} required
+              className="w-full bg-slate-50 border border-slate-200 text-slate-800 placeholder-slate-400 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400/40 focus:border-emerald-400 transition"
             />
+            {error && <p className="text-red-500 text-xs text-center">{error}</p>}
             <button
-              type="submit"
-              className="p-2 rounded-xl bg-gradient-to-r from-blue-400 to-emerald-500 text-white font-bold mt-2 shadow-lg hover:scale-105 transition"
+              type="submit" disabled={loading}
+              className="w-full bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-white font-bold py-2.5 rounded-xl text-sm transition mt-1"
             >
-              Se connecter 🚴‍♂️
+              {loading ? "Connexion…" : "Se connecter"}
             </button>
-            {error && <div className="text-red-500 text-sm text-center mt-2">{error}</div>}
           </form>
-          <div className="mt-4 text-sm text-gray-500">
-            Pas encore de compte ?{" "}
-            <a href="/signup" className="text-emerald-700 underline font-bold hover:text-blue-600 transition">
-              Inscris-toi
+
+          <div className="mt-4 text-center">
+            <a href="/reset-password" className="text-slate-400 hover:text-slate-600 text-xs transition">
+              Mot de passe oublié ?
             </a>
           </div>
-          <div className="mt-2 text-sm text-gray-500">
-  <a
-    href="/reset-password"
-    className="text-emerald-700 underline font-bold hover:text-blue-600 transition"
-  >
-    Mot de passe oublié ?
-  </a>
-</div>
-
         </div>
+
+        <p className="text-center text-slate-500 text-sm mt-5">
+          Pas encore de compte ?{" "}
+          <a href="/signup" className="text-emerald-600 hover:text-emerald-700 font-semibold transition">
+            S&apos;inscrire
+          </a>
+        </p>
+
+        <p className="text-center mt-4">
+          <a href="/" className="text-slate-400 hover:text-slate-600 text-xs transition">
+            ← Retour à l&apos;accueil
+          </a>
+        </p>
+
       </div>
     </main>
   );

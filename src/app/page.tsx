@@ -8,6 +8,7 @@ import { Plus_Jakarta_Sans } from "next/font/google";
 import {
   ClipboardList, Users, BarChart2, Key,
   Smartphone, Bike, Activity, Timer, Heart, Zap, Target, TrendingUp,
+  Send,
 } from "lucide-react";
 
 const jakarta = Plus_Jakarta_Sans({ subsets: ["latin"], weight: ["400","500","600","700","800"], display: "swap" });
@@ -30,9 +31,24 @@ const ATHLETE_FEATURES = [
   { icon: Activity,    text: "Stats perso : distance, dénivelé, FC, watts" },
 ];
 
+type FormState = "idle" | "sending" | "sent" | "error";
+
 export default function Home() {
   const router = useRouter();
   const [checking, setChecking] = useState(true);
+  const [form, setForm] = useState({ prenom: "", email: "", sport: "", message: "" });
+  const [formState, setFormState] = useState<FormState>("idle");
+
+  async function handleContact(e: React.FormEvent) {
+    e.preventDefault();
+    setFormState("sending");
+    const res = await fetch("/api/contact", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(form),
+    });
+    setFormState(res.ok ? "sent" : "error");
+  }
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -203,6 +219,88 @@ export default function Home() {
           </a>
         </div>
 
+      </section>
+
+      {/* ── CONTACT SANS COACH ── */}
+      <section className="max-w-2xl mx-auto px-5 pb-16">
+        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-7">
+          <div className="mb-3">
+            <span className="bg-amber-100 text-amber-700 text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full">
+              Pas encore de coach ?
+            </span>
+          </div>
+          <h2 className="text-xl font-bold text-slate-800 mb-1">On peut t&apos;aider à en trouver un.</h2>
+          <p className="text-slate-500 text-sm leading-relaxed mb-6">
+            Laisse-nous tes infos et on revient vers toi rapidement.
+          </p>
+
+          {formState === "sent" ? (
+            <div className="text-center py-8">
+              <div className="text-3xl mb-3">🎉</div>
+              <p className="text-slate-700 font-semibold">Message envoyé !</p>
+              <p className="text-slate-500 text-sm mt-1">On te répond dès que possible.</p>
+            </div>
+          ) : (
+            <form onSubmit={handleContact} className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1">Prénom *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Thomas"
+                    value={form.prenom}
+                    onChange={e => setForm(f => ({ ...f, prenom: e.target.value }))}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1">Email *</label>
+                  <input
+                    type="email"
+                    required
+                    placeholder="thomas@email.com"
+                    value={form.email}
+                    onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Sport(s) pratiqué(s) *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Triathlon, Trail, Vélo…"
+                  value={form.sport}
+                  onChange={e => setForm(f => ({ ...f, sport: e.target.value }))}
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Message (optionnel)</label>
+                <textarea
+                  placeholder="Ton niveau, tes objectifs, tes disponibilités…"
+                  rows={3}
+                  value={form.message}
+                  onChange={e => setForm(f => ({ ...f, message: e.target.value }))}
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent resize-none"
+                />
+              </div>
+              {formState === "error" && (
+                <p className="text-red-500 text-xs">Une erreur s&apos;est produite. Réessaie dans un moment.</p>
+              )}
+              <button
+                type="submit"
+                disabled={formState === "sending"}
+                className="w-full flex items-center justify-center gap-2 bg-amber-500 hover:bg-amber-600 disabled:opacity-60 text-white font-bold py-2.5 rounded-xl transition text-sm"
+              >
+                <Send size={14} />
+                {formState === "sending" ? "Envoi…" : "Envoyer ma demande"}
+              </button>
+            </form>
+          )}
+        </div>
       </section>
 
       {/* ── FOOTER ── */}

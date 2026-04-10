@@ -59,7 +59,7 @@ function getSessionAlert(s: SessionType): string | null {
 
 function getSportStyle(s?: string) {
   switch (s) {
-    case "Vélo": return { bg: "bg-emerald-100", text: "text-emerald-900", border: "border-emerald-300", icon: "text-emerald-700" };
+    case "Vélo": return { bg: "bg-sky-100", text: "text-sky-900", border: "border-sky-300", icon: "text-sky-700" };
     case "Run": return { bg: "bg-slate-200", text: "text-slate-800", border: "border-slate-400", icon: "text-slate-600" };
     case "Natation": return { bg: "bg-cyan-100", text: "text-cyan-900", border: "border-cyan-300", icon: "text-cyan-700" };
     case "Trail": return { bg: "bg-lime-100", text: "text-lime-900", border: "border-lime-300", icon: "text-lime-700" };
@@ -448,8 +448,10 @@ function paceFromKmh(kmh: number) {
     const [vma, setVma] = React.useState<string>("");
     const [ftp, setFtp] = React.useState<string>("");
     const [loading, setLoading] = React.useState(false);
+    const [open, setOpen] = React.useState(false);
     useEffect(() => {
       if (!athleteId) return;
+      setOpen(false);
       (async () => {
         const { data } = await supabase.from("athlete_metrics").select("vma_kmh, ftp_w").eq("user_id", athleteId).single();
         if (data) { setVma(data.vma_kmh ? String(data.vma_kmh) : ""); setFtp(data.ftp_w ? String(data.ftp_w) : ""); }
@@ -466,17 +468,37 @@ function paceFromKmh(kmh: number) {
     const vmaNum = vma ? Number(vma) : null;
     const ftpNum = ftp ? Number(ftp) : null;
     return (
-      <div className="mt-4 rounded-xl border border-emerald-100 bg-white p-3 text-sm text-slate-700 space-y-2 shadow-sm">
-        <div className="grid grid-cols-2 gap-2">
-          <label className="text-[10px] uppercase text-slate-500 font-bold">VMA (km/h)<input type="number" step="0.1" value={vma} onChange={e=>setVma(e.target.value)} className="mt-0.5 w-full rounded border border-slate-200 px-1 py-0.5 text-xs"/></label>
-          <label className="text-[10px] uppercase text-slate-500 font-bold">FTP (w)<input type="number" value={ftp} onChange={e=>setFtp(e.target.value)} className="mt-0.5 w-full rounded border border-slate-200 px-1 py-0.5 text-xs"/></label>
-        </div>
-        <button onClick={save} disabled={loading} className="w-full py-1 rounded bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold">{loading ? "..." : "Sauvegarder Profil"}</button>
-        {(vmaNum || ftpNum) && (
-          <table className="w-full text-[10px] border-collapse mt-1">
-            <thead><tr><th className="border-b text-left py-0.5">%</th><th className="border-b text-center">VMA</th><th className="border-b text-center">FTP</th></tr></thead>
-            <tbody>{PCTS.map(pct => { const frac = pct/100; return (<tr key={pct}><td className="py-0.5 font-medium text-slate-500">{pct}%</td><td className="py-0.5 text-center">{vmaNum ? paceFromKmh(vmaNum*frac) : "-"}</td><td className="py-0.5 text-center">{ftpNum ? Math.round(ftpNum*frac) + "w" : "-"}</td></tr>); })}</tbody>
-          </table>
+      <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+        <button
+          onClick={() => setOpen(v => !v)}
+          className="w-full flex items-center justify-between px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-500 hover:bg-slate-50 transition"
+        >
+          <span>VMA / FTP</span>
+          <div className="flex items-center gap-2">
+            {(vmaNum || ftpNum) && (
+              <span className="font-mono text-slate-400 normal-case tracking-normal">
+                {vmaNum ? `${vmaNum}km/h` : ""}
+                {vmaNum && ftpNum ? " · " : ""}
+                {ftpNum ? `${ftpNum}w` : ""}
+              </span>
+            )}
+            <CaretRight size={12} className={`transition-transform ${open ? "rotate-90" : ""}`} />
+          </div>
+        </button>
+        {open && (
+          <div className="px-3 pb-3 space-y-2 border-t border-slate-100">
+            <div className="grid grid-cols-2 gap-2 pt-2">
+              <label className="text-[10px] uppercase text-slate-500 font-bold">VMA (km/h)<input type="number" step="0.1" value={vma} onChange={e=>setVma(e.target.value)} className="mt-0.5 w-full rounded border border-slate-200 px-1 py-0.5 text-xs"/></label>
+              <label className="text-[10px] uppercase text-slate-500 font-bold">FTP (w)<input type="number" value={ftp} onChange={e=>setFtp(e.target.value)} className="mt-0.5 w-full rounded border border-slate-200 px-1 py-0.5 text-xs"/></label>
+            </div>
+            <button onClick={save} disabled={loading} className="w-full py-1 rounded bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold">{loading ? "..." : "Sauvegarder"}</button>
+            {(vmaNum || ftpNum) && (
+              <table className="w-full text-[10px] border-collapse">
+                <thead><tr><th className="border-b text-left py-0.5">%</th><th className="border-b text-center">VMA</th><th className="border-b text-center">FTP</th></tr></thead>
+                <tbody>{PCTS.map(pct => { const frac = pct/100; return (<tr key={pct}><td className="py-0.5 font-medium text-slate-500">{pct}%</td><td className="py-0.5 text-center">{vmaNum ? paceFromKmh(vmaNum*frac) : "-"}</td><td className="py-0.5 text-center">{ftpNum ? Math.round(ftpNum*frac) + "w" : "-"}</td></tr>); })}</tbody>
+              </table>
+            )}
+          </div>
         )}
       </div>
     );
@@ -778,12 +800,11 @@ export default function CoachAthleteFocusV13() {
       const { data: nextComp } = await supabase.from("absences_competitions").select("date,name,type").eq("user_id", selectedAthleteId).eq("type", "competition").gte("date", base.format("YYYY-MM-DD")).order("date", { ascending: true }).limit(1);
       if (nextComp && nextComp.length) {
         const d = dayjs(nextComp[0].date).startOf("day");
-        if (d.isSame(base, "week")) setNextRaceText("cette semaine");
-        else {
-           const diff = d.diff(base, "day");
-           const w = Math.floor(diff/7) + (diff%7>0?1:0);
-           setNextRaceText(`dans ${w} sem.`);
-        }
+        const diff = d.diff(base, "day");
+        const name = nextComp[0].name ? ` — ${nextComp[0].name}` : "";
+        if (diff === 0) setNextRaceText(`aujourd'hui${name}`);
+        else if (diff === 1) setNextRaceText(`demain${name}`);
+        else setNextRaceText(`dans ${diff} j.${name}`);
       } else setNextRaceText("-");
     })();
   }, [selectedAthleteId, weekStart]);
@@ -931,8 +952,8 @@ export default function CoachAthleteFocusV13() {
               </div>
           </div>
           
-          {/* Zone Metrics (Collée en bas de liste) */}
-          <div className="mt-auto pt-4 border-t border-slate-200/50 px-1">
+          {/* Zone Metrics (rétractable) */}
+          <div className="mt-auto pt-3 border-t border-slate-200/50 px-1">
              {selectedAthleteId && <AthleteMetricsCoach athleteId={selectedAthleteId} />}
           </div>
         </aside>

@@ -37,7 +37,7 @@ function getPlannedLoad(s: SessionType) {
 
 function getSportStyle(s?: string) {
   switch (s) {
-    case "Vélo": return { bg: "bg-emerald-100", text: "text-emerald-900", border: "border-emerald-300", icon: "text-emerald-700" };
+    case "Vélo": return { bg: "bg-sky-100", text: "text-sky-900", border: "border-sky-300", icon: "text-sky-700" };
     case "Run": return { bg: "bg-slate-200", text: "text-slate-800", border: "border-slate-400", icon: "text-slate-600" };
     case "Natation": return { bg: "bg-cyan-100", text: "text-cyan-900", border: "border-cyan-300", icon: "text-cyan-700" };
     case "Trail": return { bg: "bg-lime-100", text: "text-lime-900", border: "border-lime-300", icon: "text-lime-700" };

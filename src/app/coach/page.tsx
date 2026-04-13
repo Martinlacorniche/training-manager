@@ -532,7 +532,7 @@ function CoachThematicCalendar({ athleteId }:{ athleteId: string; }) {
         setLoading(true);
         Promise.all([
             supabase.from("weekly_thematics").select("week_start, thematic").eq("user_id", athleteId).gte("week_start", monthStart).lte("week_start", monthEnd),
-            supabase.from("absences_competitions").select("date, name, type").eq("user_id", athleteId).eq("type", "competition").gte("date", monthStart).lte("date", monthEnd),
+            supabase.from("absences_competitions").select("date, name, type, duration_hour, rpe").eq("user_id", athleteId).eq("type", "competition").gte("date", monthStart).lte("date", monthEnd),
             supabase.from("sessions").select("date, planned_hour, intensity").eq("user_id", athleteId).gte("date", monthStart).lte("date", monthEnd),
         ]).then(([thematicsRes, racesRes, sessionsRes]) => {
             setThematics((thematicsRes.data?.filter(t => t) || []) as WeeklyThematicType[]); 
@@ -556,8 +556,15 @@ function CoachThematicCalendar({ athleteId }:{ athleteId: string; }) {
                 metrics[weekStart].load += getPlannedLoad(s);
             }
         });
+        races.forEach(r => {
+            const weekStart = dayjs(r.date).startOf('isoWeek').format("YYYY-MM-DD");
+            if (metrics[weekStart] && r.duration_hour) {
+                metrics[weekStart].hours += r.duration_hour;
+                metrics[weekStart].load += r.duration_hour * (r.rpe || 9);
+            }
+        });
         return metrics;
-    }, [sessions, weeksKeys]);
+    }, [sessions, races, weeksKeys]);
 
     useEffect(() => {
         if (editing && ref.current) ref.current.focus();

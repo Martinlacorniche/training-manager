@@ -518,7 +518,7 @@ function AthleteThematicCalendar({ athleteId }:{ athleteId: string; }) {
         setLoading(true);
         Promise.all([
             supabase.from("weekly_thematics").select("week_start, thematic").eq("user_id", athleteId).gte("week_start", monthStart).lte("week_start", monthEnd),
-            supabase.from("absences_competitions").select("date, name, type").eq("user_id", athleteId).eq("type", "competition").gte("date", monthStart).lte("date", monthEnd),
+            supabase.from("absences_competitions").select("date, name, type, duration_hour, rpe").eq("user_id", athleteId).eq("type", "competition").gte("date", monthStart).lte("date", monthEnd),
             supabase.from("sessions").select("date, planned_hour, intensity").eq("user_id", athleteId).gte("date", monthStart).lte("date", monthEnd),
         ]).then(([thematicsRes, racesRes, sessionsRes]) => {
             // Filtrage des entrées nulles
@@ -546,8 +546,15 @@ function AthleteThematicCalendar({ athleteId }:{ athleteId: string; }) {
                 metrics[weekStart].load += (s.planned_hour || 0) * rpe;
             }
         });
+        races.forEach(r => {
+            const weekStart = dayjs(r.date).startOf('isoWeek').format("YYYY-MM-DD");
+            if (metrics[weekStart] && r.duration_hour) {
+                metrics[weekStart].hours += r.duration_hour;
+                metrics[weekStart].load += r.duration_hour * (r.rpe || 9);
+            }
+        });
         return metrics;
-    }, [sessions, weeksKeys]);
+    }, [sessions, races, weeksKeys]);
 
     const getThematic = useCallback((week_start: string) => {
         return thematics.find(t => t.week_start === week_start)?.thematic || "";
@@ -781,19 +788,21 @@ export default function AthletePage() {
  const stats = useMemo(() => {
     const total = sessions.length;
     const validated = sessions.filter(s => s.status === "valide").length;
-    
+
     const timeSessions = sessions.reduce((acc, s) => acc + (Number(s.planned_hour) || 0), 0);
-    
+
     const loadSessions = sessions
       .filter(s => s.status === "valide")
       .reduce((acc, s) => acc + (Number(s.rpe) || 0) * (Number(s.planned_hour) || 0), 0);
 
-    // AJOUT DU CALCUL DE PROGRESSION
+    const loadCompetitions = absences
+      .filter(a => a.type === "competition" && a.status === "finisher" && a.duration_hour)
+      .reduce((acc, a) => acc + (Number(a.rpe) || 9) * (Number(a.duration_hour) || 0), 0);
+
     const progress = total > 0 ? Math.round((validated / total) * 100) : 0;
 
-    // AJOUT DE LA PROPRIÉTÉ 'progress' DANS LE RETOUR
-    return { total, validated, time: timeSessions, load: loadSessions, progress }; 
-  }, [sessions]);
+    return { total, validated, time: timeSessions, load: loadSessions + loadCompetitions, progress };
+  }, [sessions, absences]);
 
   return (
     <main className={`${jakarta.className} min-h-screen bg-slate-100 text-slate-800`}>

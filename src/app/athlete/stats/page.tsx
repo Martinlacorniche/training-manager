@@ -42,6 +42,7 @@ export default function StatsAthlete() {
   const [user, setUser] = useState<{ name: string } | null>(null);
   const [year, setYear] = useState(dayjs().year());
   const [rawData, setRawData] = useState<any[]>([]);
+  const [competitions, setCompetitions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   // 1. Chargement des données
@@ -66,8 +67,17 @@ export default function StatsAthlete() {
         .eq("user_id", session.user.id)
         .gte("date", start)
         .lte("date", end);
-      
+
+      const { data: comps } = await supabase
+        .from("absences_competitions")
+        .select("date, duration_hour, rpe")
+        .eq("user_id", session.user.id)
+        .eq("type", "competition")
+        .gte("date", start)
+        .lte("date", end);
+
       setRawData(sessions || []);
+      setCompetitions(comps || []);
       setLoading(false);
     };
     fetchData();
@@ -113,8 +123,19 @@ export default function StatsAthlete() {
         }
     });
 
+    competitions.forEach(c => {
+        const w = dayjs(c.date).isoWeek();
+        if (weeks[w] && c.duration_hour) {
+            const h = Number(c.duration_hour);
+            const rpe = c.rpe ? Number(c.rpe) : 9;
+            weeks[w].totalHours += h;
+            weeks[w].load += h * rpe;
+            weeks[w].Autre += h;
+        }
+    });
+
     return Object.values(weeks);
-  }, [rawData, year]);
+  }, [rawData, competitions, year]);
 
   // 3. Calcul des Podiums
   const topHours = [...chartData].sort((a, b) => b.totalHours - a.totalHours).slice(0, 3);

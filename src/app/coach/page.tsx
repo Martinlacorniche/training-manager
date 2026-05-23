@@ -855,6 +855,11 @@ export default function CoachAthleteFocusV13() {
           <div className="flex items-center gap-4">
              <div className="bg-emerald-600 text-white px-2 py-1 rounded font-bold text-sm tracking-tight">COACH</div>
              <div className="text-sm font-medium text-slate-600 hidden md:block">Bonjour {coach?.name?.split(" ")[0]}</div>
+             {coach?.coach_code && (
+               <div className="hidden md:block text-xs text-emerald-900 bg-emerald-50 border border-emerald-100 rounded-md px-2 py-1">
+                 Code coach : <span className="font-semibold">{coach.coach_code}</span>
+               </div>
+             )}
           </div>
           
           <div className="flex items-center bg-slate-100 rounded-full p-1 gap-2 border border-slate-200">

@@ -75,7 +75,7 @@ function fmtTime(h?: number | null) {
 }
 
 // ---------- TYPES ----------
-type UserType = { id_auth: string; name: string; coach_code?: string; coach_id?: string; ordre: number | null; strava_athlete_id?: number | null; strava_athlete_name?: string | null; };
+type UserType = { id_auth: string; name: string; coach_code?: string; coach_id?: string; ordre: number | null; strava_athlete_id?: number | null; };
 type SessionType = { id: string; user_id: string; sport?: string; title?: string; planned_hour?: number; planned_inter?: string; intensity?: string; status?: string; rpe?: number | null; athlete_comment?: string | null; date: string; strava_activity_id?: number | null; strava_distance?: number | null; strava_elevation?: number | null; strava_avg_hr?: number | null; strava_avg_watts?: number | null; };
 type AbsenceType = {
   id: string; user_id: string; date: string; type: string; name?: string | null;
@@ -775,12 +775,11 @@ export default function AthletePage() {
     if (!confirm("Déconnecter Strava ? La synchronisation automatique sera désactivée.")) return;
     await supabase.from("users").update({
       strava_athlete_id: null,
-      strava_athlete_name: null,
       strava_access_token: null,
       strava_refresh_token: null,
       strava_token_expires_at: null,
     }).eq("id_auth", athlete.id_auth);
-    setAthlete((prev) => prev ? { ...prev, strava_athlete_id: null, strava_athlete_name: null } : prev);
+    setAthlete((prev) => prev ? { ...prev, strava_athlete_id: null } : prev);
   }
 
   // Gestion du retour OAuth Strava (?strava=success&athlete=... ou ?strava=error&reason=...)
@@ -886,11 +885,10 @@ export default function AthletePage() {
             {athlete?.strava_athlete_id ? (
               <button
                 onClick={disconnectStrava}
-                title={`Compte Strava lié : ${athlete.strava_athlete_name || `#${athlete.strava_athlete_id}`} — cliquer pour déconnecter`}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 text-xs font-bold max-w-[200px]"
+                title={`Strava lié (athlete ${athlete.strava_athlete_id}) — cliquer pour déconnecter`}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 text-xs font-bold"
               >
-                <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 flex-shrink-0"/>
-                <span className="truncate">Strava : {athlete.strava_athlete_name || `#${athlete.strava_athlete_id}`}</span>
+                <span className="inline-block w-2 h-2 rounded-full bg-emerald-500"/> Strava
               </button>
             ) : (
               <button

@@ -75,7 +75,7 @@ function fmtTime(h?: number | null) {
 }
 
 // ---------- TYPES ----------
-type UserType = { id_auth: string; name: string; coach_code?: string; coach_id?: string; ordre: number | null; };
+type UserType = { id_auth: string; name: string; coach_code?: string; coach_id?: string; ordre: number | null; strava_athlete_id?: number | null; };
 type SessionType = { id: string; user_id: string; sport?: string; title?: string; planned_hour?: number; planned_inter?: string; intensity?: string; status?: string; rpe?: number | null; athlete_comment?: string | null; date: string; strava_activity_id?: number | null; strava_distance?: number | null; strava_elevation?: number | null; strava_avg_hr?: number | null; strava_avg_watts?: number | null; };
 type AbsenceType = {
   id: string; user_id: string; date: string; type: string; name?: string | null;
@@ -492,12 +492,12 @@ const AbsenceCard = React.memo(function AbsenceCard({ a, onEdit }:{ a: AbsenceTy
 });
 
 // ---------- CALENDRIER THÉMATIQUE (LECTURE SEULE)
-function AthleteThematicCalendar({ athleteId }:{ athleteId: string; }) {
+function AthleteThematicCalendar({ athleteId, onWeekClick }:{ athleteId: string; onWeekClick?: (week_start: string) => void; }) {
     const [monthOffset, setMonthOffset] = useState(0);
     const [thematics, setThematics] = useState<WeeklyThematicType[]>([]);
     const [races, setRaces] = useState<AbsenceType[]>([]);
     const [sessions, setSessions] = useState<SessionType[]>([]);
-    
+
     const [loading, setLoading] = useState(false);
 
     const currentMonth = useMemo(() => dayjs().add(monthOffset, "month").startOf("month"), [monthOffset]);
@@ -514,15 +514,15 @@ function AthleteThematicCalendar({ athleteId }:{ athleteId: string; }) {
         if (!athleteId) return;
         const monthStart = calendarStart.format("YYYY-MM-DD");
         const monthEnd = calendarStart.add(numWeeks, "week").add(6, "day").format("YYYY-MM-DD");
-        
+
         setLoading(true);
         Promise.all([
             supabase.from("weekly_thematics").select("week_start, thematic").eq("user_id", athleteId).gte("week_start", monthStart).lte("week_start", monthEnd),
-            supabase.from("absences_competitions").select("date, name, type, duration_hour, rpe").eq("user_id", athleteId).eq("type", "competition").gte("date", monthStart).lte("date", monthEnd),
-            supabase.from("sessions").select("date, planned_hour, intensity").eq("user_id", athleteId).gte("date", monthStart).lte("date", monthEnd),
+            supabase.from("absences_competitions").select("date, name, type, duration_hour, rpe, status").eq("user_id", athleteId).eq("type", "competition").gte("date", monthStart).lte("date", monthEnd),
+            supabase.from("sessions").select("date, planned_hour, intensity, rpe, status").eq("user_id", athleteId).gte("date", monthStart).lte("date", monthEnd),
         ]).then(([thematicsRes, racesRes, sessionsRes]) => {
             // Filtrage des entrées nulles
-            setThematics((thematicsRes.data?.filter(t => t) || []) as WeeklyThematicType[]); 
+            setThematics((thematicsRes.data?.filter(t => t) || []) as WeeklyThematicType[]);
             setRaces((racesRes.data || []) as AbsenceType[]);
             setSessions((sessionsRes.data || []) as SessionType[]);
             setLoading(false);
@@ -532,7 +532,8 @@ function AthleteThematicCalendar({ athleteId }:{ athleteId: string; }) {
         });
     }, [athleteId, calendarStart, numWeeks]);
 
-    // Calculer la charge prévue par semaine (IC et Heures)
+    // Calculer la charge par semaine (IC et Heures).
+    // Logique alignée sur la vue hebdo : si la séance est validée et a un RPE réel → on l'utilise ; sinon → RPE estimé via intensité.
     const weeklyMetrics = useMemo(() => {
         const metrics: Record<string, { load: number, hours: number }> = {};
         for(const key of weeksKeys) metrics[key] = { load: 0, hours: 0 };
@@ -541,8 +542,7 @@ function AthleteThematicCalendar({ athleteId }:{ athleteId: string; }) {
             const weekStart = dayjs(s.date).startOf('isoWeek').format("YYYY-MM-DD");
             if (metrics[weekStart]) {
                 metrics[weekStart].hours += s.planned_hour || 0;
-                // Calcul de l'IC (Indice de Charge)
-                const rpe = EST_RPE[s.intensity || "moyenne"] || 6;
+                const rpe = (s.status === "valide" && s.rpe != null) ? Number(s.rpe) : (EST_RPE[s.intensity || "moyenne"] || 6);
                 metrics[weekStart].load += (s.planned_hour || 0) * rpe;
             }
         });
@@ -550,7 +550,8 @@ function AthleteThematicCalendar({ athleteId }:{ athleteId: string; }) {
             const weekStart = dayjs(r.date).startOf('isoWeek').format("YYYY-MM-DD");
             if (metrics[weekStart] && r.duration_hour) {
                 metrics[weekStart].hours += r.duration_hour;
-                metrics[weekStart].load += r.duration_hour * (r.rpe || 9);
+                const rpe = (r.status === "finisher" && r.rpe != null) ? Number(r.rpe) : (r.rpe || 9);
+                metrics[weekStart].load += r.duration_hour * rpe;
             }
         });
         return metrics;
@@ -597,9 +598,9 @@ function AthleteThematicCalendar({ athleteId }:{ athleteId: string; }) {
 
 
                         return (
-                            <div key={week_start} 
-                                // Rendu statique, pas de onClick pour l'édition
-                                className={`group relative flex flex-col justify-between h-20 p-2 rounded-lg transition-all border ${baseClasses} cursor-default`}>
+                            <div key={week_start}
+                                onClick={() => onWeekClick?.(week_start)}
+                                className={`group relative flex flex-col justify-between h-20 p-2 rounded-lg transition-all border ${baseClasses} ${onWeekClick ? "cursor-pointer hover:shadow-md hover:brightness-95" : "cursor-default"}`}>
                                 
                                 <div className={`text-xs font-bold ${textClasses}`}>
                                     S{dayjs(week_start).isoWeek()}
@@ -761,6 +762,56 @@ export default function AthletePage() {
 
   async function logout() { await supabase.auth.signOut(); router.push("/login"); }
 
+  function connectStrava() {
+    if (!athlete?.id_auth) return;
+    const redirectUri = "https://ihigmlpgliasczlvxttd.supabase.co/functions/v1/strava-oauth-callback";
+    const state = `${athlete.id_auth}|web`;
+    const authUrl = `https://www.strava.com/oauth/authorize?client_id=209898&response_type=code&redirect_uri=${encodeURIComponent(redirectUri)}&approval_prompt=force&scope=activity:read_all,activity:write&state=${encodeURIComponent(state)}`;
+    window.location.href = authUrl;
+  }
+
+  async function disconnectStrava() {
+    if (!athlete?.id_auth) return;
+    if (!confirm("Déconnecter Strava ? La synchronisation automatique sera désactivée.")) return;
+    await supabase.from("users").update({
+      strava_athlete_id: null,
+      strava_access_token: null,
+      strava_refresh_token: null,
+      strava_token_expires_at: null,
+    }).eq("id_auth", athlete.id_auth);
+    setAthlete((prev) => prev ? { ...prev, strava_athlete_id: null } : prev);
+  }
+
+  // Gestion du retour OAuth Strava (?strava=success&athlete=... ou ?strava=error&reason=...)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const strava = params.get("strava");
+    if (!strava) return;
+    if (strava === "success") {
+      const name = params.get("athlete") || "";
+      alert(name ? `Strava connecté ✅\nCompte lié : ${name}\n\nSi ce n'est pas ton compte, déconnecte Strava et reconnecte-toi.` : "Strava connecté ✅");
+    } else {
+      const reason = params.get("reason");
+      if (reason === "athlete_taken") {
+        alert("Ce compte Strava est déjà associé à un autre utilisateur de l'app.");
+      } else if (reason === "access_denied") {
+        alert("Connexion Strava annulée.");
+      } else {
+        alert("La connexion Strava a échoué, réessaie.");
+      }
+    }
+    // Nettoie l'URL pour éviter re-trigger au refresh
+    window.history.replaceState({}, "", window.location.pathname);
+    // Re-fetch athlete pour récupérer strava_athlete_id à jour
+    (async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user?.id) return;
+      const { data: user } = await supabase.from("users").select("*").eq("id_auth", session.user.id).single();
+      if (user) setAthlete(user as UserType);
+    })();
+  }, []);
+
   // DnD
   const dayId = (d: dayjs.Dayjs) => d.format("YYYY-MM-DD");
   const sessionsByDay = useMemo(() => {
@@ -831,6 +882,23 @@ export default function AthletePage() {
                 </button>
                 <RpeGuidePopover open={showRpeHelp} onClose={()=>setShowRpeHelp(false)} />
             </div>
+            {athlete?.strava_athlete_id ? (
+              <button
+                onClick={disconnectStrava}
+                title={`Strava lié (athlete ${athlete.strava_athlete_id}) — cliquer pour déconnecter`}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 text-xs font-bold"
+              >
+                <span className="inline-block w-2 h-2 rounded-full bg-emerald-500"/> Strava
+              </button>
+            ) : (
+              <button
+                onClick={connectStrava}
+                title="Lier mon compte Strava"
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-orange-50 text-orange-700 hover:bg-orange-100 border border-orange-200 text-xs font-bold"
+              >
+                Lier Strava
+              </button>
+            )}
             <button onClick={logout} className="text-rose-500 hover:bg-rose-50 p-2 rounded-lg"><SignOut size={18}/></button>
           </div>
         </div>
@@ -891,7 +959,15 @@ export default function AthletePage() {
 
         {/* Main Grid */}
         <section className="col-span-12 md:col-span-9">
-          {athlete && <AthleteThematicCalendar athleteId={athlete.id_auth} />} {/* <<< Calendrier Thématique Lecture Seule */}
+          {athlete && (
+            <AthleteThematicCalendar
+              athleteId={athlete.id_auth}
+              onWeekClick={(week_start) => {
+                const offset = dayjs(week_start).startOf("isoWeek").diff(dayjs().startOf("isoWeek"), "week");
+                setWeekOffset(offset);
+              }}
+            />
+          )} {/* <<< Calendrier Thématique : clic sur une semaine → planning ci-dessous */}
 
           <DragDropContext onDragEnd={onDragEnd}>
             <div className="grid grid-cols-1 md:grid-cols-7 gap-3">

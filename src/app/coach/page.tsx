@@ -504,12 +504,12 @@ function paceFromKmh(kmh: number) {
     );
   }
 
-function CoachThematicCalendar({ athleteId }:{ athleteId: string; }) {
+function CoachThematicCalendar({ athleteId, onWeekClick }:{ athleteId: string; onWeekClick?: (week_start: string) => void; }) {
     const [monthOffset, setMonthOffset] = useState(0);
     const [thematics, setThematics] = useState<WeeklyThematicType[]>([]);
     const [races, setRaces] = useState<AbsenceType[]>([]);
     const [sessions, setSessions] = useState<SessionType[]>([]);
-    
+
     const [loading, setLoading] = useState(false);
     const [editing, setEditing] = useState<{ week_start: string, thematic: string } | null>(null);
     const ref = useRef<HTMLInputElement>(null);
@@ -528,14 +528,14 @@ function CoachThematicCalendar({ athleteId }:{ athleteId: string; }) {
         if (!athleteId) return;
         const monthStart = calendarStart.format("YYYY-MM-DD");
         const monthEnd = calendarStart.add(numWeeks, "week").add(6, "day").format("YYYY-MM-DD");
-        
+
         setLoading(true);
         Promise.all([
             supabase.from("weekly_thematics").select("week_start, thematic").eq("user_id", athleteId).gte("week_start", monthStart).lte("week_start", monthEnd),
-            supabase.from("absences_competitions").select("date, name, type, duration_hour, rpe").eq("user_id", athleteId).eq("type", "competition").gte("date", monthStart).lte("date", monthEnd),
-            supabase.from("sessions").select("date, planned_hour, intensity").eq("user_id", athleteId).gte("date", monthStart).lte("date", monthEnd),
+            supabase.from("absences_competitions").select("date, name, type, duration_hour, rpe, status").eq("user_id", athleteId).eq("type", "competition").gte("date", monthStart).lte("date", monthEnd),
+            supabase.from("sessions").select("date, planned_hour, intensity, rpe, status").eq("user_id", athleteId).gte("date", monthStart).lte("date", monthEnd),
         ]).then(([thematicsRes, racesRes, sessionsRes]) => {
-            setThematics((thematicsRes.data?.filter(t => t) || []) as WeeklyThematicType[]); 
+            setThematics((thematicsRes.data?.filter(t => t) || []) as WeeklyThematicType[]);
             setRaces((racesRes.data || []) as AbsenceType[]);
             setSessions((sessionsRes.data || []) as SessionType[]);
             setLoading(false);
@@ -545,6 +545,7 @@ function CoachThematicCalendar({ athleteId }:{ athleteId: string; }) {
         });
     }, [athleteId, calendarStart, numWeeks]);
 
+    // Charge par semaine. RPE réel si séance validée (resp. compétition finisher), sinon RPE estimé via intensité.
     const weeklyMetrics = useMemo(() => {
         const metrics: Record<string, { load: number, hours: number }> = {};
         for(const key of weeksKeys) metrics[key] = { load: 0, hours: 0 };
@@ -553,14 +554,16 @@ function CoachThematicCalendar({ athleteId }:{ athleteId: string; }) {
             const weekStart = dayjs(s.date).startOf('isoWeek').format("YYYY-MM-DD");
             if (metrics[weekStart]) {
                 metrics[weekStart].hours += s.planned_hour || 0;
-                metrics[weekStart].load += getPlannedLoad(s);
+                const rpe = (s.status === "valide" && s.rpe != null) ? Number(s.rpe) : (EST_RPE[s.intensity || "moyenne"] || 6);
+                metrics[weekStart].load += (s.planned_hour || 0) * rpe;
             }
         });
         races.forEach(r => {
             const weekStart = dayjs(r.date).startOf('isoWeek').format("YYYY-MM-DD");
             if (metrics[weekStart] && r.duration_hour) {
                 metrics[weekStart].hours += r.duration_hour;
-                metrics[weekStart].load += r.duration_hour * (r.rpe || 9);
+                const rpe = (r.status === "finisher" && r.rpe != null) ? Number(r.rpe) : (r.rpe || 9);
+                metrics[weekStart].load += r.duration_hour * rpe;
             }
         });
         return metrics;
@@ -605,6 +608,7 @@ function CoachThematicCalendar({ athleteId }:{ athleteId: string; }) {
     };
 
     const handleCellClick = (week_start: string) => {
+        onWeekClick?.(week_start);
         const currentThematic = getThematic(week_start);
         setEditing({ week_start, thematic: currentThematic });
     };
@@ -1032,7 +1036,15 @@ export default function CoachAthleteFocusV13() {
             </div>
           )}
           
-          {selectedAthleteId && <CoachThematicCalendar athleteId={selectedAthleteId} />}
+          {selectedAthleteId && (
+            <CoachThematicCalendar
+              athleteId={selectedAthleteId}
+              onWeekClick={(week_start) => {
+                const offset = dayjs(week_start).startOf("isoWeek").diff(dayjs().startOf("isoWeek"), "week");
+                setWeekOffset(offset);
+              }}
+            />
+          )}
 
           <div className="grid grid-cols-1 lg:grid-cols-7 gap-2">
             {weekDays.map((d) => {

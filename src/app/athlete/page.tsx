@@ -484,11 +484,11 @@ const SessionCard = React.memo(function SessionCard({ s, onEdit, onDelete }:{ s:
     <div className={`relative rounded-xl p-3 mb-2 overflow-hidden transition-all shadow-sm ${style.bg} ${borderClass}`}>
       {/* Header */}
       <div className="flex items-start justify-between gap-1 mb-1.5">
-        <div className="flex items-center gap-1.5">
-           <span className={`${style.icon}`}>{sportIcon(s.sport, 16)}</span>
-           <span className={`text-[11px] font-bold uppercase tracking-wider ${style.text}`}>{s.sport}</span>
+        <div className="flex items-center gap-1.5 min-w-0">
+           <span className={`${style.icon} shrink-0`}>{sportIcon(s.sport, 16)}</span>
+           <span className={`text-[11px] font-bold uppercase tracking-wider truncate ${style.text}`}>{s.sport}</span>
         </div>
-        <div className="flex gap-1">
+        <div className="flex gap-1 shrink-0">
              {(hasPain || hasBadRpe) && <div className="text-rose-600 animate-pulse"><WarningCircle size={16} weight="fill"/></div>}
              <button onClick={onEdit} className={`${style.text} opacity-60 hover:opacity-100 p-0.5 hover:bg-white/50 rounded`} title="Valider/Modifier"><PencilSimple size={15}/></button>
              <button onClick={onDelete} className={`${style.text} opacity-60 hover:text-rose-600 p-0.5 hover:bg-white/50 rounded`} title="Supprimer"><Trash size={15}/></button>

@@ -1,11 +1,14 @@
 "use client";
 import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { supabase } from "@/lib/supabaseClient";
 import { useRouter } from "next/navigation";
 import dayjs from "dayjs";
 import "dayjs/locale/fr";
 import isoWeek from "dayjs/plugin/isoWeek";
-import isBetween from "dayjs/plugin/isBetween"; 
+import isBetween from "dayjs/plugin/isBetween";
+import StravaMetrics from "../StravaMetrics";
+import DemandeVsFait from "../DemandeVsFait";
 dayjs.locale("fr");
 dayjs.extend(isoWeek);
 dayjs.extend(isBetween); 
@@ -103,8 +106,8 @@ function formatDuration(h?: number | null) {
 
 // ---------- TYPES ----------
 type UserType = { id_auth: string; name: string; coach_code?: string; coach_id?: string; ordre: number | null; alert?: boolean };
-type SessionType = { id: string; user_id: string; sport?: string; title?: string; planned_hour?: number; planned_inter?: string; intensity?: string; status?: string; rpe?: number | null; athlete_comment?: string | null; date: string; strava_activity_id?: number | null; strava_imported?: boolean | null; strava_distance?: number | null; strava_elevation?: number | null; strava_avg_hr?: number | null; strava_avg_watts?: number | null; };
-type AbsenceType = { id: string; user_id: string; date: string; type: string; name?: string | null; distance_km?: number | null; elevation_d_plus?: number | null; comment?: string | null; rpe?: number | null; duration_hour?: number | null; status?: string | null; };
+type SessionType = { id: string; user_id: string; sport?: string; title?: string; planned_hour?: number; planned_inter?: string; intensity?: string; status?: string; rpe?: number | null; athlete_comment?: string | null; date: string; strava_activity_id?: number | null; strava_imported?: boolean | null; strava_distance?: number | null; strava_elevation?: number | null; strava_avg_hr?: number | null; strava_avg_watts?: number | null; strava_tss?: number | null; strava_trimp?: number | null; strava_hr_drift?: number | null; strava_time_in_zone?: number[] | null; strava_pace_100?: number | null; strava_swolf?: number | null; };
+type AbsenceType = { id: string; user_id: string; date: string; type: string; name?: string | null; distance_km?: number | null; elevation_d_plus?: number | null; comment?: string | null; rpe?: number | null; duration_hour?: number | null; status?: string | null; strava_activity_id?: number | null; strava_distance?: number | null; strava_elevation?: number | null; strava_avg_hr?: number | null; strava_avg_watts?: number | null; strava_tss?: number | null; strava_trimp?: number | null; strava_hr_drift?: number | null; strava_time_in_zone?: number[] | null; strava_pace_100?: number | null; strava_swolf?: number | null; };
 type WeeklyReviewType = { week_start: string; rpe_life: number; comment: string; };
 type WeeklyThematicType = { user_id: string; week_start: string; thematic: string; };
 
@@ -235,6 +238,8 @@ function SessionModal({ open, onClose, onSaved, initial, athlete, date }:{ open:
                 <label className="text-sm text-slate-700">Minutes <select value={plannedMinute} onChange={(e)=>setPlannedMinute(Number(e.target.value))} className="mt-1 w-full rounded-lg border border-slate-200 p-2 focus:outline-none focus:ring-2 focus:ring-emerald-300">{Array.from({length:12}, (_,i)=> <option key={i} value={i*5}>{String(i*5).padStart(2,"0")} min</option>)}</select></label>
               </div>
               <label className="text-sm text-slate-700">Consignes <textarea value={planned_inter} onChange={(e)=>setPlannedInter(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 p-2 min-h-[90px] focus:outline-none focus:ring-2 focus:ring-emerald-300"/></label>
+              <DemandeVsFait data={initial} coachView />
+              <StravaMetrics data={initial} />
               <div className="flex justify-end gap-2 pt-1">
                 <button type="button" onClick={onClose} className="px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700">Annuler</button>
                 <button disabled={loading} className="px-4 py-2 rounded-lg text-white bg-emerald-600 hover:bg-emerald-700">{loading ? "..." : "OK"}</button>
@@ -347,11 +352,11 @@ const SessionCard = React.memo(function SessionCard({ s, onEdit, onDelete }:{ s:
     <motion.div layout initial={{opacity:0,y:6}} animate={{opacity:1,y:0}} exit={{opacity:0,y:6}} transition={{duration:0.2}} whileHover={{y:-1}}
       className={`relative rounded-xl p-3 mb-2 transition-all shadow-sm ${style.bg} ${borderClass}`}>
       <div className="flex items-start justify-between gap-1 mb-1.5">
-        <div className="flex items-center gap-1.5">
-           <span className={`${style.icon}`}>{sportIcon(s.sport, 16)}</span>
-           <span className={`text-[11px] font-bold uppercase tracking-wider ${style.text}`}>{s.sport}</span>
+        <div className="flex items-center gap-1.5 min-w-0">
+           <span className={`${style.icon} shrink-0`}>{sportIcon(s.sport, 16)}</span>
+           <span className={`text-[11px] font-bold uppercase tracking-wider truncate ${style.text}`}>{s.sport}</span>
         </div>
-        <div className="flex gap-1">
+        <div className="flex gap-1 shrink-0">
              {alertType && <div className="text-rose-600 animate-pulse"><WarningCircle size={18} weight="fill" /></div>}
              {s.planned_inter && <button onClick={()=>setShowCoachNote(v=>!v)} className={`${style.text} hover:bg-white/50 rounded p-0.5`}><Info size={15}/></button>}
              <button onClick={onEdit} className={`${style.text} opacity-60 hover:opacity-100 rounded p-0.5`}><PencilSimple size={15}/></button>
@@ -384,9 +389,17 @@ const SessionCard = React.memo(function SessionCard({ s, onEdit, onDelete }:{ s:
           {showStravaTooltip && (
             <div className="absolute bottom-full left-0 mb-1.5 z-50 bg-slate-800 text-white rounded-lg px-3 py-2 text-[11px] font-medium shadow-xl whitespace-nowrap">
               {s.strava_distance != null && <div>📍 {s.strava_distance} km</div>}
+              {s.strava_pace_100 != null && <div>🏊 {Math.floor(s.strava_pace_100/60)}:{String(Math.round(s.strava_pace_100%60)).padStart(2,"0")}/100m</div>}
+              {s.strava_swolf != null && <div>🌀 SWOLF {Math.round(s.strava_swolf)}/25m</div>}
               {s.strava_elevation != null && s.strava_elevation > 0 && <div>⛰️ {s.strava_elevation} m D+</div>}
               {s.strava_avg_hr != null && <div>❤️ {Math.round(s.strava_avg_hr)} bpm moy.</div>}
               {s.strava_avg_watts != null && <div>⚡ {Math.round(s.strava_avg_watts)} w moy.</div>}
+              {s.strava_tss != null && <div>📊 TSS {Math.round(s.strava_tss)}</div>}
+              {s.strava_trimp != null && <div>🔋 Charge FC {Math.round(s.strava_trimp)}</div>}
+              {s.strava_hr_drift != null && <div>📈 Dérive FC {s.strava_hr_drift > 0 ? "+" : ""}{s.strava_hr_drift}%</div>}
+              {Array.isArray(s.strava_time_in_zone) && s.strava_time_in_zone.some((t) => t > 0) && (
+                <div>🎯 Zones {s.strava_time_in_zone.map((t) => Math.round(t / 60)).join("/")} min</div>
+              )}
               <div className="absolute top-full left-3 border-4 border-transparent border-t-slate-800"/>
             </div>
           )}
@@ -428,6 +441,25 @@ const AbsenceCard = React.memo(function AbsenceCard({ a, onDelete }:{ a: Absence
             {a.name && <div className="font-bold text-sm">{a.name}</div>}
             <div className="opacity-80">{a.distance_km ? `${a.distance_km}km` : ""}{a.distance_km && a.elevation_d_plus ? " • " : ""}{a.elevation_d_plus ? `${a.elevation_d_plus}d+` : ""}</div>
             {(a.duration_hour || a.rpe) && <div className="opacity-80"> {formatDuration(a.duration_hour)} {a.rpe ? `• RPE ${a.rpe}` : ""} </div>}
+            {(a.strava_pace_100 != null || a.strava_swolf != null) && (
+              <div className="opacity-80">
+                {a.strava_pace_100 != null ? `${Math.floor(a.strava_pace_100/60)}:${String(Math.round(a.strava_pace_100%60)).padStart(2,"0")}/100m` : ""}
+                {a.strava_pace_100 != null && a.strava_swolf != null ? " • " : ""}
+                {a.strava_swolf != null ? `SWOLF ${Math.round(a.strava_swolf)}` : ""}
+              </div>
+            )}
+            {(a.strava_tss != null || a.strava_trimp != null || a.strava_hr_drift != null) && (
+              <div className="opacity-80">
+                {a.strava_tss != null ? `TSS ${Math.round(a.strava_tss)}` : ""}
+                {a.strava_tss != null && a.strava_trimp != null ? " • " : ""}
+                {a.strava_trimp != null ? `Charge FC ${Math.round(a.strava_trimp)}` : ""}
+                {(a.strava_tss != null || a.strava_trimp != null) && a.strava_hr_drift != null ? " • " : ""}
+                {a.strava_hr_drift != null ? `Dérive ${a.strava_hr_drift > 0 ? "+" : ""}${a.strava_hr_drift}%` : ""}
+              </div>
+            )}
+            {Array.isArray(a.strava_time_in_zone) && a.strava_time_in_zone.some((t) => t > 0) && (
+              <div className="opacity-80">Zones {a.strava_time_in_zone.map((t) => Math.round(t / 60)).join("/")} min</div>
+            )}
           </div>
         )}
         {!isComp && a.comment && <div className="text-xs italic mt-1 opacity-80">"{a.comment}"</div>}
@@ -444,6 +476,96 @@ function paceFromKmh(kmh: number) {
     return `${m}:${String(s).padStart(2,"0")}/km`;
   }
   const PCTS = [60,70,80,85,90,95,100,110,120,130];
+  function WeeklyDebriefCoach({ athleteId, weekStart }: { athleteId: string; weekStart: string }) {
+    const [modalOpen, setModalOpen] = React.useState(false);
+    const [resume, setResume] = React.useState("");
+    const [attention, setAttention] = React.useState("");
+    const [aVenir, setAVenir] = React.useState("");
+    const [status, setStatus] = React.useState<string | null>(null);
+    const [seenAt, setSeenAt] = React.useState<string | null>(null);
+    const [loading, setLoading] = React.useState(false);
+    const [busy, setBusy] = React.useState<string | null>(null);
+
+    const apply = (d: any) => {
+      setResume(d?.resume ?? ""); setAttention(d?.points_attention ?? ""); setAVenir(d?.semaine_a_venir ?? "");
+      setStatus(d?.status ?? null); setSeenAt(d?.seen_at ?? null);
+    };
+
+    // Charge le bilan (statut + contenu) quand l'athlète ou la semaine change.
+    useEffect(() => {
+      if (!athleteId) return;
+      setLoading(true);
+      supabase.functions.invoke("generate-weekly-debrief", { body: { action: "get", athlete_id: athleteId, week_start: weekStart } })
+        .then(({ data }) => apply(data?.debrief)).finally(() => setLoading(false));
+    }, [athleteId, weekStart]);
+
+    async function call(action: string, payload?: any) {
+      setBusy(action);
+      const { data, error } = await supabase.functions.invoke("generate-weekly-debrief", { body: { action, athlete_id: athleteId, week_start: weekStart, payload } });
+      setBusy(null);
+      if (error || data?.error) { alert(error?.message || data?.error); return; }
+      apply(data?.debrief);
+      if (action === "send") setModalOpen(false);
+    }
+    const has = resume || attention || aVenir;
+    const badge = status
+      ? <span className={`normal-case tracking-normal px-1.5 py-0.5 rounded-full text-[9px] font-bold ${status === "sent" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>{status === "sent" ? "Envoyé" : "Brouillon"}</span>
+      : null;
+
+    return (
+      <>
+        <button onClick={() => setModalOpen(true)}
+          className="w-full rounded-xl border border-slate-200 bg-white shadow-sm px-3 py-2 flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-slate-500 hover:bg-slate-50 transition">
+          <span>📋 Bilan de la semaine</span>
+          <div className="flex items-center gap-2">{badge}<CaretRight size={12} /></div>
+        </button>
+
+        {modalOpen && typeof document !== "undefined" && createPortal(
+          <div className="fixed inset-0 z-[60] grid place-items-center p-4">
+            <div className="absolute inset-0 bg-black/40" onClick={() => setModalOpen(false)} />
+            <div className="relative w-full max-w-2xl max-h-[88vh] overflow-y-auto rounded-2xl bg-white shadow-2xl p-5 space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">📋 Bilan de la semaine {badge}</h3>
+                <button onClick={() => setModalOpen(false)} className="text-slate-400 hover:text-slate-700"><X size={20} /></button>
+              </div>
+
+              <div className="text-sm text-slate-600 bg-slate-50 rounded-lg px-3 py-2 text-center font-semibold">
+                Semaine du {dayjs(weekStart).format("DD/MM/YYYY")} <span className="text-slate-400 font-normal">(semaine affichée dans le planning)</span>
+              </div>
+
+              <button onClick={() => call("generate")} disabled={busy != null || loading}
+                className="w-full py-2 rounded-lg bg-blue-600 text-white text-sm font-bold hover:bg-blue-700 disabled:opacity-60">
+                {busy === "generate" ? "Génération…" : has ? "Régénérer le brouillon (IA)" : "Générer le brouillon (IA)"}
+              </button>
+
+              {loading ? <div className="text-sm text-slate-400 italic py-8 text-center">Chargement…</div> : (
+                <>
+                  <label className="block text-xs font-bold uppercase text-slate-400">Résumé
+                    <textarea value={resume} onChange={e => setResume(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 p-3 text-sm leading-relaxed min-h-[120px]" /></label>
+                  <label className="block text-xs font-bold uppercase text-slate-400">Points d'attention
+                    <textarea value={attention} onChange={e => setAttention(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 p-3 text-sm leading-relaxed min-h-[100px]" /></label>
+                  <label className="block text-xs font-bold uppercase text-slate-400">Semaine à venir
+                    <textarea value={aVenir} onChange={e => setAVenir(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 p-3 text-sm leading-relaxed min-h-[90px]" /></label>
+
+                  <div className="flex items-center justify-between gap-3 pt-1">
+                    <span className="text-xs text-slate-400">{status === "sent" ? (seenAt ? "Vu par l'athlète ✓" : "Envoyé — pas encore vu") : status === "draft" ? "Brouillon non envoyé" : ""}</span>
+                    <div className="flex gap-2">
+                      <button onClick={() => call("save", { resume, points_attention: attention, semaine_a_venir: aVenir })} disabled={busy != null || !has}
+                        className="px-4 py-2 rounded-lg bg-slate-100 text-slate-700 text-sm font-bold hover:bg-slate-200 disabled:opacity-60">{busy === "save" ? "…" : "Enregistrer"}</button>
+                      <button onClick={() => call("send", { resume, points_attention: attention, semaine_a_venir: aVenir })} disabled={busy != null || !has}
+                        className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-bold hover:bg-emerald-700 disabled:opacity-60">{busy === "send" ? "…" : "Envoyer à l'athlète"}</button>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>,
+          document.body
+        )}
+      </>
+    );
+  }
+
   function AthleteMetricsCoach({ athleteId }: { athleteId: string }) {
     const [vma, setVma] = React.useState<string>("");
     const [ftp, setFtp] = React.useState<string>("");
@@ -691,6 +813,42 @@ function CoachThematicCalendar({ athleteId, onWeekClick }:{ athleteId: string; o
     );
 }
 
+
+// ---------- Pop-up nouveautés coach (localStorage, sans DB) ----------
+const COACH_NEWS_VERSION = "2026-06-strava-ia";
+function CoachWhatsNew() {
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    try {
+      if (localStorage.getItem("coach_news_seen") !== COACH_NEWS_VERSION) setOpen(true);
+    } catch { /* SSR / pas de localStorage */ }
+  }, []);
+  function dismiss() {
+    try { localStorage.setItem("coach_news_seen", COACH_NEWS_VERSION); } catch { /* noop */ }
+    setOpen(false);
+  }
+  if (!open) return null;
+  const Item = ({ emoji, title, desc }: { emoji: string; title: string; desc: string }) => (
+    <div className="flex gap-3">
+      <div className="text-xl shrink-0">{emoji}</div>
+      <div><div className="font-bold text-slate-800 text-sm">{title}</div><div className="text-sm text-slate-600">{desc}</div></div>
+    </div>
+  );
+  return (
+    <div className="fixed inset-0 z-[70] grid place-items-center p-4">
+      <div className="absolute inset-0 bg-black/40" onClick={dismiss} />
+      <div className="relative w-full max-w-md rounded-2xl bg-white shadow-2xl p-6 space-y-4">
+        <h3 className="text-lg font-bold text-slate-800">✨ Nouveautés</h3>
+        <div className="space-y-3">
+          <Item emoji="📊" title="Signaux Strava enrichis" desc="TSS, Charge FC, dérive cardiaque, temps-en-zone et indicateurs de nage (allure /100m, SWOLF) sur chaque séance." />
+          <Item emoji="📋" title="Demandé vs Fait" desc="Comparaison automatique du prescrit (durée, intensité) au réalisé, avec des drapeaux quand quelque chose diverge." />
+          <Item emoji="🤖" title="Bilan hebdo assisté par IA" desc="Génère un brouillon de bilan de la semaine (résumé / points d'attention / semaine à venir), édite-le, puis envoie-le à l'athlète." />
+        </div>
+        <button onClick={dismiss} className="w-full py-2.5 rounded-lg bg-emerald-600 text-white font-bold hover:bg-emerald-700">Compris</button>
+      </div>
+    </div>
+  );
+}
 
 // ---------- MAIN PAGE ----------
 export default function CoachAthleteFocusV13() {
@@ -971,6 +1129,7 @@ export default function CoachAthleteFocusV13() {
           {/* Zone Metrics (rétractable) */}
           <div className="mt-auto pt-3 border-t border-slate-200/50 px-1">
              {selectedAthleteId && <AthleteMetricsCoach athleteId={selectedAthleteId} />}
+             {selectedAthleteId && <WeeklyDebriefCoach athleteId={selectedAthleteId} weekStart={weekStart.format("YYYY-MM-DD")} />}
           </div>
         </aside>
 
@@ -1223,6 +1382,7 @@ export default function CoachAthleteFocusV13() {
 
       {/* Drawer Historique */}
       {selectedAthleteId && <LifeHistoryPanel open={lifeHistoryOpen} onClose={()=>setLifeHistoryOpen(false)} athleteId={selectedAthleteId} />}
+      <CoachWhatsNew />
 
       {athlete && (
         <SessionModal

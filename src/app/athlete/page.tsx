@@ -1,6 +1,9 @@
 "use client";
 import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { supabase } from "@/lib/supabaseClient";
+import StravaSyncDialog from "../StravaSyncDialog";
+import StravaMetrics from "../StravaMetrics";
+import DemandeVsFait from "../DemandeVsFait";
 import { useRouter } from "next/navigation";
 import dayjs from "dayjs";
 import "dayjs/locale/fr";
@@ -19,7 +22,8 @@ import {
   PencilSimple, Trash, Plus, ChatCircleDots,
   CaretLeft, CaretRight, SignOut,
   ChartLineUp as LoadIcon, Bicycle, SwimmingPool, Mountains, PersonSimpleRun, Clock, ChartLineUp,
-  Smiley, SmileySad, SmileyMeh, Notebook, WarningCircle, Fire, Question, X
+  Smiley, SmileySad, SmileyMeh, Notebook, WarningCircle, Fire, Question, X,
+  ArrowsClockwise, LinkSimple
 } from "@phosphor-icons/react";
 
 // DnD
@@ -76,11 +80,13 @@ function fmtTime(h?: number | null) {
 
 // ---------- TYPES ----------
 type UserType = { id_auth: string; name: string; coach_code?: string; coach_id?: string; ordre: number | null; strava_athlete_id?: number | null; };
-type SessionType = { id: string; user_id: string; sport?: string; title?: string; planned_hour?: number; planned_inter?: string; intensity?: string; status?: string; rpe?: number | null; athlete_comment?: string | null; date: string; strava_activity_id?: number | null; strava_distance?: number | null; strava_elevation?: number | null; strava_avg_hr?: number | null; strava_avg_watts?: number | null; };
+type SessionType = { id: string; user_id: string; sport?: string; title?: string; planned_hour?: number; planned_inter?: string; intensity?: string; status?: string; rpe?: number | null; athlete_comment?: string | null; date: string; strava_activity_id?: number | null; strava_imported?: boolean | null; strava_distance?: number | null; strava_elevation?: number | null; strava_avg_hr?: number | null; strava_avg_watts?: number | null; strava_tss?: number | null; strava_trimp?: number | null; strava_hr_drift?: number | null; strava_time_in_zone?: number[] | null; strava_pace_100?: number | null; strava_swolf?: number | null; };
 type AbsenceType = {
   id: string; user_id: string; date: string; type: string; name?: string | null;
   distance_km?: number | null; elevation_d_plus?: number | null; comment?: string | null;
   rpe?: number | null; duration_hour?: number | null; status?: string | null;
+  strava_activity_id?: number | null; strava_distance?: number | null; strava_elevation?: number | null; strava_avg_hr?: number | null; strava_avg_watts?: number | null;
+  strava_tss?: number | null; strava_trimp?: number | null; strava_hr_drift?: number | null; strava_time_in_zone?: number[] | null; strava_pace_100?: number | null; strava_swolf?: number | null;
 };
 type WeeklyReviewType = { week_start: string; rpe_life: number; comment: string; };
 type WeeklyThematicType = { user_id: string; week_start: string; thematic: string; }; // <<< AJOUTÉ
@@ -195,8 +201,10 @@ function WeeklyReviewModal({ open, onClose, weekStart, userId, initial, onSaved 
 }
 
 // 3. MODALE VALIDATION (Avec Aide RPE)
-function ValidateModal({ open, onClose, onSaved, initial }:{ open: boolean; onClose: ()=>void; onSaved: (s: SessionType)=>void; initial: SessionType | null; }) {
+function ValidateModal({ open, onClose, onSaved, initial, stravaConnected, onSynced }:{ open: boolean; onClose: ()=>void; onSaved: (s: SessionType)=>void; initial: SessionType | null; stravaConnected: boolean; onSynced: ()=>void; }) {
   const [status, setStatus] = useState<string>(initial?.status || "");
+  const [syncOpen, setSyncOpen] = useState(false);
+  const [syncMode, setSyncMode] = useState<"sync" | "merge">("sync");
   const [rpe, setRpe] = useState<number | null>(initial?.rpe ?? null);
   const [comment, setComment] = useState<string>(initial?.athlete_comment || "");
   const [hours, setHours] = useState<number>(Math.floor(initial?.planned_hour || 0));
@@ -276,7 +284,7 @@ function ValidateModal({ open, onClose, onSaved, initial }:{ open: boolean; onCl
               </label>
               <label className="text-sm font-bold text-slate-700">Minutes
                 <select value={minutes} onChange={(e)=>setMinutes(Number(e.target.value))} className="mt-1 w-full rounded-lg border border-slate-200 p-2 bg-slate-50 focus:bg-white">
-                  {Array.from({length:12}, (_,i)=> <option key={i} value={i*5}>{String(i*5).padStart(2,"0")} min</option>)}
+                  {Array.from({length:60}, (_,i)=>i).filter((m)=> m % 5 === 0 || m === minutes).map((m)=> <option key={m} value={m}>{String(m).padStart(2,"0")} min</option>)}
                 </select>
               </label>
             </div>
@@ -285,6 +293,22 @@ function ValidateModal({ open, onClose, onSaved, initial }:{ open: boolean; onCl
               <textarea value={comment} onChange={(e)=>setComment(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 p-2 min-h-[90px] bg-slate-50 focus:bg-white transition" placeholder="Sensations, douleurs..."/>
             </label>
 
+            {/* Demandé vs Fait (factuel) + Données Strava — si la séance vient de Strava */}
+            <DemandeVsFait data={initial} />
+            <StravaMetrics data={initial} />
+
+            {stravaConnected && !initial!.strava_activity_id && (
+              <button type="button" onClick={() => { setSyncMode("sync"); setSyncOpen(true); }}
+                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg border border-orange-300 bg-orange-50 text-orange-600 font-bold hover:bg-orange-100">
+                <ArrowsClockwise size={16}/> Forcer la synchro Strava
+              </button>
+            )}
+            {stravaConnected && initial!.strava_imported && initial!.strava_activity_id && (
+              <button type="button" onClick={() => { setSyncMode("merge"); setSyncOpen(true); }}
+                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg border border-orange-300 bg-orange-50 text-orange-600 font-bold hover:bg-orange-100">
+                <LinkSimple size={16}/> Rattacher à une séance planifiée
+              </button>
+            )}
 
             <div className="flex justify-end gap-3 pt-2">
               <button type="button" onClick={onClose} className="px-4 py-2 rounded-lg bg-white border border-slate-200 text-slate-700 font-medium hover:bg-slate-50">Annuler</button>
@@ -295,6 +319,14 @@ function ValidateModal({ open, onClose, onSaved, initial }:{ open: boolean; onCl
           </form>
         </div>
       )}
+      <StravaSyncDialog
+        open={syncOpen}
+        onClose={() => setSyncOpen(false)}
+        athleteId={initial?.user_id ?? ""}
+        session={initial ? { id: initial.id, title: initial.title } : null}
+        mode={syncMode}
+        onDone={() => { setSyncOpen(false); onSynced(); }}
+      />
     </>
   );
 }
@@ -369,6 +401,9 @@ function AbsenceModal({ open, onClose, onSaved, initial, athleteId, date }:{ ope
                 <label className="text-sm text-slate-600">RPE <input type="number" value={rpe} onChange={(e) => setRpe(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 p-2" /></label>
                 <label className="text-sm text-slate-600">Résultat <select value={status} onChange={(e) => setStatus(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 p-2"><option value="">-</option><option value="finisher">Finisher</option><option value="dnf">DNF</option></select></label>
             </div>
+
+            {/* Données Strava — affichées si la compète vient de Strava */}
+            <StravaMetrics data={initial} />
           </>
         )}
         <label className="block text-sm font-bold text-slate-700">Commentaire <textarea value={comment} onChange={(e) => setComment(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 p-2 bg-slate-50 min-h-[80px]" /></label>
@@ -380,6 +415,47 @@ function AbsenceModal({ open, onClose, onSaved, initial, athleteId, date }:{ ope
           </div>
         </div>
       </form>
+    </div>
+  );
+}
+
+// ---------- Bilan du coach (debrief hebdo reçu) — Chantier 3 D
+function CoachDebriefAthlete({ athleteId, weekStart }: { athleteId: string; weekStart: string }) {
+  const [d, setD] = useState<{ week_start: string; resume: string | null; points_attention: string | null; semaine_a_venir: string | null; seen_at: string | null } | null>(null);
+  useEffect(() => {
+    if (!athleteId) return;
+    setD(null);
+    (async () => {
+      // Bilan de la SEMAINE AFFICHÉE (pas le dernier en date).
+      const { data } = await supabase.from("weekly_debriefs")
+        .select("week_start, resume, points_attention, semaine_a_venir, seen_at")
+        .eq("user_id", athleteId).eq("status", "sent").eq("week_start", weekStart)
+        .maybeSingle();
+      if (data) {
+        setD(data);
+        if (!data.seen_at) {
+          await supabase.from("weekly_debriefs").update({ seen_at: new Date().toISOString() })
+            .eq("user_id", athleteId).eq("week_start", data.week_start);
+        }
+      }
+    })();
+  }, [athleteId, weekStart]);
+  if (!d) return null;
+  return (
+    <div className="mt-4 rounded-2xl border border-blue-200 bg-blue-50/50 p-4 shadow-sm">
+      <div className="flex items-center justify-between mb-2">
+        <div className="text-xs font-black uppercase tracking-wider text-blue-700">📋 Bilan du coach</div>
+        <span className="text-[11px] text-slate-400">Semaine du {dayjs(d.week_start).format("DD/MM")}</span>
+      </div>
+      <div className="space-y-2 text-sm text-slate-700">
+        {d.resume && <p>{d.resume}</p>}
+        {d.points_attention && (
+          <div><span className="font-bold text-amber-700">À surveiller : </span>{d.points_attention}</div>
+        )}
+        {d.semaine_a_venir && (
+          <div><span className="font-bold text-blue-700">Semaine à venir : </span>{d.semaine_a_venir}</div>
+        )}
+      </div>
     </div>
   );
 }
@@ -693,6 +769,7 @@ export default function AthletePage() {
 
   const [validateOpen, setValidateOpen] = useState(false);
   const [currentSession, setCurrentSession] = useState<SessionType | null>(null);
+  const [refreshTick, setRefreshTick] = useState(0);
   const [absenceOpen, setAbsenceOpen] = useState(false);
   const [absenceDate, setAbsenceDate] = useState<string>(dayjs().format("YYYY-MM-DD"));
   const [editAbsence, setEditAbsence] = useState<AbsenceType | null>(null);
@@ -734,7 +811,7 @@ export default function AthletePage() {
       setWeeklyReview(review as WeeklyReviewType);
 
     })();
-  }, [athlete?.id_auth, weekStart]);
+  }, [athlete?.id_auth, weekStart, refreshTick]);
 
   // Prev load + race
   useEffect(() => {
@@ -766,7 +843,7 @@ export default function AthletePage() {
     if (!athlete?.id_auth) return;
     const redirectUri = "https://ihigmlpgliasczlvxttd.supabase.co/functions/v1/strava-oauth-callback";
     const state = `${athlete.id_auth}|web`;
-    const authUrl = `https://www.strava.com/oauth/authorize?client_id=209898&response_type=code&redirect_uri=${encodeURIComponent(redirectUri)}&approval_prompt=force&scope=activity:read_all,activity:write&state=${encodeURIComponent(state)}`;
+    const authUrl = `https://www.strava.com/oauth/authorize?client_id=209898&response_type=code&redirect_uri=${encodeURIComponent(redirectUri)}&approval_prompt=force&scope=activity:read_all,activity:write,profile:read_all&state=${encodeURIComponent(state)}`;
     window.location.href = authUrl;
   }
 
@@ -883,13 +960,27 @@ export default function AthletePage() {
                 <RpeGuidePopover open={showRpeHelp} onClose={()=>setShowRpeHelp(false)} />
             </div>
             {athlete?.strava_athlete_id ? (
-              <button
-                onClick={disconnectStrava}
-                title={`Strava lié (athlete ${athlete.strava_athlete_id}) — cliquer pour déconnecter`}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 text-xs font-bold"
-              >
-                <span className="inline-block w-2 h-2 rounded-full bg-emerald-500"/> Strava
-              </button>
+              <>
+                <button
+                  onClick={disconnectStrava}
+                  title={`Strava lié (athlete ${athlete.strava_athlete_id}) — cliquer pour déconnecter`}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 text-xs font-bold"
+                >
+                  <span className="inline-block w-2 h-2 rounded-full bg-emerald-500"/> Strava
+                </button>
+                {(() => {
+                  const scope = (athlete as { strava_scope?: string | null }).strava_scope;
+                  return scope && !scope.includes("profile:read_all") ? (
+                    <button
+                      onClick={connectStrava}
+                      title="Reconnecte Strava pour débloquer l'analyse par zones de fréquence cardiaque"
+                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200 text-xs font-bold"
+                    >
+                      ⚠ Reconnecter
+                    </button>
+                  ) : null;
+                })()}
+              </>
             ) : (
               <button
                 onClick={connectStrava}
@@ -1032,6 +1123,9 @@ export default function AthletePage() {
               })}
             </div>
           </DragDropContext>
+
+          {/* Bilan du coach (debrief hebdo) — sous le planning, de la semaine affichée */}
+          {athlete && <CoachDebriefAthlete athleteId={athlete.id_auth} weekStart={weekStart.format("YYYY-MM-DD")} />}
         </section>
       </div>
 
@@ -1040,6 +1134,8 @@ export default function AthletePage() {
         open={validateOpen}
         onClose={()=>setValidateOpen(false)}
         initial={currentSession}
+        stravaConnected={!!athlete?.strava_athlete_id}
+        onSynced={()=>{ setValidateOpen(false); setRefreshTick(t => t + 1); }}
         onSaved={(ss)=>{
           setValidateOpen(false);
           setSessions(prev => prev.map(x => x.id === ss.id ? ss : x));

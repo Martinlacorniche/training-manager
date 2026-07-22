@@ -14,8 +14,10 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://ngsportcoaching.com"),
   title: "C'est Ludique — NG Sport Coaching",
   description: "La plateforme de coaching sportif 100% gratuite pour les coachs et leurs athlètes.",
+  alternates: { canonical: "/" },
 };
 
 export default function RootLayout({

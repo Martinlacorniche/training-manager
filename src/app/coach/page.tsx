@@ -105,7 +105,7 @@ function formatDuration(h?: number | null) {
 }
 
 // ---------- TYPES ----------
-type UserType = { id_auth: string; name: string; coach_code?: string; coach_id?: string; ordre: number | null; alert?: boolean };
+type UserType = { id_auth: string; name: string; coach_code?: string; coach_id?: string; ordre: number | null; alert?: boolean; self_coached?: boolean };
 type SessionType = { id: string; user_id: string; sport?: string; title?: string; planned_hour?: number; planned_inter?: string; intensity?: string; status?: string; rpe?: number | null; athlete_comment?: string | null; date: string; strava_activity_id?: number | null; strava_imported?: boolean | null; strava_distance?: number | null; strava_elevation?: number | null; strava_avg_hr?: number | null; strava_avg_watts?: number | null; strava_tss?: number | null; strava_trimp?: number | null; strava_hr_drift?: number | null; strava_time_in_zone?: number[] | null; strava_pace_100?: number | null; strava_swolf?: number | null; };
 type AbsenceType = { id: string; user_id: string; date: string; type: string; name?: string | null; distance_km?: number | null; elevation_d_plus?: number | null; comment?: string | null; rpe?: number | null; duration_hour?: number | null; status?: string | null; strava_activity_id?: number | null; strava_distance?: number | null; strava_elevation?: number | null; strava_avg_hr?: number | null; strava_avg_watts?: number | null; strava_tss?: number | null; strava_trimp?: number | null; strava_hr_drift?: number | null; strava_time_in_zone?: number[] | null; strava_pace_100?: number | null; strava_swolf?: number | null; };
 type WeeklyReviewType = { week_start: string; rpe_life: number; comment: string; };
@@ -476,96 +476,6 @@ function paceFromKmh(kmh: number) {
     return `${m}:${String(s).padStart(2,"0")}/km`;
   }
   const PCTS = [60,70,80,85,90,95,100,110,120,130];
-  function WeeklyDebriefCoach({ athleteId, weekStart }: { athleteId: string; weekStart: string }) {
-    const [modalOpen, setModalOpen] = React.useState(false);
-    const [resume, setResume] = React.useState("");
-    const [attention, setAttention] = React.useState("");
-    const [aVenir, setAVenir] = React.useState("");
-    const [status, setStatus] = React.useState<string | null>(null);
-    const [seenAt, setSeenAt] = React.useState<string | null>(null);
-    const [loading, setLoading] = React.useState(false);
-    const [busy, setBusy] = React.useState<string | null>(null);
-
-    const apply = (d: any) => {
-      setResume(d?.resume ?? ""); setAttention(d?.points_attention ?? ""); setAVenir(d?.semaine_a_venir ?? "");
-      setStatus(d?.status ?? null); setSeenAt(d?.seen_at ?? null);
-    };
-
-    // Charge le bilan (statut + contenu) quand l'athlète ou la semaine change.
-    useEffect(() => {
-      if (!athleteId) return;
-      setLoading(true);
-      supabase.functions.invoke("generate-weekly-debrief", { body: { action: "get", athlete_id: athleteId, week_start: weekStart } })
-        .then(({ data }) => apply(data?.debrief)).finally(() => setLoading(false));
-    }, [athleteId, weekStart]);
-
-    async function call(action: string, payload?: any) {
-      setBusy(action);
-      const { data, error } = await supabase.functions.invoke("generate-weekly-debrief", { body: { action, athlete_id: athleteId, week_start: weekStart, payload } });
-      setBusy(null);
-      if (error || data?.error) { alert(error?.message || data?.error); return; }
-      apply(data?.debrief);
-      if (action === "send") setModalOpen(false);
-    }
-    const has = resume || attention || aVenir;
-    const badge = status
-      ? <span className={`normal-case tracking-normal px-1.5 py-0.5 rounded-full text-[9px] font-bold ${status === "sent" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>{status === "sent" ? "Envoyé" : "Brouillon"}</span>
-      : null;
-
-    return (
-      <>
-        <button onClick={() => setModalOpen(true)}
-          className="w-full rounded-xl border border-slate-200 bg-white shadow-sm px-3 py-2 flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-slate-500 hover:bg-slate-50 transition">
-          <span>📋 Bilan de la semaine</span>
-          <div className="flex items-center gap-2">{badge}<CaretRight size={12} /></div>
-        </button>
-
-        {modalOpen && typeof document !== "undefined" && createPortal(
-          <div className="fixed inset-0 z-[60] grid place-items-center p-4">
-            <div className="absolute inset-0 bg-black/40" onClick={() => setModalOpen(false)} />
-            <div className="relative w-full max-w-2xl max-h-[88vh] overflow-y-auto rounded-2xl bg-white shadow-2xl p-5 space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">📋 Bilan de la semaine {badge}</h3>
-                <button onClick={() => setModalOpen(false)} className="text-slate-400 hover:text-slate-700"><X size={20} /></button>
-              </div>
-
-              <div className="text-sm text-slate-600 bg-slate-50 rounded-lg px-3 py-2 text-center font-semibold">
-                Semaine du {dayjs(weekStart).format("DD/MM/YYYY")} <span className="text-slate-400 font-normal">(semaine affichée dans le planning)</span>
-              </div>
-
-              <button onClick={() => call("generate")} disabled={busy != null || loading}
-                className="w-full py-2 rounded-lg bg-blue-600 text-white text-sm font-bold hover:bg-blue-700 disabled:opacity-60">
-                {busy === "generate" ? "Génération…" : has ? "Régénérer le brouillon (IA)" : "Générer le brouillon (IA)"}
-              </button>
-
-              {loading ? <div className="text-sm text-slate-400 italic py-8 text-center">Chargement…</div> : (
-                <>
-                  <label className="block text-xs font-bold uppercase text-slate-400">Résumé
-                    <textarea value={resume} onChange={e => setResume(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 p-3 text-sm leading-relaxed min-h-[120px]" /></label>
-                  <label className="block text-xs font-bold uppercase text-slate-400">Points d'attention
-                    <textarea value={attention} onChange={e => setAttention(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 p-3 text-sm leading-relaxed min-h-[100px]" /></label>
-                  <label className="block text-xs font-bold uppercase text-slate-400">Semaine à venir
-                    <textarea value={aVenir} onChange={e => setAVenir(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 p-3 text-sm leading-relaxed min-h-[90px]" /></label>
-
-                  <div className="flex items-center justify-between gap-3 pt-1">
-                    <span className="text-xs text-slate-400">{status === "sent" ? (seenAt ? "Vu par l'athlète ✓" : "Envoyé — pas encore vu") : status === "draft" ? "Brouillon non envoyé" : ""}</span>
-                    <div className="flex gap-2">
-                      <button onClick={() => call("save", { resume, points_attention: attention, semaine_a_venir: aVenir })} disabled={busy != null || !has}
-                        className="px-4 py-2 rounded-lg bg-slate-100 text-slate-700 text-sm font-bold hover:bg-slate-200 disabled:opacity-60">{busy === "save" ? "…" : "Enregistrer"}</button>
-                      <button onClick={() => call("send", { resume, points_attention: attention, semaine_a_venir: aVenir })} disabled={busy != null || !has}
-                        className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-bold hover:bg-emerald-700 disabled:opacity-60">{busy === "send" ? "…" : "Envoyer à l'athlète"}</button>
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
-          </div>,
-          document.body
-        )}
-      </>
-    );
-  }
-
   function AthleteMetricsCoach({ athleteId }: { athleteId: string }) {
     const [vma, setVma] = React.useState<string>("");
     const [ftp, setFtp] = React.useState<string>("");
@@ -897,7 +807,11 @@ export default function CoachAthleteFocusV13() {
         .eq("role", "athlete").eq("coach_id", session.user.id)
         .order("ordre", { ascending: true });
       
-      const list = (athletesList || []) as UserType[];
+      const list = [
+        // « Je me coache aussi » : le coach apparaît en tête de sa propre liste.
+        ...(user?.self_coached ? [{ id_auth: user.id_auth, name: user.name, ordre: -1, coach_code: user.coach_code, coach_id: user.coach_id } as UserType] : []),
+        ...((athletesList || []) as UserType[]),
+      ];
       
       // Check alertes
       const alertsMap: Record<string, boolean> = {};
@@ -1007,6 +921,13 @@ export default function CoachAthleteFocusV13() {
   const athlete = athletes.find(a => a.id_auth === selectedAthleteId) || null;
   async function logout() { await supabase.auth.signOut(); router.push("/login"); }
 
+  async function toggleSelfCoached() {
+    if (!coach) return;
+    const { error } = await supabase.from("users").update({ self_coached: !coach.self_coached }).eq("id_auth", coach.id_auth);
+    if (error) { alert(error.message); return; }
+    window.location.reload();
+  }
+
   // Helpers pour le Feed de droite
   const getAthleteName = (uid: string) => athletes.find(a => a.id_auth === uid)?.name.split(" ")[0] || "Athlète";
   
@@ -1021,6 +942,17 @@ export default function CoachAthleteFocusV13() {
                <div className="hidden md:block text-xs text-emerald-900 bg-emerald-50 border border-emerald-100 rounded-md px-2 py-1">
                  Code coach : <span className="font-semibold">{coach.coach_code}</span>
                </div>
+             )}
+             {coach && (
+               <label className="hidden md:flex items-center gap-1.5 text-xs text-slate-600 cursor-pointer select-none" title="Tu apparais en tête de ta liste d'athlètes et tu gardes ton propre planning">
+                 <input type="checkbox" checked={!!coach.self_coached} onChange={toggleSelfCoached} className="accent-emerald-600" />
+                 Je me coache aussi
+               </label>
+             )}
+             {coach?.self_coached && (
+               <a href="/athlete" className="hidden md:block text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-100 rounded-md px-2 py-1 hover:bg-blue-100">
+                 Mon planning
+               </a>
              )}
           </div>
           
@@ -1129,7 +1061,6 @@ export default function CoachAthleteFocusV13() {
           {/* Zone Metrics (rétractable) */}
           <div className="mt-auto pt-3 border-t border-slate-200/50 px-1">
              {selectedAthleteId && <AthleteMetricsCoach athleteId={selectedAthleteId} />}
-             {selectedAthleteId && <WeeklyDebriefCoach athleteId={selectedAthleteId} weekStart={weekStart.format("YYYY-MM-DD")} />}
           </div>
         </aside>
 

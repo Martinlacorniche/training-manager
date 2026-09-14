@@ -419,47 +419,6 @@ function AbsenceModal({ open, onClose, onSaved, initial, athleteId, date }:{ ope
   );
 }
 
-// ---------- Bilan du coach (debrief hebdo reçu) — Chantier 3 D
-function CoachDebriefAthlete({ athleteId, weekStart }: { athleteId: string; weekStart: string }) {
-  const [d, setD] = useState<{ week_start: string; resume: string | null; points_attention: string | null; semaine_a_venir: string | null; seen_at: string | null } | null>(null);
-  useEffect(() => {
-    if (!athleteId) return;
-    setD(null);
-    (async () => {
-      // Bilan de la SEMAINE AFFICHÉE (pas le dernier en date).
-      const { data } = await supabase.from("weekly_debriefs")
-        .select("week_start, resume, points_attention, semaine_a_venir, seen_at")
-        .eq("user_id", athleteId).eq("status", "sent").eq("week_start", weekStart)
-        .maybeSingle();
-      if (data) {
-        setD(data);
-        if (!data.seen_at) {
-          await supabase.from("weekly_debriefs").update({ seen_at: new Date().toISOString() })
-            .eq("user_id", athleteId).eq("week_start", data.week_start);
-        }
-      }
-    })();
-  }, [athleteId, weekStart]);
-  if (!d) return null;
-  return (
-    <div className="mt-4 rounded-2xl border border-blue-200 bg-blue-50/50 p-4 shadow-sm">
-      <div className="flex items-center justify-between mb-2">
-        <div className="text-xs font-black uppercase tracking-wider text-blue-700">📋 Bilan du coach</div>
-        <span className="text-[11px] text-slate-400">Semaine du {dayjs(d.week_start).format("DD/MM")}</span>
-      </div>
-      <div className="space-y-2 text-sm text-slate-700">
-        {d.resume && <p>{d.resume}</p>}
-        {d.points_attention && (
-          <div><span className="font-bold text-amber-700">À surveiller : </span>{d.points_attention}</div>
-        )}
-        {d.semaine_a_venir && (
-          <div><span className="font-bold text-blue-700">Semaine à venir : </span>{d.semaine_a_venir}</div>
-        )}
-      </div>
-    </div>
-  );
-}
-
 // ---------- Cards (Miroir du coach, pour l'homogénéité)
 const SessionCard = React.memo(function SessionCard({ s, onEdit, onDelete }:{ s: SessionType; onEdit: ()=>void; onDelete: ()=>void; }) {
   const style = getSportStyle(s.sport);
@@ -1124,8 +1083,6 @@ export default function AthletePage() {
             </div>
           </DragDropContext>
 
-          {/* Bilan du coach (debrief hebdo) — sous le planning, de la semaine affichée */}
-          {athlete && <CoachDebriefAthlete athleteId={athlete.id_auth} weekStart={weekStart.format("YYYY-MM-DD")} />}
         </section>
       </div>
 

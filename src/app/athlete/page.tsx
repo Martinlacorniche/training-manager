@@ -929,7 +929,7 @@ export default function AthletePage() {
                 </button>
                 {(() => {
                   const scope = (athlete as { strava_scope?: string | null }).strava_scope;
-                  return scope && !scope.includes("profile:read_all") ? (
+                  return !scope?.includes("profile:read_all") ? (
                     <button
                       onClick={connectStrava}
                       title="Reconnecte Strava pour débloquer l'analyse par zones de fréquence cardiaque"

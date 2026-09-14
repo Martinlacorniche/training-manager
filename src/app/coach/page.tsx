@@ -337,13 +337,23 @@ const SessionCard = React.memo(function SessionCard({ s, onEdit, onDelete }:{ s:
   const alertType = getSessionAlert(s);
   const isPast = dayjs(s.date).isBefore(dayjs(), 'day');
 
+  // État lisible d'un coup d'œil (mêmes libellés que l'espace coach mobile). Avant, une
+  // séance faite ne se repérait qu'à un liseré vert et une séance non faite à rien du tout.
+  const state =
+    s.status === "valide" ? { label: "Faite", cls: "bg-emerald-600 text-white", icon: <Check size={11} weight="bold" /> }
+    : s.status === "non_valide" ? { label: "Non faite", cls: "bg-rose-600 text-white", icon: <X size={11} weight="bold" /> }
+    : isPast ? { label: "Pas renseignée", cls: "bg-amber-100 text-amber-800 border border-amber-300", icon: null }
+    : { label: "À faire", cls: "bg-white/80 text-slate-500 border border-slate-200", icon: null };
+
   let borderClass = "";
   if (alertType) {
     borderClass = "border-2 border-rose-500 shadow-red-100";
   } else if (s.status === "valide") {
-    borderClass = "border border-emerald-400 ring-1 ring-emerald-400 shadow-sm";
+    borderClass = "border-2 border-emerald-500 shadow-sm";
+  } else if (s.status === "non_valide") {
+    borderClass = "border-2 border-rose-300";
   } else if (isPast) {
-    borderClass = "border-2 border-amber-500 shadow-amber-100";
+    borderClass = "border-2 border-amber-400 shadow-amber-100";
   } else {
     borderClass = "border border-transparent";
   }
@@ -365,11 +375,9 @@ const SessionCard = React.memo(function SessionCard({ s, onEdit, onDelete }:{ s:
       </div>
       <div className={`h-1 w-12 rounded-full mb-2 ${intensityBar(s.intensity)}`} />
       {s.title && <div className={`text-sm font-bold leading-tight mb-1 ${style.text}`}>{s.title}</div>}
-      <div className={`flex items-center justify-between text-xs font-medium ${style.text} opacity-90`}>
-        <div className="flex items-center gap-1"><Clock size={12}/> {fmtTime(s.planned_hour)}</div>
-        {s.status === "valide" && s.rpe ? (
-            <div className="flex items-center gap-1 font-bold">{alertType === "surmenage" && <Fire size={12} className="text-rose-500"/>}<span>RPE {s.rpe}</span></div>
-        ) : (<div className="opacity-60 italic text-[10px]">Prev. RPE ~{EST_RPE[s.intensity || "moyenne"] || 6}</div>)}
+      <div className={`flex items-center justify-between gap-2 text-xs font-medium ${style.text}`}>
+        <div className="flex items-center gap-1 opacity-90"><Clock size={12}/> {fmtTime(s.planned_hour)}</div>
+        <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold ${state.cls}`}>{state.icon}{state.label}</span>
       </div>
 
       {s.strava_activity_id && (
@@ -405,11 +413,23 @@ const SessionCard = React.memo(function SessionCard({ s, onEdit, onDelete }:{ s:
           )}
         </div>
       )}
-      {(s.athlete_comment || s.rpe) && (
-        <div className={`mt-2 p-2 bg-white/80 rounded-lg text-[11px] italic text-slate-700 border border-white/50 ${alertType === "douleur" ? "border-rose-300 bg-rose-50 text-rose-800 font-medium" : ""}`}>
-          {s.athlete_comment ? `“${s.athlete_comment}”` : ""}{!s.athlete_comment && s.rpe ? `Ressenti: ${s.rpe}/10` : ""}
+      {(s.athlete_comment || s.rpe != null) ? (
+        <div className={`mt-2 p-2 rounded-lg border ${alertType === "douleur" ? "bg-rose-50 border-rose-300" : "bg-white border-slate-200"}`}>
+          <div className="flex items-center justify-between gap-2 mb-0.5">
+            <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Retour athlète</span>
+            {s.rpe != null && (
+              <span className={`inline-flex items-center gap-1 text-[11px] font-bold ${alertType === "surmenage" ? "text-rose-600" : "text-slate-700"}`}>
+                {alertType === "surmenage" && <Fire size={12} />}RPE {s.rpe}/10
+              </span>
+            )}
+          </div>
+          {s.athlete_comment && (
+            <div className={`text-xs leading-snug ${alertType === "douleur" ? "text-rose-800 font-medium" : "text-slate-700"}`}>“{s.athlete_comment}”</div>
+          )}
         </div>
-      )}
+      ) : s.status !== "valide" && s.status !== "non_valide" ? (
+        <div className={`mt-1 text-[10px] italic opacity-60 ${style.text}`}>RPE prévu ~{EST_RPE[s.intensity || "moyenne"] || 6}</div>
+      ) : null}
       <AnimatePresence initial={false}>
         {s.planned_inter && (
           <SmoothCollapsible open={showCoachNote}>

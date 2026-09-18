@@ -200,6 +200,8 @@ function SessionModal({ open, onClose, onSaved, initial, athlete, date }:{ open:
       e.preventDefault();
       setLoading(true);
       const payload: any = { user_id: athlete.id_auth, date, sport, title, planned_hour: plannedHour + plannedMinute / 60, planned_inter, intensity };
+      // Consignes modifiées : le chrono généré ne correspond plus (même règle que l'app coach).
+      if (isEdit && (initial as any)?.timer_sequence && ((initial as any).planned_inter || "") !== (planned_inter || "")) payload.timer_sequence = null;
       try {
         let data: any, error: any;
         if (isEdit) ({ data, error } = await supabase.from("sessions").update(payload).eq("id", initial!.id).select().single());

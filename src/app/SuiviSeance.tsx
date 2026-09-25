@@ -103,7 +103,7 @@ export default function SuiviSeance({ sessionId, sport, rpe }: { sessionId: stri
       {series.length > 1 && (
         <Carte titre="Série par série">
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm whitespace-nowrap">
               <thead>
                 <tr className="text-xs text-slate-400 text-left border-b border-slate-100">
                   <th className="py-1 pr-3">#</th><th className="pr-3">Durée</th><th className="pr-3">Dist.</th>

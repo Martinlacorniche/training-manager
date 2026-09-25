@@ -357,6 +357,9 @@ function ValidateModal({ open, onClose, onSaved, initial, stravaConnected, onSyn
             {/* Demandé vs Fait (factuel) + Données Strava — si la séance vient de Strava */}
             <DemandeVsFait data={initial} />
             <StravaMetrics data={initial} />
+            {initial?.id && initial.status === "valide" && (
+              <a href={`/seance/${initial.id}`} className="inline-block text-sm font-bold text-blue-600 hover:underline">Analyse détaillée →</a>
+            )}
 
             {stravaConnected && !initial!.strava_activity_id && (
               <button type="button" onClick={() => { setSyncMode("sync"); setSyncOpen(true); }}
@@ -1012,6 +1015,7 @@ export default function AthletePage() {
                 Lier Strava
               </button>
             )}
+            <a href="/progres" className="px-2 py-1 rounded-lg text-sm font-bold text-slate-500 hover:text-blue-600 hover:bg-slate-50" title="Mon état et ma forme">Progrès</a>
             <a href="/athlete/reglages" className="p-2 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-slate-50" title="Réglages"><GearSix size={18}/></a>
             <button onClick={logout} className="text-rose-500 hover:bg-rose-50 p-2 rounded-lg"><SignOut size={18}/></button>
           </div>

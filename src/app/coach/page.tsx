@@ -248,6 +248,9 @@ function SessionModal({ open, onClose, onSaved, initial, athlete, date }:{ open:
               <label className="text-sm text-slate-700">Consignes <textarea value={planned_inter} onChange={(e)=>setPlannedInter(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 p-2 min-h-[90px] focus:outline-none focus:ring-2 focus:ring-emerald-300"/></label>
               <DemandeVsFait data={initial} coachView />
               <StravaMetrics data={initial} />
+              {initial?.id && initial.status === "valide" && (
+                <a href={`/seance/${initial.id}`} target="_blank" rel="noopener noreferrer" className="inline-block text-sm font-bold text-emerald-700 hover:underline">Analyse détaillée →</a>
+              )}
               <div className="flex justify-end gap-2 pt-1">
                 <button type="button" onClick={onClose} className="px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700">Annuler</button>
                 <button disabled={loading} className="px-4 py-2 rounded-lg text-white bg-emerald-600 hover:bg-emerald-700">{loading ? "..." : "OK"}</button>
@@ -1137,6 +1140,7 @@ export default function CoachAthleteFocusV13() {
                         <div className="flex flex-col items-center min-w-[100px]">
                             <span className="text-[10px] uppercase font-bold text-slate-400 mb-1">État</span>
                             <EtatAthlete athleteId={selectedAthleteId} />
+                            <a href={`/progres?athlete=${selectedAthleteId}`} target="_blank" rel="noopener noreferrer" className="mt-1 text-[11px] font-bold text-emerald-700 hover:underline">Progrès →</a>
                         </div>
                     )}
                 </div>

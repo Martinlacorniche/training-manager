@@ -4,6 +4,7 @@ import { supabase } from "@/lib/supabaseClient";
 import StravaSyncDialog from "../StravaSyncDialog";
 import StravaMetrics from "../StravaMetrics";
 import DemandeVsFait from "../DemandeVsFait";
+import PartageCoachInfo from "../PartageCoachInfo";
 import { useRouter } from "next/navigation";
 import dayjs from "dayjs";
 import "dayjs/locale/fr";
@@ -20,7 +21,7 @@ const jakarta = Plus_Jakarta_Sans({ subsets: ["latin"], weight: ["500","600","70
 // Icons (Phosphor)
 import {
   PencilSimple, Trash, Plus, ChatCircleDots,
-  CaretLeft, CaretRight, SignOut,
+  CaretLeft, CaretRight, SignOut, GearSix,
   ChartLineUp as LoadIcon, Bicycle, SwimmingPool, Mountains, PersonSimpleRun, Clock, ChartLineUp,
   Smiley, SmileySad, SmileyMeh, Notebook, WarningCircle, Fire, Question, X,
   ArrowsClockwise, LinkSimple
@@ -79,7 +80,10 @@ function fmtTime(h?: number | null) {
 }
 
 // ---------- TYPES ----------
-type UserType = { id_auth: string; name: string; coach_code?: string; coach_id?: string; ordre: number | null; strava_athlete_id?: number | null; };
+type UserType = {
+  id_auth: string; name: string; coach_code?: string; coach_id?: string; ordre: number | null; strava_athlete_id?: number | null;
+  partage_etat_coach?: boolean | null; partage_informe_le?: string | null;
+};
 type SessionType = { id: string; user_id: string; sport?: string; title?: string; planned_hour?: number; planned_inter?: string; intensity?: string; status?: string; rpe?: number | null; athlete_comment?: string | null; date: string; strava_activity_id?: number | null; strava_imported?: boolean | null; strava_distance?: number | null; strava_elevation?: number | null; strava_avg_hr?: number | null; strava_avg_watts?: number | null; strava_tss?: number | null; strava_trimp?: number | null; strava_hr_drift?: number | null; strava_time_in_zone?: number[] | null; strava_pace_100?: number | null; strava_swolf?: number | null; };
 type AbsenceType = {
   id: string; user_id: string; date: string; type: string; name?: string | null;
@@ -88,7 +92,22 @@ type AbsenceType = {
   strava_activity_id?: number | null; strava_distance?: number | null; strava_elevation?: number | null; strava_avg_hr?: number | null; strava_avg_watts?: number | null;
   strava_tss?: number | null; strava_trimp?: number | null; strava_hr_drift?: number | null; strava_time_in_zone?: number[] | null; strava_pace_100?: number | null; strava_swolf?: number | null;
 };
-type WeeklyReviewType = { week_start: string; rpe_life: number; comment: string; };
+type WeeklyReviewType = {
+  week_start: string; rpe_life: number; comment: string;
+  // Détails facultatifs (2026-09-25), de 1 = très bien à 5 = très difficile.
+  fatigue?: number | null; sommeil?: number | null; stress?: number | null; jambes?: number | null;
+  douleur?: boolean | null; douleur_zone?: string | null;
+};
+
+// Les quatre notes courtes du bilan, mêmes libellés que l'app
+// (App-Coach, app/WeeklyReviewModal.tsx) : elles nourrissent l'état « ressenti ».
+const DETAILS_BILAN = [
+  { cle: "fatigue", label: "Fatigue", bas: "en forme", haut: "épuisé" },
+  { cle: "sommeil", label: "Sommeil", bas: "excellent", haut: "très mauvais" },
+  { cle: "stress", label: "Stress (boulot, vie)", bas: "serein", haut: "sous pression" },
+  { cle: "jambes", label: "Jambes", bas: "fraîches", haut: "très lourdes" },
+] as const;
+type DetailBilan = typeof DETAILS_BILAN[number]["cle"];
 type WeeklyThematicType = { user_id: string; week_start: string; thematic: string; }; // <<< AJOUTÉ
 
 // ---------- COMPONENTS ----------
@@ -136,12 +155,18 @@ function RpeGuidePopover({ open, onClose }:{ open:boolean; onClose:()=>void }) {
 function WeeklyReviewModal({ open, onClose, weekStart, userId, initial, onSaved }: { open: boolean; onClose: ()=>void; weekStart: string; userId: string; initial: WeeklyReviewType | null; onSaved: (r: WeeklyReviewType)=>void; }) {
     const [rpe, setRpe] = useState<number>(initial?.rpe_life || 5);
     const [comment, setComment] = useState<string>(initial?.comment || "");
+    const [details, setDetails] = useState<Partial<Record<DetailBilan, number | null>>>({});
+    const [douleur, setDouleur] = useState(false);
+    const [douleurZone, setDouleurZone] = useState("");
     const [loading, setLoading] = useState(false);
 
     useEffect(() => {
         if(open) {
             setRpe(initial?.rpe_life || 5);
             setComment(initial?.comment || "");
+            setDetails({ fatigue: initial?.fatigue ?? null, sommeil: initial?.sommeil ?? null, stress: initial?.stress ?? null, jambes: initial?.jambes ?? null });
+            setDouleur(!!initial?.douleur);
+            setDouleurZone(initial?.douleur_zone || "");
         }
     }, [open, initial]);
 
@@ -149,7 +174,11 @@ function WeeklyReviewModal({ open, onClose, weekStart, userId, initial, onSaved 
 
     async function save() {
         setLoading(true);
-        const payload = { user_id: userId, week_start: weekStart, rpe_life: rpe, comment: comment };
+        const payload = {
+            user_id: userId, week_start: weekStart, rpe_life: rpe, comment: comment,
+            ...details,
+            douleur, douleur_zone: douleur ? (douleurZone.trim() || null) : null,
+        };
         const { error } = await supabase.from("weekly_reviews").upsert(payload, { onConflict: "user_id, week_start" });
         setLoading(false);
         if(error) alert(error.message);
@@ -183,7 +212,39 @@ function WeeklyReviewModal({ open, onClose, weekStart, userId, initial, onSaved 
                     })}
                 </div>
                 <div className="text-center text-sm font-bold text-slate-700 border-b border-slate-100 pb-2">
-                    Note : {rpe}/10
+                    Note : {rpe}/9
+                </div>
+
+                <div className="space-y-2">
+                    <p className="text-xs font-semibold text-slate-500">En détail (facultatif)</p>
+                    {DETAILS_BILAN.map(d => (
+                        <div key={d.cle}>
+                            <div className="flex justify-between text-xs mb-1">
+                                <span className="font-semibold text-slate-700">{d.label}</span>
+                                <span className="text-slate-400">1 {d.bas} · 5 {d.haut}</span>
+                            </div>
+                            <div className="flex gap-1.5">
+                                {[1,2,3,4,5].map(n => {
+                                    const choisi = details[d.cle] === n;
+                                    return (
+                                        <button key={n} type="button"
+                                            onClick={() => setDetails(x => ({ ...x, [d.cle]: choisi ? null : n }))}
+                                            className={`flex-1 py-1.5 rounded-md text-sm font-bold border transition ${choisi ? "bg-emerald-600 border-emerald-600 text-white" : "bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100"}`}>
+                                            {n}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    ))}
+                    <label className="flex items-center justify-between pt-1 text-sm font-semibold text-slate-700">
+                        Une douleur cette semaine ?
+                        <input type="checkbox" checked={douleur} onChange={e => setDouleur(e.target.checked)} className="h-5 w-5 accent-rose-500" />
+                    </label>
+                    {douleur && (
+                        <input value={douleurZone} onChange={e => setDouleurZone(e.target.value)} placeholder="Où ? (ex. mollet gauche)"
+                            className="w-full rounded-lg border border-rose-200 bg-rose-50 p-2 text-sm outline-none focus:ring-2 focus:ring-rose-200" />
+                    )}
                 </div>
 
                 <label className="block text-sm text-slate-700">
@@ -766,7 +827,7 @@ export default function AthletePage() {
       setAbsences((abs || []) as AbsenceType[]);
 
       // Load Weekly Review
-      const { data: review } = await supabase.from("weekly_reviews").select("rpe_life, comment").eq("user_id", athlete.id_auth).eq("week_start", start).single();
+      const { data: review } = await supabase.from("weekly_reviews").select("rpe_life, comment, fatigue, sommeil, stress, jambes, douleur, douleur_zone").eq("user_id", athlete.id_auth).eq("week_start", start).single();
       setWeeklyReview(review as WeeklyReviewType);
 
     })();
@@ -894,6 +955,7 @@ export default function AthletePage() {
 
   return (
     <main className={`${jakarta.className} min-h-screen bg-slate-100 text-slate-800`}>
+      <PartageCoachInfo athlete={athlete} />
       {/* Header */}
       <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/90 backdrop-blur-md shadow-sm">
         <div className="max-w-screen-2xl mx-auto px-3 py-3 flex items-center justify-between">
@@ -950,6 +1012,7 @@ export default function AthletePage() {
                 Lier Strava
               </button>
             )}
+            <a href="/athlete/reglages" className="p-2 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-slate-50" title="Réglages"><GearSix size={18}/></a>
             <button onClick={logout} className="text-rose-500 hover:bg-rose-50 p-2 rounded-lg"><SignOut size={18}/></button>
           </div>
         </div>
@@ -977,7 +1040,7 @@ export default function AthletePage() {
                       <div className="flex items-center gap-2 text-slate-600"><Smiley size={16} weight="duotone"/> <span className="text-xs font-bold">Charge Vie</span></div>
                       {weeklyReview ? (
                           <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${weeklyReview.rpe_life <= 3 ? "bg-emerald-100 text-emerald-700" : weeklyReview.rpe_life <= 6 ? "bg-amber-100 text-amber-700" : "bg-rose-100 text-rose-700"}`}>
-                              {weeklyReview.rpe_life}/10
+                              {weeklyReview.rpe_life}/9
                           </span>
                       ) : (
                           <span className="text-[10px] text-slate-400 italic">Noter</span>

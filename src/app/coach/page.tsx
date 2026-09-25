@@ -9,6 +9,8 @@ import isoWeek from "dayjs/plugin/isoWeek";
 import isBetween from "dayjs/plugin/isBetween";
 import StravaMetrics from "../StravaMetrics";
 import DemandeVsFait from "../DemandeVsFait";
+import EtatAthlete from "../EtatAthlete";
+import BilanDetails from "../BilanDetails";
 dayjs.locale("fr");
 dayjs.extend(isoWeek);
 dayjs.extend(isBetween); 
@@ -108,7 +110,11 @@ function formatDuration(h?: number | null) {
 type UserType = { id_auth: string; name: string; coach_code?: string; coach_id?: string; ordre: number | null; alert?: boolean; self_coached?: boolean };
 type SessionType = { id: string; user_id: string; sport?: string; title?: string; planned_hour?: number; planned_inter?: string; intensity?: string; status?: string; rpe?: number | null; athlete_comment?: string | null; date: string; strava_activity_id?: number | null; strava_imported?: boolean | null; strava_distance?: number | null; strava_elevation?: number | null; strava_avg_hr?: number | null; strava_avg_watts?: number | null; strava_tss?: number | null; strava_trimp?: number | null; strava_hr_drift?: number | null; strava_time_in_zone?: number[] | null; strava_pace_100?: number | null; strava_swolf?: number | null; };
 type AbsenceType = { id: string; user_id: string; date: string; type: string; name?: string | null; distance_km?: number | null; elevation_d_plus?: number | null; comment?: string | null; rpe?: number | null; duration_hour?: number | null; status?: string | null; strava_activity_id?: number | null; strava_distance?: number | null; strava_elevation?: number | null; strava_avg_hr?: number | null; strava_avg_watts?: number | null; strava_tss?: number | null; strava_trimp?: number | null; strava_hr_drift?: number | null; strava_time_in_zone?: number[] | null; strava_pace_100?: number | null; strava_swolf?: number | null; };
-type WeeklyReviewType = { week_start: string; rpe_life: number; comment: string; };
+type WeeklyReviewType = {
+  week_start: string; rpe_life: number; comment: string;
+  fatigue?: number | null; sommeil?: number | null; stress?: number | null; jambes?: number | null;
+  douleur?: boolean | null; douleur_zone?: string | null;
+};
 type WeeklyThematicType = { user_id: string; week_start: string; thematic: string; };
 
 // ---------- COMPONENTS ----------
@@ -312,9 +318,10 @@ function LifeHistoryPanel({ open, onClose, athleteId }:{ open: boolean; onClose:
                                                     ${rev.rpe_life <= 3 ? "bg-emerald-100 text-emerald-700 border-emerald-200" : 
                                                       rev.rpe_life <= 6 ? "bg-amber-100 text-amber-700 border-amber-200" : 
                                                       "bg-rose-100 text-rose-700 border-rose-200"}`}>
-                                                    Charge {rev.rpe_life}/10
+                                                    Charge {rev.rpe_life}/9
                                                 </div>
                                             </div>
+                                            <div className="mb-2"><BilanDetails bilan={rev} /></div>
                                             {rev.comment ? (
                                                 <div className="text-sm text-slate-700 italic">"{rev.comment}"</div>
                                             ) : (
@@ -868,7 +875,7 @@ export default function CoachAthleteFocusV13() {
       const { data: abs } = await supabase.from("absences_competitions").select("*").eq("user_id", selectedAthleteId).gte("date", start).lte("date", end);
       setAbsences((abs || []) as AbsenceType[]);
 
-      const { data: review } = await supabase.from("weekly_reviews").select("rpe_life, comment").eq("user_id", selectedAthleteId).eq("week_start", start).single();
+      const { data: review } = await supabase.from("weekly_reviews").select("rpe_life, comment, fatigue, sommeil, stress, jambes, douleur, douleur_zone").eq("user_id", selectedAthleteId).eq("week_start", start).single();
       setWeeklyReview(review as WeeklyReviewType);
     })();
   }, [selectedAthleteId, weekStart]);
@@ -1114,14 +1121,24 @@ export default function CoachAthleteFocusV13() {
                                       weeklyReview.rpe_life <= 6 ? "bg-amber-100 text-amber-700 border-amber-200" : 
                                       "bg-rose-100 text-rose-700 border-rose-200 animate-pulse"}`}>
                                     {weeklyReview.rpe_life <= 3 ? <Smiley size={16}/> : weeklyReview.rpe_life <= 6 ? <SmileyMeh size={16}/> : <SmileySad size={16}/>}
-                                    <span>{weeklyReview.rpe_life}/10</span>
+                                    <span>{weeklyReview.rpe_life}/9</span>
                                 </div>
-                                {weeklyReview.comment && (
-                                    <div className="absolute top-full mt-2 left-1/2 -translate-x-1/2 w-64 p-3 bg-slate-800 text-white text-xs rounded-xl shadow-xl z-50 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none text-center leading-relaxed">"{weeklyReview.comment}"</div>
+                                {weeklyReview.douleur && <span className="absolute -top-1 -right-1 h-3 w-3 rounded-full bg-rose-500 ring-2 ring-white" title="Douleur déclarée" />}
+                                {(weeklyReview.comment || weeklyReview.fatigue || weeklyReview.douleur) && (
+                                    <div className="absolute top-full mt-2 left-1/2 -translate-x-1/2 w-64 p-3 bg-slate-800 text-white text-xs rounded-xl shadow-xl z-50 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none text-center leading-relaxed space-y-2">
+                                        <BilanDetails bilan={weeklyReview} clair />
+                                        {weeklyReview.comment && <div>"{weeklyReview.comment}"</div>}
+                                    </div>
                                 )}
                             </div>
                         ) : (<div className="text-xs text-slate-300 italic">Non renseigné</div>)}
                     </div>
+                    {selectedAthleteId && (
+                        <div className="flex flex-col items-center min-w-[100px]">
+                            <span className="text-[10px] uppercase font-bold text-slate-400 mb-1">État</span>
+                            <EtatAthlete athleteId={selectedAthleteId} />
+                        </div>
+                    )}
                 </div>
 
                 <div className="flex gap-8 pr-4">

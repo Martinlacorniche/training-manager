@@ -76,11 +76,11 @@ function Progres() {
       ]);
       setModele(m ?? null);
       // Vitesse critique : la plus récente, et celle d'il y a 6 semaines.
-      const { data: vc } = await supabase.from("vitesse_critique").select("jour, cs, d_prime, erreur_pct, n_efforts")
+      const { data: vc } = await supabase.from("vitesse_critique").select("jour, cs, d_prime, erreur_pct, n_efforts, statut, fourchette_pct, message")
         .eq("user_id", id).eq("sport", "course").order("jour", { ascending: false }).limit(60);
       if (vc?.length) {
         const limite = dayjs(vc[0].jour).subtract(42, "day").format("YYYY-MM-DD");
-        setCs({ actuel: vc[0], avant: vc.find((x: any) => x.jour <= limite) ?? null });
+        setCs({ actuel: vc[0], avant: vc.find((x: any) => x.jour <= limite && x.statut === "estimee") ?? null });
       }
       const c = Number(m?.c ?? 0);
       setPoints((a ?? []).map((x: any) => ({
@@ -167,15 +167,33 @@ function Progres() {
         {cs && (
           <section className={carte}>
             <h2 className="font-bold text-slate-800">Vitesse critique</h2>
-            <p className="text-sm text-slate-500">L&apos;allure tenable longtemps sans s&apos;épuiser : la frontière entre effort « lourd » et « sévère ». L&apos;indicateur de forme le plus robuste, indépendant de la FC.</p>
-            <p className="text-3xl font-extrabold text-slate-800">{allure(cs.actuel.cs)}<span className="text-base font-bold text-slate-500">/km</span></p>
-            <p className="text-sm text-slate-500">± {n1(cs.actuel.erreur_pct)} % · réserve D′ {Math.round(Number(cs.actuel.d_prime))} m · {cs.actuel.n_efforts} durées d&apos;effort sur 90 jours, chaleur corrigée</p>
-            {cs.avant && (
-              <p className={`text-sm font-bold ${Number(cs.actuel.cs) >= Number(cs.avant.cs) ? "text-emerald-700" : "text-orange-600"}`}>
-                Il y a 6 semaines : {allure(cs.avant.cs)}/km ({Number(cs.actuel.cs) >= Number(cs.avant.cs) ? "+" : ""}{n1((Number(cs.actuel.cs) / Number(cs.avant.cs) - 1) * 100)} %)
-              </p>
+            <p className="text-sm text-slate-500">L&apos;allure la plus haute tenable sans s&apos;épuiser progressivement : la frontière entre effort « lourd » et « sévère ». Un 10 km se court à peu près à cette allure.</p>
+            {cs.actuel.statut === "non_estimable" || cs.actuel.cs == null ? (
+              <p className="text-sm text-slate-600">{cs.actuel.message}</p>
+            ) : (
+              <>
+                <p className="text-3xl font-extrabold text-slate-800">
+                  {cs.actuel.statut === "plancher" && <span className="text-base font-bold text-slate-500">au moins </span>}
+                  {allure(cs.actuel.cs)}<span className="text-base font-bold text-slate-500">/km{cs.actuel.statut === "estimee" ? ` ± ${Math.round(Number(cs.actuel.fourchette_pct))} %` : ""}</span>
+                </p>
+                <p className="text-sm text-slate-500">{cs.actuel.message}</p>
+                {cs.actuel.statut === "estimee" && (() => {
+                  const v = Number(cs.actuel.cs);
+                  const t = (km: number, f: number) => { const x = Math.round(km * 1000 / (v * f)); const h = Math.floor(x / 3600), m = Math.floor((x % 3600) / 60), ss = x % 60; return h ? `${h} h ${String(m).padStart(2, "0")}` : `${m}:${String(ss).padStart(2, "0")}`; };
+                  return (
+                    <div className="text-sm text-slate-700 space-y-1">
+                      <p>Zones : facile plus lent que {allure(v * 0.82)} · lourd {allure(v * 0.82)}–{allure(v)} · sévère plus vite que {allure(v)}</p>
+                      <p>Au frais : 5 km {t(5, 1.07)} · 10 km {t(10, 1)} · semi {t(21.0975, 0.97)}–{t(21.0975, 0.93)} · marathon {t(42.195, 0.93)}–{t(42.195, 0.79)}</p>
+                    </div>
+                  );
+                })()}
+                {cs.avant && cs.actuel.statut === "estimee" && (
+                  <p className={`text-sm font-bold ${Number(cs.actuel.cs) >= Number(cs.avant.cs) ? "text-emerald-700" : "text-orange-600"}`}>
+                    Il y a 6 semaines : {allure(cs.avant.cs)}/km ({Number(cs.actuel.cs) >= Number(cs.avant.cs) ? "+" : ""}{n1((Number(cs.actuel.cs) / Number(cs.avant.cs) - 1) * 100)} %)
+                  </p>
+                )}
+              </>
             )}
-            <p className="text-xs text-slate-400">Estimée sur les meilleurs efforts d&apos;entraînement de 3 à 20 min : sous-estimée si ces durées n&apos;ont pas été courues à fond.</p>
           </section>
         )}
 

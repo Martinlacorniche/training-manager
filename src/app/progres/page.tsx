@@ -43,6 +43,7 @@ function Progres() {
   const [modele, setModele] = useState<any | null>(null);
   const [points, setPoints] = useState<any[]>([]);
   const [nuits, setNuits] = useState<any[]>([]);
+  const [cs, setCs] = useState<{ actuel: any; avant: any | null } | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -74,6 +75,13 @@ function Progres() {
           .not("fc_reference", "is", null).in("activites.sport", ["Run", "Trail"]).order("jour"),
       ]);
       setModele(m ?? null);
+      // Vitesse critique : la plus récente, et celle d'il y a 6 semaines.
+      const { data: vc } = await supabase.from("vitesse_critique").select("jour, cs, d_prime, erreur_pct, n_efforts")
+        .eq("user_id", id).eq("sport", "course").order("jour", { ascending: false }).limit(60);
+      if (vc?.length) {
+        const limite = dayjs(vc[0].jour).subtract(42, "day").format("YYYY-MM-DD");
+        setCs({ actuel: vc[0], avant: vc.find((x: any) => x.jour <= limite) ?? null });
+      }
       const c = Number(m?.c ?? 0);
       setPoints((a ?? []).map((x: any) => ({
         jour: dayjs(x.jour).format("DD/MM"),
@@ -153,6 +161,21 @@ function Progres() {
                 </strong>
               </p>
             )}
+          </section>
+        )}
+
+        {cs && (
+          <section className={carte}>
+            <h2 className="font-bold text-slate-800">Vitesse critique</h2>
+            <p className="text-sm text-slate-500">L&apos;allure tenable longtemps sans s&apos;épuiser : la frontière entre effort « lourd » et « sévère ». L&apos;indicateur de forme le plus robuste, indépendant de la FC.</p>
+            <p className="text-3xl font-extrabold text-slate-800">{allure(cs.actuel.cs)}<span className="text-base font-bold text-slate-500">/km</span></p>
+            <p className="text-sm text-slate-500">± {n1(cs.actuel.erreur_pct)} % · réserve D′ {Math.round(Number(cs.actuel.d_prime))} m · {cs.actuel.n_efforts} durées d&apos;effort sur 90 jours, chaleur corrigée</p>
+            {cs.avant && (
+              <p className={`text-sm font-bold ${Number(cs.actuel.cs) >= Number(cs.avant.cs) ? "text-emerald-700" : "text-orange-600"}`}>
+                Il y a 6 semaines : {allure(cs.avant.cs)}/km ({Number(cs.actuel.cs) >= Number(cs.avant.cs) ? "+" : ""}{n1((Number(cs.actuel.cs) / Number(cs.avant.cs) - 1) * 100)} %)
+              </p>
+            )}
+            <p className="text-xs text-slate-400">Estimée sur les meilleurs efforts d&apos;entraînement de 3 à 20 min : sous-estimée si ces durées n&apos;ont pas été courues à fond.</p>
           </section>
         )}
 

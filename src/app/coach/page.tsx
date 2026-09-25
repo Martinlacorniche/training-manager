@@ -880,6 +880,9 @@ export default function CoachAthleteFocusV13() {
 
       const { data: review } = await supabase.from("weekly_reviews").select("rpe_life, comment, fatigue, sommeil, stress, jambes, douleur, douleur_zone").eq("user_id", selectedAthleteId).eq("week_start", start).single();
       setWeeklyReview(review as WeeklyReviewType);
+      // Le coach ne remplit rien : afficher la semaine d'un athlète vaut accusé
+      // de lecture de ses ressentis et de son bilan (l'athlète le voit).
+      supabase.rpc("marquer_vu_par_coach", { p_athlete: selectedAthleteId, p_du: start, p_au: end }).then(() => {});
     })();
   }, [selectedAthleteId, weekStart]);
 

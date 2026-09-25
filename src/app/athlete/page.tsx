@@ -84,7 +84,7 @@ type UserType = {
   id_auth: string; name: string; coach_code?: string; coach_id?: string; ordre: number | null; strava_athlete_id?: number | null;
   partage_etat_coach?: boolean | null; partage_informe_le?: string | null;
 };
-type SessionType = { id: string; user_id: string; sport?: string; title?: string; planned_hour?: number; planned_inter?: string; intensity?: string; status?: string; rpe?: number | null; athlete_comment?: string | null; date: string; strava_activity_id?: number | null; strava_imported?: boolean | null; strava_distance?: number | null; strava_elevation?: number | null; strava_avg_hr?: number | null; strava_avg_watts?: number | null; strava_tss?: number | null; strava_trimp?: number | null; strava_hr_drift?: number | null; strava_time_in_zone?: number[] | null; strava_pace_100?: number | null; strava_swolf?: number | null; };
+type SessionType = { id: string; user_id: string; sport?: string; title?: string; planned_hour?: number; planned_inter?: string; intensity?: string; status?: string; rpe?: number | null; athlete_comment?: string | null; date: string; strava_activity_id?: number | null; strava_imported?: boolean | null; strava_distance?: number | null; strava_elevation?: number | null; strava_avg_hr?: number | null; strava_avg_watts?: number | null; strava_tss?: number | null; strava_trimp?: number | null; strava_hr_drift?: number | null; strava_time_in_zone?: number[] | null; strava_pace_100?: number | null; strava_swolf?: number | null; vu_coach?: boolean; };
 type AbsenceType = {
   id: string; user_id: string; date: string; type: string; name?: string | null;
   distance_km?: number | null; elevation_d_plus?: number | null; comment?: string | null;
@@ -93,7 +93,7 @@ type AbsenceType = {
   strava_tss?: number | null; strava_trimp?: number | null; strava_hr_drift?: number | null; strava_time_in_zone?: number[] | null; strava_pace_100?: number | null; strava_swolf?: number | null;
 };
 type WeeklyReviewType = {
-  week_start: string; rpe_life: number; comment: string;
+  id?: string; week_start: string; rpe_life: number; comment: string;
   // Détails facultatifs (2026-09-25), de 1 = très bien à 5 = très difficile.
   fatigue?: number | null; sommeil?: number | null; stress?: number | null; jambes?: number | null;
   douleur?: boolean | null; douleur_zone?: string | null;
@@ -159,6 +159,15 @@ function WeeklyReviewModal({ open, onClose, weekStart, userId, initial, onSaved 
     const [douleur, setDouleur] = useState(false);
     const [douleurZone, setDouleurZone] = useState("");
     const [loading, setLoading] = useState(false);
+    const [vuLe, setVuLe] = useState<string | null>(null);
+
+    // « Vu par ton coach » : marqué automatiquement quand il ouvre ta fiche.
+    useEffect(() => {
+        setVuLe(null);
+        if (!open || !initial?.id) return;
+        supabase.from("vus_coach").select("vu_le").eq("objet", "bilan").eq("objet_id", initial.id).maybeSingle()
+            .then(({ data }) => setVuLe(data?.vu_le ?? null));
+    }, [open, initial?.id]);
 
     useEffect(() => {
         if(open) {
@@ -195,6 +204,7 @@ function WeeklyReviewModal({ open, onClose, weekStart, userId, initial, onSaved 
                 <div className="text-center">
                     <h3 className="text-lg font-bold text-slate-800">Bilan Hebdomadaire</h3>
                     <p className="text-xs text-slate-500">Comment s'est passée ta semaine (hors sport) ?</p>
+                    {vuLe && <p className="text-xs font-bold text-emerald-600 mt-1">✓ Vu par ton coach le {new Date(vuLe).toLocaleDateString("fr-FR", { day: "numeric", month: "long" })}</p>}
                 </div>
 
                 {/* Selecteur Smiley/Note */}
@@ -533,6 +543,7 @@ const SessionCard = React.memo(function SessionCard({ s, onEdit, onDelete }:{ s:
             <div className="flex items-center gap-1 font-bold">
                {hasBadRpe && <Fire size={12} className="text-rose-500"/>}
                <span>RPE {s.rpe}</span>
+               {s.vu_coach && <span className="ml-1 text-emerald-600 font-bold" title="Vu par ton coach">· vu</span>}
             </div>
         ) : s.status === "valide" ? (
             <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-700 border border-amber-300 rounded px-1.5 py-0.5 text-[9px] font-black uppercase">
@@ -824,13 +835,16 @@ export default function AthletePage() {
       const end = weekStart.add(6, "day").format("YYYY-MM-DD");
       
       const { data: sess } = await supabase.from("sessions").select("*").eq("user_id", athlete.id_auth).gte("date", start).lte("date", end);
-      setSessions((sess || []) as SessionType[]);
+      // « Vu par ton coach » : marqué automatiquement quand il ouvre ta fiche.
+      const { data: vus } = await supabase.from("vus_coach").select("objet_id").eq("athlete_id", athlete.id_auth).eq("objet", "seance");
+      const vuIds = new Set((vus || []).map((v: any) => v.objet_id));
+      setSessions(((sess || []) as SessionType[]).map((x) => ({ ...x, vu_coach: vuIds.has(x.id) })));
 
       const { data: abs } = await supabase.from("absences_competitions").select("*").eq("user_id", athlete.id_auth).gte("date", start).lte("date", end);
       setAbsences((abs || []) as AbsenceType[]);
 
       // Load Weekly Review
-      const { data: review } = await supabase.from("weekly_reviews").select("rpe_life, comment, fatigue, sommeil, stress, jambes, douleur, douleur_zone").eq("user_id", athlete.id_auth).eq("week_start", start).single();
+      const { data: review } = await supabase.from("weekly_reviews").select("id, rpe_life, comment, fatigue, sommeil, stress, jambes, douleur, douleur_zone").eq("user_id", athlete.id_auth).eq("week_start", start).single();
       setWeeklyReview(review as WeeklyReviewType);
 
     })();

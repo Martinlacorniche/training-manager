@@ -13,7 +13,7 @@ const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
 // montre via intervals.icu, le partage de l'état avec le coach, et le
 // connecteur IA. Mêmes fonctions et mêmes règles côté serveur.
 
-type Moi = { id_auth: string; coach_id: string | null; partage_etat_coach: boolean | null; partage_informe_le: string | null };
+type Moi = { id_auth: string; coach_id: string | null; partage_etat_coach: boolean | null; partage_informe_le: string | null; consentement_ia_le: string | null };
 
 export default function Reglages() {
   const router = useRouter();
@@ -29,7 +29,7 @@ export default function Reglages() {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) { router.push("/login"); return; }
     const [{ data: u }, { data: secret }, { data: m }] = await Promise.all([
-      supabase.from("users").select("id_auth, coach_id, partage_etat_coach, partage_informe_le").eq("id_auth", session.user.id).single(),
+      supabase.from("users").select("id_auth, coach_id, partage_etat_coach, partage_informe_le, consentement_ia_le").eq("id_auth", session.user.id).single(),
       supabase.rpc("intervals_est_connecte"),
       supabase.rpc("mcp_token_status"),
     ]);
@@ -72,7 +72,16 @@ export default function Reglages() {
     if (error) { setMoi(moi); setMessage(error.message); }
   }
 
+  // Brancher son assistant IA, c'est transmettre à un tiers (Anthropic) ses
+  // données d'entraînement ET de santé : accord explicite, enregistré, exigé
+  // aussi côté serveur (mcp_issue_token refuse sans lui).
   async function genererLien() {
+    if (!moi?.consentement_ia_le) {
+      const ok = confirm("Avec ce lien, ton assistant (Claude, d'Anthropic) pourra lire ton planning, tes séances, ton ressenti et ton suivi — y compris tes données de santé (VFC, FC de repos, sommeil) si ta montre les envoie. Il agit avec tes droits dans l'app, ni plus ni moins. Tu peux révoquer le lien à tout moment.\n\nTu acceptes ce partage ?");
+      if (!ok) return;
+      const { error } = await supabase.from("users").update({ consentement_ia_le: new Date().toISOString() }).eq("id_auth", moi!.id_auth);
+      if (error) { setMessage(error.message); return; }
+    }
     if (mcp && !confirm("Générer un nouveau lien désactive l'ancien : il faudra le recoller dans ton assistant. Continuer ?")) return;
     setOccupe(true);
     const { data, error } = await supabase.rpc("mcp_issue_token");

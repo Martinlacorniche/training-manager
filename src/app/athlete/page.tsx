@@ -798,12 +798,13 @@ export default function AthletePage() {
 
   async function logout() { await supabase.auth.signOut(); router.push("/login"); }
 
-  function connectStrava() {
+  async function connectStrava() {
     if (!athlete?.id_auth) return;
-    const redirectUri = "https://ihigmlpgliasczlvxttd.supabase.co/functions/v1/strava-oauth-callback";
-    const state = `${athlete.id_auth}|web`;
-    const authUrl = `https://www.strava.com/oauth/authorize?client_id=209898&response_type=code&redirect_uri=${encodeURIComponent(redirectUri)}&approval_prompt=force&scope=activity:read_all,activity:write,profile:read_all&state=${encodeURIComponent(state)}`;
-    window.location.href = authUrl;
+    // L'URL vient du serveur : il y signe le `state` qui dit à quel compte
+    // rattacher Strava (App-Coach, supabase/functions/_shared/strava-state.ts).
+    const { data, error } = await supabase.functions.invoke("strava-connect", { body: { web: true } });
+    if (error || !data?.url) { alert("La connexion Strava a échoué, réessaie."); return; }
+    window.location.href = data.url;
   }
 
   async function disconnectStrava() {

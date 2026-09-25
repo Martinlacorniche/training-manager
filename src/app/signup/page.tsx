@@ -61,12 +61,11 @@ function SignupForm() {
     });
 
     if (form.role === "athlete" && form.coachCode) {
-      const { data: coach } = await supabase
-        .from("users").select("id_auth")
-        .eq("coach_code", form.coachCode).eq("role", "coach").single();
+      // Le code se résout côté base, sans exposer les comptes coach.
+      const { data: coachId } = await supabase.rpc("coach_par_code", { p_code: form.coachCode });
 
-      if (coach) {
-        await supabase.from("users").update({ coach_id: coach.id_auth }).eq("id_auth", user.id);
+      if (coachId) {
+        await supabase.from("users").update({ coach_id: coachId }).eq("id_auth", user.id);
       } else {
         setError("Code coach invalide.");
         setLoading(false);

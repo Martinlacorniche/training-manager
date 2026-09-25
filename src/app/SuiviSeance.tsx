@@ -3,9 +3,9 @@ import React, { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import InfoWbgt from "./InfoWbgt";
 
-// Le suivi d'une séance faite : RPE déclaré contre RPE attendu, chaleur
-// réelle et allure « au frais », évolution d'une répétition à l'autre, série
-// par série. Calculé côté serveur, sans IA (App-Coach,
+// Le suivi d'une séance faite, en mots simples : ressenti comparé à
+// d'habitude, météo et allure « au frais », tenue d'une répétition à l'autre,
+// tour par tour. Calculé côté serveur, sans IA (App-Coach,
 // supabase/functions/analyse). Même contenu que l'app
 // (App-Coach, components/SuiviSeance.tsx).
 
@@ -15,9 +15,7 @@ const allure = (v: unknown) => {
   const s = Math.round(1000 / x);
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 };
-const n1 = (v: unknown) => (v == null ? "—" : (Math.round(Number(v) * 10) / 10).toString().replace(".", ","));
 const n0 = (v: unknown) => (v == null ? "—" : Math.round(Number(v)).toString());
-const signe = (v: unknown) => (v == null ? "—" : `${Number(v) > 0 ? "+" : ""}${n1(v)}`);
 const duree = (s: unknown) => {
   const x = Number(s);
   return Number.isFinite(x) && x > 0 ? `${Math.floor(x / 60)}'${String(Math.round(x % 60)).padStart(2, "0")}` : "—";
@@ -59,84 +57,89 @@ export default function SuiviSeance({ sessionId, sport, rpe }: { sessionId: stri
   }, [sessionId]);
 
   const course = sport === "Run" || sport === "Trail";
-  const dynamiques = series.some((s) => s.gct_ms != null);
   const ecart = rpe != null && attendu ? rpe - attendu.attendu : null;
 
   if (!act && !attendu) return (
     <p className="text-sm text-slate-400 italic">Pas encore d&apos;activité reçue de la montre pour cette séance.</p>
   );
 
+  // UNE PHRASE SIMPLE D'ABORD, les chiffres ensuite et en petit : les détails
+  // techniques (contact au sol, équilibre, indices) sont réservés au MCP.
+  const pen = Number(an?.penalite_pct ?? 0);
+  const gain = an?.gap_effort && an?.gap_effort_frais ? Math.round(1000 / an.gap_effort - 1000 / an.gap_effort_frais) : 0;
+  const lecture = (() => {
+    if (!an || an.series_comparees < 2 || !course) return null;
+    const gct = Number(an.derive_gct ?? 0), cad = Number(an.derive_cadence ?? 0), eq = Number(an.derive_equilibre ?? 0), fc = Number(an.derive_fc_fin ?? 0);
+    const fatigue = gct > 8 || cad < -3;
+    const phrases = [fatigue
+      ? "Ta foulée s'est un peu dégradée en fin de séance (appui au sol plus long, pas moins rapides) : un signe de fatigue."
+      : "Tu as bien tenu jusqu'au bout : ta foulée n'a pas bougé d'une répétition à l'autre."];
+    if (an.derive_equilibre != null && Math.abs(eq) >= 1.5) {
+      phrases.push(`Ton appui a glissé vers la jambe ${eq > 0 ? "gauche" : "droite"} au fil des répétitions. Rien d'inquiétant sur une séance ; à surveiller si ça se répète.`);
+    }
+    if (fc >= 5) phrases.push(`Ton cœur est monté un peu plus à chaque répétition${pen >= 0.3 ? ", normal avec la chaleur" : ""}.`);
+    return phrases;
+  })();
+
   return (
     <div className="space-y-4">
       {attendu && rpe != null && ecart != null && (
         <Carte titre="Ressenti">
-          <p className="text-sm text-slate-700">RPE <strong>{rpe}</strong> pour <strong>{n1(attendu.attendu)}</strong> d&apos;habitude sur ce type de séance</p>
-          <p className={`text-sm font-semibold ${ecart >= 1.5 ? "text-amber-700" : ecart <= -1.5 ? "text-emerald-700" : "text-slate-500"}`}>
-            {ecart >= 2 ? "Nettement plus dure que d'habitude." : ecart >= 1.5 ? "Plus dure que d'habitude." : ecart <= -1.5 ? "Plus facile que d'habitude." : "Dans la normale."}
+          <p className={`font-bold ${ecart >= 1.5 ? "text-amber-700" : "text-slate-800"}`}>
+            {ecart >= 2 ? "Séance nettement plus dure que d'habitude pour ce type de séance."
+              : ecart >= 1.5 ? "Séance plus dure que d'habitude pour ce type de séance."
+              : ecart <= -1.5 ? "Séance plus facile que d'habitude pour ce type de séance."
+              : "Aussi dure que d'habitude pour ce type de séance."}
           </p>
-          <p className="text-xs text-slate-400">Médiane des {attendu.n} séances de même sport et même intensité, sur 90 jours.</p>
+          <p className="text-sm text-slate-500">Tu l&apos;as notée {rpe} sur 10 ; d&apos;habitude, {Math.round(attendu.attendu)} pour ce genre de séance.</p>
         </Carte>
       )}
 
       {an?.wbgt_moy != null && (
-        <Carte titre="Chaleur">
-          <p className="text-sm text-slate-700">
-            <InfoWbgt /> <strong>{n1(an.wbgt_moy)} °C</strong> · pénalité attendue <strong className={Number(an.penalite_pct) >= 1 ? "text-orange-600" : ""}>{n1(an.penalite_pct)} %</strong>
+        <Carte titre="Météo">
+          <p className="font-bold text-slate-800">
+            {pen >= 0.3 ? "Il faisait chaud : ça t'a coûté un peu." : "Conditions fraîches : la météo n'a pas pesé."}
           </p>
-          {course && an.gap_effort && (
-            <p className="text-sm text-slate-700">Allure d&apos;effort {allure(an.gap_effort)} → vaut <strong>{allure(an.gap_effort_frais)}/km au frais</strong></p>
+          {course && pen >= 0.3 && an.gap_effort && gain > 0 && (
+            <p className="text-sm text-slate-700">
+              Par temps frais, la même séance t&apos;aurait fait courir à <strong>{allure(an.gap_effort_frais)}/km</strong> au lieu de {allure(an.gap_effort)}, soit {gain} s/km plus vite.
+            </p>
           )}
-          <p className="text-xs text-slate-400">Météo réelle au point GPS (pas le capteur de la montre, chauffé par le poignet). Acclimatation {n1(an.acclimatation)} sur 1, d&apos;après les sorties chaudes récentes.</p>
+          <p className="text-xs text-slate-400">Chaleur, humidité et soleil comptent. <InfoWbgt /></p>
         </Carte>
       )}
 
-      {course && an?.series_comparees >= 2 && (
+      {lecture && (
         <Carte titre="D'une répétition à l'autre">
-          <p className="text-sm text-slate-700">
-            Sur {an.series_comparees} répétitions à allure comparable, de la première à la dernière : FC de fin {signe(an.derive_fc_fin)} bpm · cadence {signe(an.derive_cadence)} pas/min
-            {an.derive_gct != null ? ` · contact au sol ${signe(an.derive_gct)} ms` : ""}
-            {an.derive_equilibre != null ? ` · équilibre G/D ${signe(an.derive_equilibre)} pt` : ""}
-          </p>
-          {an.derive_equilibre != null && <p className="text-xs text-slate-400">L&apos;équilibre gauche/droite est un signal de contexte, jamais un diagnostic : il se lit à allure égale et sur plusieurs séances.</p>}
+          <p className="font-bold text-slate-800">{lecture[0]}</p>
+          {lecture.slice(1).map((p) => <p key={p} className="text-sm text-slate-700">{p}</p>)}
         </Carte>
       )}
 
       {series.length > 1 && (
-        <Carte titre="Série par série">
+        <Carte titre="Tour par tour">
+          <p className="text-xs text-slate-400">Les tours enregistrés par ta montre. En gris, les récupérations.</p>
           <div className="overflow-x-auto">
             <table className="w-full text-sm whitespace-nowrap">
               <thead>
                 <tr className="text-xs text-slate-400 text-left border-b border-slate-100">
-                  <th className="py-1 pr-3">#</th><th className="pr-3">Durée</th><th className="pr-3">Dist.</th>
-                  <th className="pr-3">{course ? "Allure (GAP)" : "Puiss."}</th><th className="pr-3">FC début→fin</th>
-                  {dynamiques && <><th className="pr-3">Contact</th><th className="pr-3">Éq. G</th><th className="pr-3">Oscil.</th><th className="pr-3">Pas</th></>}
-                  <th>WBGT</th>
+                  <th className="py-1 pr-4">#</th><th className="pr-4">Durée</th><th className="pr-4">Distance</th>
+                  <th className="pr-4">{course ? "Allure" : "Puissance"}</th><th>Cœur début → fin</th>
                 </tr>
               </thead>
               <tbody>
                 {series.map((s) => (
                   <tr key={s.idx} className={`border-b border-slate-50 ${s.genre === "RECOVERY" ? "text-slate-400" : "text-slate-700"}`}>
-                    <td className="py-1 pr-3">{s.idx + 1}</td>
-                    <td className="pr-3">{duree(s.duree_s)}</td>
-                    <td className="pr-3">{s.distance_m ? `${n0(s.distance_m)} m` : "—"}</td>
-                    <td className="pr-3 font-semibold">{course ? `${allure(s.vitesse)} (${allure(s.gap)})` : s.puissance ? `${n0(s.puissance)} W` : "—"}</td>
-                    <td className="pr-3">{n0(s.fc_debut)}→{n0(s.fc_fin)}</td>
-                    {dynamiques && <>
-                      <td className="pr-3">{n0(s.gct_ms)} ms</td>
-                      <td className="pr-3">{n1(s.gct_equilibre)} %</td>
-                      <td className="pr-3">{s.osc_vert_mm != null ? `${n1(Number(s.osc_vert_mm) / 10)} cm` : "—"}</td>
-                      <td className="pr-3">{s.pas_m != null ? `${n1(s.pas_m)} m` : "—"}</td>
-                    </>}
-                    <td>{n1(s.wbgt)}°</td>
+                    <td className="py-1 pr-4">{s.idx + 1}</td>
+                    <td className="pr-4">{duree(s.duree_s)}</td>
+                    <td className="pr-4">{s.distance_m ? `${n0(s.distance_m)} m` : "—"}</td>
+                    <td className="pr-4 font-semibold">{course ? allure(s.vitesse) : s.puissance ? `${n0(s.puissance)} W` : "—"}</td>
+                    <td>{n0(s.fc_debut)} → {n0(s.fc_fin)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-          <p className="text-xs text-slate-400">
-            Source : {act?.source === "icu" ? `fichier de la montre via intervals.icu${act?.appareil ? ` (${act.appareil})` : ""}` : "Strava"}.
-            {!dynamiques && course ? " Temps de contact et équilibre : seulement avec une montre qui les mesure, branchée à intervals.icu." : ""}
-          </p>
         </Carte>
       )}
     </div>

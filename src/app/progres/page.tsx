@@ -5,7 +5,7 @@ import dayjs from "dayjs";
 import "dayjs/locale/fr";
 import { Plus_Jakarta_Sans } from "next/font/google";
 import { ArrowLeft } from "@phosphor-icons/react";
-import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from "recharts";
+import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid } from "recharts";
 import { supabase } from "@/lib/supabaseClient";
 import InfoWbgt from "../InfoWbgt";
 
@@ -21,13 +21,10 @@ const jakarta = Plus_Jakarta_Sans({ subsets: ["latin"], weight: ["500", "600", "
 const DOMAINE: Record<string, string> = {
   recuperation: "Récupération", sommeil: "Sommeil", ressenti: "Ressenti", performance: "Forme", mecanique: "Foulée", volume: "Volume",
 };
-const NIVEAU: Record<string, { pastille: string; badge: string; libelle: string }> = {
-  habituel: { pastille: "bg-emerald-500", badge: "bg-emerald-50 text-emerald-700", libelle: "Habituel" },
-  a_surveiller: { pastille: "bg-amber-500", badge: "bg-amber-50 text-amber-700", libelle: "À surveiller" },
-  ecart: { pastille: "bg-rose-500", badge: "bg-rose-50 text-rose-700", libelle: "Écart marqué" },
-  inconnu: { pastille: "bg-slate-300", badge: "bg-slate-100 text-slate-500", libelle: "Pas assez de données" },
+const NIVEAU: Record<string, { pastille: string }> = {
+  habituel: { pastille: "bg-emerald-500" }, a_surveiller: { pastille: "bg-amber-500" },
+  ecart: { pastille: "bg-rose-500" }, inconnu: { pastille: "bg-slate-300" },
 };
-const n1 = (v: unknown) => (v == null ? "—" : (Math.round(Number(v) * 10) / 10).toString().replace(".", ","));
 const allure = (v: unknown) => {
   const x = Number(v);
   if (!Number.isFinite(x) || x <= 0) return "—";
@@ -100,10 +97,20 @@ function Progres() {
   }, [params]);
 
   const global = etats.find((e) => e.domaine === "global");
-  const autres = etats.filter((e) => e.domaine !== "global");
+  const connus = etats.filter((e) => e.domaine !== "global" && e.niveau !== "inconnu");
+  const enApprentissage = etats.filter((e) => e.domaine !== "global" && e.niveau === "inconnu").map((e) => (DOMAINE[e.domaine] ?? e.domaine).toLowerCase());
+  const perf = etats.find((e) => e.domaine === "performance");
+  const recup = etats.find((e) => e.domaine === "recuperation");
   const valide = modele?.r_residu_wbgt != null && Math.abs(Number(modele.r_residu_wbgt)) < 0.1;
   const carte = "bg-white rounded-2xl border border-slate-200 p-5 space-y-3";
+  // La première phrase d'une raison : le message ; la suite (chiffres) en petit.
+  const decouper = (r: string) => { const i = (r ?? "").search(/(?<=\.)\s/); return i > 0 ? [r.slice(0, i), r.slice(i + 1)] : [r ?? "", ""]; };
+  const temps = (v: number, km: number, f: number) => { const x = Math.round(km * 1000 / (v * f)); const h = Math.floor(x / 3600), m = Math.floor((x % 3600) / 60), ss = x % 60; return h ? `${h} h ${String(m).padStart(2, "0")}` : `${m}:${String(ss).padStart(2, "0")}`; };
+  const nuitsVfc = nuits.filter((n) => n.vfc != null);
+  const derniere = nuits[nuits.length - 1];
 
+  // UNE PHRASE SIMPLE D'ABORD, les chiffres ensuite et en petit, comme dans
+  // l'app : le détail technique est réservé au MCP.
   return (
     <main className={`${jakarta.className} min-h-screen bg-slate-100 px-4 py-8`}>
       <div className="max-w-3xl mx-auto space-y-5">
@@ -112,111 +119,100 @@ function Progres() {
         </button>
         <header>
           <h1 className="text-2xl font-extrabold text-slate-800">Progrès{!soi && nom ? ` · ${nom}` : ""}</h1>
-          <p className="text-sm text-slate-500">{soi ? "Tes vrais progrès" : "Ses vrais progrès"}, chaleur et dénivelé corrigés, comparés à {soi ? "ta" : "sa"} propre normale.</p>
+          <p className="text-sm text-slate-500">Comparé à {soi ? "toi-même" : "lui-même"}, jamais aux autres.</p>
         </header>
 
         <section className={carte}>
-          <h2 className="font-bold text-slate-800">{soi ? "Mon état" : "État"}</h2>
-          {!etats.length ? (
-            <p className="text-sm text-slate-400">{soi ? "Pas encore d'état calculé : il faut des séances avec RPE, un bilan de semaine, ou une montre branchée." : "État non partagé par l'athlète, ou pas encore calculé."}</p>
+          <h2 className="font-bold text-slate-800">{soi ? "Mon état" : "Son état"}</h2>
+          {!global ? (
+            <p className="text-sm text-slate-400">{soi ? "On apprend encore à te connaître : il faut quelques semaines de séances. Rien à faire de ton côté." : "Pas encore d'état, ou l'athlète ne le partage pas."}</p>
           ) : (
             <>
-              {global && <span className={`inline-block rounded-full px-3 py-1 text-sm font-bold ${NIVEAU[global.niveau].badge}`}>{NIVEAU[global.niveau].libelle}{global.confiance === "provisoire" ? " · provisoire" : ""}</span>}
+              <div className="flex gap-3 items-start">
+                <span className={`mt-1.5 h-3 w-3 shrink-0 rounded-full ${NIVEAU[global.niveau]?.pastille ?? "bg-slate-300"}`} />
+                <p className="text-lg font-extrabold text-slate-800">{global.raison}</p>
+              </div>
               <ul className="space-y-2">
-                {autres.map((e) => (
-                  <li key={e.domaine} className="flex gap-2 text-sm text-slate-700">
-                    <span className={`mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full ${NIVEAU[e.niveau]?.pastille ?? "bg-slate-300"}`} />
-                    <span><strong>{DOMAINE[e.domaine]}{e.confiance === "provisoire" ? " (provisoire)" : ""} · </strong>{e.raison}</span>
-                  </li>
-                ))}
+                {connus.filter((e) => e.domaine !== "ressenti" || global.niveau === "habituel").map((e) => {
+                  const [phrase, detail] = decouper(e.raison);
+                  return (
+                    <li key={e.domaine} className="text-sm text-slate-700">
+                      <strong>{DOMAINE[e.domaine]} : </strong>{phrase}
+                      {detail && <span className="block text-xs text-slate-400">{detail}</span>}
+                    </li>
+                  );
+                })}
               </ul>
-              <p className="text-xs text-slate-400">Au {dayjs(global?.jour ?? etats[0].jour).format("DD/MM")}. Jamais un diagnostic.</p>
+              {enApprentissage.length > 0 && (
+                <p className="text-sm text-slate-400">On apprend encore à {soi ? "te" : "le"} connaître pour : {enApprentissage.join(", ")}. Il faut quelques semaines de données, rien à faire de ton côté.</p>
+              )}
+              <p className="text-xs text-slate-400">Au {dayjs(global.jour).format("DD/MM")}.</p>
             </>
           )}
         </section>
 
         {points.length >= 3 && (
           <section className={carte}>
-            <h2 className="font-bold text-slate-800">Forme, chaleur corrigée</h2>
+            <h2 className="font-bold text-slate-800">{soi ? "Ma forme" : "Sa forme"}</h2>
+            <p className="font-bold text-slate-800">{perf && perf.niveau !== "inconnu" ? decouper(perf.raison)[0] : "On apprend encore ta forme."}</p>
             <p className="text-sm text-slate-500">
-              La FC {soi ? "que tu aurais eue" : "qu'aurait eue l'athlète"} à {allure(modele?.v_reference)}/km, au frais et sur le plat : plus bas = plus en forme. En orange, la même sans la correction de chaleur — ce que croit voir une montre l&apos;été.
+              {soi ? "Ton cœur quand tu cours" : "Son cœur quand il court"} tranquille. <strong>Plus la courbe descend, plus {soi ? "tu es" : "il est"} en forme.</strong>
             </p>
-            <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={points} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
-                  <CartesianGrid stroke="#f1f5f9" />
-                  <XAxis dataKey="jour" tick={{ fontSize: 11, fill: "#94a3b8" }} />
-                  <YAxis domain={["dataMin - 3", "dataMax + 3"]} tick={{ fontSize: 11, fill: "#94a3b8" }} />
-                  <Tooltip />
-                  <Legend />
-                  <Line type="monotone" dataKey="corrigee" name="Corrigée de la chaleur" stroke="#2563eb" strokeWidth={2.5} dot={false} />
-                  <Line type="monotone" dataKey="brute" name="Sans correction" stroke="#ea580c" strokeWidth={1.5} dot={false} />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-            {modele && (
-              <p className="text-sm text-slate-600">
-                1 °C de chaleur au-delà de 13 °C (<InfoWbgt />) {soi ? "te" : "lui"} coûte {n1(modele.c)} bpm · erreur typique {n1(modele.erreur_typique)} bpm · {modele.n_seances} sorties.{" "}
-                <strong className={valide ? "text-emerald-700" : "text-orange-600"}>
-                  {valide ? "Test réussi : la forme corrigée ne suit plus la météo." : "Test pas encore réussi : la forme corrigée suit encore un peu la météo, lecture provisoire."}
-                </strong>
-              </p>
-            )}
-          </section>
-        )}
-
-        {cs && (
-          <section className={carte}>
-            <h2 className="font-bold text-slate-800">Vitesse critique</h2>
-            <p className="text-sm text-slate-500">L&apos;allure la plus haute tenable sans s&apos;épuiser progressivement : la frontière entre effort « lourd » et « sévère ». Un 10 km se court à peu près à cette allure.</p>
-            {cs.actuel.statut === "non_estimable" || cs.actuel.cs == null ? (
-              <p className="text-sm text-slate-600">{cs.actuel.message}</p>
-            ) : (
-              <>
-                <p className="text-3xl font-extrabold text-slate-800">
-                  {cs.actuel.statut === "plancher" && <span className="text-base font-bold text-slate-500">au moins </span>}
-                  {allure(cs.actuel.cs)}<span className="text-base font-bold text-slate-500">/km{cs.actuel.statut === "estimee" ? ` ± ${Math.round(Number(cs.actuel.fourchette_pct))} %` : ""}</span>
-                </p>
-                <p className="text-sm text-slate-500">{cs.actuel.message}</p>
-                {cs.actuel.statut === "estimee" && (() => {
-                  const v = Number(cs.actuel.cs);
-                  const t = (km: number, f: number) => { const x = Math.round(km * 1000 / (v * f)); const h = Math.floor(x / 3600), m = Math.floor((x % 3600) / 60), ss = x % 60; return h ? `${h} h ${String(m).padStart(2, "0")}` : `${m}:${String(ss).padStart(2, "0")}`; };
-                  return (
-                    <div className="text-sm text-slate-700 space-y-1">
-                      <p>Zones : facile plus lent que {allure(v * 0.82)} · lourd {allure(v * 0.82)}–{allure(v)} · sévère plus vite que {allure(v)}</p>
-                      <p>Au frais : 5 km {t(5, 1.07)} · 10 km {t(10, 1)} · semi {t(21.0975, 0.97)}–{t(21.0975, 0.93)} · marathon {t(42.195, 0.93)}–{t(42.195, 0.79)}</p>
-                    </div>
-                  );
-                })()}
-                {cs.avant && cs.actuel.statut === "estimee" && (
-                  <p className={`text-sm font-bold ${Number(cs.actuel.cs) >= Number(cs.avant.cs) ? "text-emerald-700" : "text-orange-600"}`}>
-                    Il y a 6 semaines : {allure(cs.avant.cs)}/km ({Number(cs.actuel.cs) >= Number(cs.avant.cs) ? "+" : ""}{n1((Number(cs.actuel.cs) / Number(cs.avant.cs) - 1) * 100)} %)
-                  </p>
-                )}
-              </>
-            )}
-          </section>
-        )}
-
-        {soi && nuits.some((n) => n.vfc != null) && (
-          <section className={carte}>
-            <h2 className="font-bold text-slate-800">Ma récupération</h2>
-            <p className="text-sm text-slate-500">Tes nuits des 30 derniers jours. Pour toi seul : ton coach n&apos;en voit que l&apos;état, jamais les chiffres.</p>
             <div className="h-48">
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={nuits} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
-                  <CartesianGrid stroke="#f1f5f9" />
-                  <XAxis dataKey="jour" tick={{ fontSize: 11, fill: "#94a3b8" }} />
-                  <YAxis yAxisId="v" tick={{ fontSize: 11, fill: "#94a3b8" }} />
-                  <YAxis yAxisId="f" orientation="right" tick={{ fontSize: 11, fill: "#94a3b8" }} />
-                  <Tooltip />
-                  <Legend />
-                  <Line yAxisId="v" type="monotone" dataKey="vfc" name="VFC nocturne (ms)" stroke="#7c3aed" strokeWidth={2} dot={false} connectNulls />
-                  <Line yAxisId="f" type="monotone" dataKey="fc" name="FC de repos" stroke="#ef4444" strokeWidth={1.5} dot={false} connectNulls />
+                <LineChart data={points} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
+                  <CartesianGrid stroke="#f1f5f9" vertical={false} />
+                  <XAxis dataKey="jour" tick={{ fontSize: 11, fill: "#94a3b8" }} minTickGap={40} />
+                  <YAxis hide domain={["dataMin - 3", "dataMax + 3"]} />
+                  <Line type="monotone" dataKey="corrigee" stroke="#2563eb" strokeWidth={2.5} dot={false} />
                 </LineChart>
               </ResponsiveContainer>
             </div>
-            <p className="text-xs text-slate-400">Une nuit seule ne dit rien : c&apos;est la tendance contre ta normale qui compte.</p>
+            {!valide && <p className="text-xs text-slate-400">Encore en rodage : cette mesure s&apos;affine avec les semaines.</p>}
+            <p className="text-xs text-slate-400">La chaleur est déjà retirée : un été chaud ne fait pas croire à une baisse. <InfoWbgt /></p>
+            {cs?.actuel?.statut !== "estimee" && (
+              <p className="text-sm text-slate-500">{soi ? "Ton" : "Son"} allure sur 10 km sera mesurée après {soi ? "ta" : "sa"} prochaine course.</p>
+            )}
+          </section>
+        )}
+
+        {/* L'allure 10 km n'apparaît que VRAIMENT mesurée (une course ou un effort
+            long à fond) : estimée sur l'entraînement, elle bougeait au gré des sorties. */}
+        {cs?.actuel?.statut === "estimee" && cs.actuel.cs != null && (() => {
+          const v = Number(cs.actuel.cs);
+          return (
+            <section className={carte}>
+              <h2 className="font-bold text-slate-800">{soi ? "Mon allure 10 km" : "Son allure 10 km"}</h2>
+              <p className="text-3xl font-extrabold text-slate-800">{allure(v)}<span className="text-base font-bold text-slate-500">/km</span></p>
+              {cs.avant && (
+                <p className={`text-sm font-bold ${v >= Number(cs.avant.cs) ? "text-emerald-700" : "text-orange-600"}`}>
+                  {v >= Number(cs.avant.cs) ? "Plus rapide" : "Moins rapide"} qu&apos;il y a 6 semaines ({allure(cs.avant.cs)}/km)
+                </p>
+              )}
+              <p className="text-sm text-slate-700">Par temps frais, {soi ? "tu peux viser" : "objectif possible"} : 5 km en {temps(v, 5, 1.07)}, 10 km en {temps(v, 10, 1)}, semi en {temps(v, 21.0975, 0.95)}.</p>
+              <p className="text-sm text-slate-500">Pour un footing, {soi ? "cours" : "courir"} plus lentement que {allure(v * 0.82)}/km.</p>
+            </section>
+          );
+        })()}
+
+        {soi && nuitsVfc.length > 0 && (
+          <section className={carte}>
+            <h2 className="font-bold text-slate-800">Mes nuits</h2>
+            <p className="font-bold text-slate-800">{recup && recup.niveau !== "inconnu" ? decouper(recup.raison)[0] : "On apprend encore tes nuits."}</p>
+            <p className="text-sm text-slate-500">Ta récupération la nuit, mesurée par ta montre. <strong>Plus la courbe monte, mieux tu récupères.</strong> Ton coach ne voit pas ces chiffres.</p>
+            <div className="h-32">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={nuitsVfc} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
+                  <CartesianGrid stroke="#f1f5f9" vertical={false} />
+                  <XAxis dataKey="jour" tick={{ fontSize: 11, fill: "#94a3b8" }} minTickGap={40} />
+                  <YAxis hide domain={["dataMin - 5", "dataMax + 5"]} />
+                  <Line type="monotone" dataKey="vfc" stroke="#7c3aed" strokeWidth={2} dot={false} connectNulls />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+            {derniere?.sommeil_s ? (
+              <p className="text-sm text-slate-500">Cette nuit : {Math.floor(derniere.sommeil_s / 3600)} h {String(Math.round((derniere.sommeil_s % 3600) / 60)).padStart(2, "0")} de sommeil.</p>
+            ) : null}
           </section>
         )}
       </div>

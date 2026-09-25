@@ -7,6 +7,7 @@ import { Plus_Jakarta_Sans } from "next/font/google";
 import { ArrowLeft } from "@phosphor-icons/react";
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from "recharts";
 import { supabase } from "@/lib/supabaseClient";
+import InfoWbgt from "../InfoWbgt";
 
 dayjs.locale("fr");
 const jakarta = Plus_Jakarta_Sans({ subsets: ["latin"], weight: ["500", "600", "700", "800"], display: "swap" });
@@ -155,7 +156,7 @@ function Progres() {
             </div>
             {modele && (
               <p className="text-sm text-slate-600">
-                1 °C de chaleur au-delà de 13 °C (WBGT) {soi ? "te" : "lui"} coûte {n1(modele.c)} bpm · erreur typique {n1(modele.erreur_typique)} bpm · {modele.n_seances} sorties.{" "}
+                1 °C de chaleur au-delà de 13 °C (<InfoWbgt />) {soi ? "te" : "lui"} coûte {n1(modele.c)} bpm · erreur typique {n1(modele.erreur_typique)} bpm · {modele.n_seances} sorties.{" "}
                 <strong className={valide ? "text-emerald-700" : "text-orange-600"}>
                   {valide ? "Test réussi : la forme corrigée ne suit plus la météo." : "Test pas encore réussi : la forme corrigée suit encore un peu la météo, lecture provisoire."}
                 </strong>

@@ -1,6 +1,7 @@
 "use client";
 import React, { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
+import InfoWbgt from "./InfoWbgt";
 
 // Le suivi d'une séance faite : RPE déclaré contre RPE attendu, chaleur
 // réelle et allure « au frais », évolution d'une répétition à l'autre, série
@@ -80,7 +81,7 @@ export default function SuiviSeance({ sessionId, sport, rpe }: { sessionId: stri
       {an?.wbgt_moy != null && (
         <Carte titre="Chaleur">
           <p className="text-sm text-slate-700">
-            WBGT <strong>{n1(an.wbgt_moy)} °C</strong> · pénalité attendue <strong className={Number(an.penalite_pct) >= 1 ? "text-orange-600" : ""}>{n1(an.penalite_pct)} %</strong>
+            <InfoWbgt /> <strong>{n1(an.wbgt_moy)} °C</strong> · pénalité attendue <strong className={Number(an.penalite_pct) >= 1 ? "text-orange-600" : ""}>{n1(an.penalite_pct)} %</strong>
           </p>
           {course && an.gap_effort && (
             <p className="text-sm text-slate-700">Allure d&apos;effort {allure(an.gap_effort)} → vaut <strong>{allure(an.gap_effort_frais)}/km au frais</strong></p>

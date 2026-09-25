@@ -15,6 +15,7 @@ const allure = (v: unknown) => {
   const s = Math.round(1000 / x);
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 };
+const n1 = (v: unknown) => (v == null ? "—" : (Math.round(Number(v) * 10) / 10).toString().replace(".", ","));
 const n0 = (v: unknown) => (v == null ? "—" : Math.round(Number(v)).toString());
 const duree = (s: unknown) => {
   const x = Number(s);
@@ -57,6 +58,7 @@ export default function SuiviSeance({ sessionId, sport, rpe }: { sessionId: stri
   }, [sessionId]);
 
   const course = sport === "Run" || sport === "Trail";
+  const dynamiques = series.some((s) => s.gct_ms != null);
   const ecart = rpe != null && attendu ? rpe - attendu.attendu : null;
 
   if (!act && !attendu) return (
@@ -124,7 +126,10 @@ export default function SuiviSeance({ sessionId, sport, rpe }: { sessionId: stri
               <thead>
                 <tr className="text-xs text-slate-400 text-left border-b border-slate-100">
                   <th className="py-1 pr-4">#</th><th className="pr-4">Durée</th><th className="pr-4">Distance</th>
-                  <th className="pr-4">{course ? "Allure" : "Puissance"}</th><th>Cœur début → fin</th>
+                  {course ? <><th className="pr-4">Allure</th><th className="pr-4">Allure à plat</th></> : <th className="pr-4">Puissance</th>}
+                  <th className="pr-4">Cœur début → fin</th>
+                  {dynamiques && <><th className="pr-4">Temps au sol</th><th className="pr-4">Appui gauche</th><th className="pr-4">Rebond</th><th className="pr-4">Longueur de pas</th></>}
+                  <th>Chaleur</th>
                 </tr>
               </thead>
               <tbody>
@@ -133,13 +138,26 @@ export default function SuiviSeance({ sessionId, sport, rpe }: { sessionId: stri
                     <td className="py-1 pr-4">{s.idx + 1}</td>
                     <td className="pr-4">{duree(s.duree_s)}</td>
                     <td className="pr-4">{s.distance_m ? `${n0(s.distance_m)} m` : "—"}</td>
-                    <td className="pr-4 font-semibold">{course ? allure(s.vitesse) : s.puissance ? `${n0(s.puissance)} W` : "—"}</td>
-                    <td>{n0(s.fc_debut)} → {n0(s.fc_fin)}</td>
+                    {course
+                      ? <><td className="pr-4 font-semibold">{allure(s.vitesse)}</td><td className="pr-4">{allure(s.gap)}</td></>
+                      : <td className="pr-4 font-semibold">{s.puissance ? `${n0(s.puissance)} W` : "—"}</td>}
+                    <td className="pr-4">{n0(s.fc_debut)} → {n0(s.fc_fin)}</td>
+                    {dynamiques && <>
+                      <td className="pr-4">{n0(s.gct_ms)} ms</td>
+                      <td className="pr-4">{n1(s.gct_equilibre)} %</td>
+                      <td className="pr-4">{s.osc_vert_mm != null ? `${n1(Number(s.osc_vert_mm) / 10)} cm` : "—"}</td>
+                      <td className="pr-4">{s.pas_m != null ? `${n1(s.pas_m)} m` : "—"}</td>
+                    </>}
+                    <td>{n1(s.wbgt)}°</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+          <p className="text-xs text-slate-400">
+            « Allure à plat » : ce que vaut ton allure une fois montées et descentes retirées. « Chaleur » : l&apos;indice qui compte l&apos;humidité et le soleil.
+            {dynamiques ? " Temps au sol, appui et rebond : mesurés par ta montre." : ""}
+          </p>
         </Carte>
       )}
     </div>

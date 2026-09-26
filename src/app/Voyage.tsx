@@ -24,6 +24,8 @@ function kmVers(depuis: { lat: number; lng: number } | null, l: Lieu): string | 
   const d = 2 * 6371 * Math.asin(Math.sqrt(hh)) * 1.1;
   return d < 50 ? "tout près" : `≈ ${(Math.round(d / 50) * 50).toLocaleString("fr-FR")} km`;
 }
+// « près de Lyon », « près d'Asbest ».
+const de = (n: string) => (/^[aeiouyàâéèêëîïôûùh]/i.test(n) ? `d'${n}` : `de ${n}`);
 const n0 = (x: number) => Math.round(x).toLocaleString("fr-FR");
 const h = (x: number) => (x >= 1 ? `${Math.floor(x)} h ${String(Math.round((x % 1) * 60)).padStart(2, "0")}` : `${Math.round(x * 60)} min`);
 
@@ -101,7 +103,7 @@ export function Voyage({ userId, soi }: { userId: string; soi: boolean }) {
       <section className={carte}>
         {!discret && <p className="text-4xl font-black text-slate-800">{n0(d.km)} km</p>}
         <p className="text-sm text-slate-500">{discret ? "Ton voyage continue, à ton rythme." : "depuis le 1er janvier, tous sports"}</p>
-        <p className="text-lg font-extrabold text-slate-800">{v.cap_atteint ? `Tu es arrivé à ${v.cap} !` : v.pres_de ? `Tu es près de ${v.pres_de.nom}.` : `Tu es en route vers ${v.cap}.`}</p>
+        <p className="text-lg font-extrabold text-slate-800">{v.cap_atteint ? `Tu es arrivé à ${v.cap} !` : v.pres_de ? `Tu es près ${de(v.pres_de.nom)}.` : `Tu es en route vers ${v.cap}.`}</p>
         <div>
           <div className="h-2 rounded bg-slate-200"><div className="h-2 rounded bg-teal-600" style={{ width: `${pct * 100}%` }} /></div>
           <div className="mt-1 flex justify-between text-sm font-bold text-slate-500"><span>{v.depart}</span><span>{v.cap}</span></div>
@@ -127,8 +129,9 @@ export function Voyage({ userId, soi }: { userId: string; soi: boolean }) {
 
       {!discret && (d.d_plus > 0 || d.heures > 0) && (
         <section className={carte}>
-          {d.d_plus > 0 && <p className="text-slate-800"><strong>{n0(d.d_plus)} m</strong> de montée depuis janvier : {everest >= 1 ? `${everest.toFixed(1).replace(".", ",")} fois l'Everest` : `${Math.round(d.d_plus / 1610)} fois le Ventoux`}.</p>}
-          {d.heures > 0 && <p className="text-slate-800"><strong>{n0(d.heures)} heures</strong> en mouvement depuis janvier{d.heures >= 48 ? ` : ${Math.round(d.heures / 24)} jours complets` : ""}.</p>}
+          <p className="text-sm font-extrabold text-slate-500">Depuis janvier</p>
+          {d.d_plus > 0 && <p className="text-slate-800"><strong>{n0(d.d_plus)} m</strong> de montée : {everest >= 1 ? `${everest.toFixed(1).replace(".", ",")} fois l'Everest` : `${Math.round(d.d_plus / 1610)} fois le Ventoux`}.</p>}
+          {d.heures > 0 && <p className="text-slate-800"><strong>{n0(d.heures)} heures</strong> en mouvement{d.heures >= 48 ? ` : ${Math.round(d.heures / 24)} jours complets` : ""}.</p>}
         </section>
       )}
 

@@ -16,6 +16,9 @@ const LIEN_MCP = "https://ngsportcoaching.com/mcp";
 // montre via intervals.icu, le partage de l'état avec le coach, et le
 // connecteur IA. Mêmes fonctions et mêmes règles côté serveur.
 
+type Bouton = { texte: string; valeur: string; genre?: "annuler" | "danger" | "principal" };
+type Dialogue = { titre: string; texte: string[]; boutons: Bouton[]; couleur: string; resolve: (v: string | null) => void };
+
 type Moi = { id_auth: string; coach_id: string | null; partage_etat_coach: boolean | null; partage_informe_le: string | null; consentement_ia_le: string | null };
 
 export default function Reglages() {
@@ -27,6 +30,13 @@ export default function Reglages() {
   const [lienFrais, setLienFrais] = useState<string | null>(null);
   const [occupe, setOccupe] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [copie, setCopie] = useState(false);
+  // Nos propres fenêtres plutôt que confirm() du navigateur, comme dans l'app.
+  const [dialogue, setDialogue] = useState<Dialogue | null>(null);
+  const demander = (d: Omit<Dialogue, "resolve">) => new Promise<string | null>((resolve) => setDialogue({ ...d, resolve }));
+  const confirmer = async (titre: string, texte: string[], ok: string, genre: "danger" | "principal", couleur: string) =>
+    (await demander({ titre, texte, couleur, boutons: [{ texte: "Annuler", valeur: "non", genre: "annuler" }, { texte: ok, valeur: "oui", genre }] })) === "oui";
+  const repondre = (v: string | null) => { dialogue?.resolve(v); setDialogue(null); };
 
   async function charger() {
     const { data: { session } } = await supabase.auth.getSession();
@@ -80,12 +90,16 @@ export default function Reglages() {
   // aussi côté serveur (mcp_issue_token refuse sans lui).
   async function genererLien() {
     if (!moi?.consentement_ia_le) {
-      const ok = confirm("Avec ce lien, ton assistant (Claude, d'Anthropic) pourra lire ton planning, tes séances, ton ressenti et ton suivi — y compris tes données de santé (VFC, FC de repos, sommeil) si ta montre les envoie. Il agit avec tes droits dans l'app, ni plus ni moins. Tu peux révoquer le lien à tout moment.\n\nTu acceptes ce partage ?");
+      const ok = await confirmer("Partager tes données avec ton assistant IA", [
+        "Avec ce lien, ton assistant (Claude, d'Anthropic) pourra lire ton planning, tes séances, ton ressenti et ton suivi, y compris ton sommeil et ta récupération si ta montre les envoie.",
+        "Il agit avec tes droits dans l'app, ni plus ni moins, et te demande toujours avant de modifier quoi que ce soit.",
+        "Tu peux couper l'accès à tout moment ici.",
+      ], "J'accepte", "principal", "violet");
       if (!ok) return;
       const { error } = await supabase.from("users").update({ consentement_ia_le: new Date().toISOString() }).eq("id_auth", moi!.id_auth);
       if (error) { setMessage(error.message); return; }
     }
-    if (mcp && !confirm("Générer un nouveau lien désactive l'ancien : il faudra le recoller dans ton assistant. Continuer ?")) return;
+    if (mcp && !(await confirmer("Régénérer le lien ?", ["L'ancien lien sera désactivé : il faudra coller le nouveau dans ton assistant."], "Régénérer", "principal", "violet"))) return;
     setOccupe(true);
     const { data, error } = await supabase.rpc("mcp_issue_token");
     setOccupe(false);
@@ -95,7 +109,7 @@ export default function Reglages() {
   }
 
   async function revoquer() {
-    if (!confirm("Révoquer le lien ? L'assistant n'aura plus accès à ton entraînement.")) return;
+    if (!(await confirmer("Révoquer le lien ?", ["L'assistant n'aura plus accès à ton entraînement."], "Révoquer", "danger", "rose"))) return;
     setOccupe(true);
     await supabase.rpc("mcp_revoke_tokens");
     setOccupe(false); setLienFrais(null);
@@ -122,7 +136,7 @@ export default function Reglages() {
                 <p className="font-semibold text-slate-700">intervals.icu connecté</p>
                 <p className="text-sm text-slate-500">Tes séances peuvent partir vers ta montre, et ta montre enrichit ton suivi.</p>
               </div>
-              <button disabled={occupe} onClick={() => confirm("Débrancher intervals.icu ? Tes séances ne partiront plus vers ta montre.") && brancher(null)}
+              <button disabled={occupe} onClick={async () => (await confirmer("Débrancher intervals.icu ?", ["Tes séances ne partiront plus vers ta montre."], "Débrancher", "danger", "rose")) && brancher(null)}
                 className="text-sm font-bold text-rose-600 hover:underline">Débrancher</button>
             </div>
           ) : (
@@ -164,7 +178,11 @@ export default function Reglages() {
             <div className="rounded-xl bg-violet-50 border border-violet-200 p-3 space-y-2">
               <p className="text-sm font-bold text-violet-800">Ton lien — copie-le maintenant, il ne sera plus affiché</p>
               <code className="block break-all text-xs text-slate-700">{lienFrais}</code>
-              <button onClick={() => navigator.clipboard.writeText(lienFrais)} className="text-sm font-bold text-violet-700 hover:underline">Copier le lien</button>
+              <button onClick={() => { navigator.clipboard.writeText(lienFrais); setCopie(true); setTimeout(() => setCopie(false), 2500); }}
+                className={`px-3 py-1.5 rounded-lg text-sm font-bold text-white ${copie ? "bg-emerald-600" : "bg-violet-600 hover:bg-violet-700"}`}>
+                {copie ? "✓ Lien copié" : "Copier le lien"}
+              </button>
+              {copie && <p className="text-xs text-slate-600">Colle-le dans Claude : Paramètres › Connecteurs › Ajouter un connecteur personnalisé.</p>}
             </div>
           )}
           {mcp && !lienFrais && <p className="text-sm text-slate-500">Un lien est actif{mcp.last_used_at ? `, dernière utilisation le ${new Date(mcp.last_used_at).toLocaleDateString("fr-FR")}` : ""}.</p>}
@@ -176,6 +194,25 @@ export default function Reglages() {
           </div>
         </section>
       </div>
+
+      {dialogue && (
+        <div className="fixed inset-0 z-50 grid place-items-center p-4" onClick={() => repondre(null)}>
+          <div className="absolute inset-0 bg-slate-900/55" />
+          <div className="relative w-full max-w-md bg-white rounded-2xl shadow-xl p-6 space-y-3 text-center" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-extrabold text-slate-800">{dialogue.titre}</h3>
+            {dialogue.texte.map((t) => <p key={t} className="text-sm text-slate-600 leading-relaxed">{t}</p>)}
+            <div className="flex gap-3 pt-2">
+              {dialogue.boutons.map((b) => (
+                <button key={b.valeur} onClick={() => repondre(b.valeur)}
+                  className={`flex-1 py-2.5 rounded-xl font-bold ${b.genre === "annuler" ? "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                    : b.genre === "danger" ? "bg-rose-600 text-white hover:bg-rose-700" : "bg-violet-600 text-white hover:bg-violet-700"}`}>
+                  {b.texte}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

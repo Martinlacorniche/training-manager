@@ -226,11 +226,18 @@ function Progres() {
               {ecart != null && Math.abs(ecart) >= 2 && (
                 <p className={`text-sm font-bold ${ecart > 0 ? "text-emerald-700" : "text-orange-600"}`}>{ecart > 0 ? "En hausse" : "En baisse"} depuis 6 semaines (il était à {Math.round(av!)})</p>
               )}
-              <p className="text-sm text-slate-700">Un score qui résume {soi ? "ce que tu vaux" : "ce qu'il vaut"} en course, calculé sur {niveau.actuel.source} (chaleur retirée). Plus il monte, plus {soi ? "tu es" : "il est"} fort.</p>
+              <p className="text-sm text-slate-700">Un score qui résume {soi ? "ce que tu vaux" : "ce qu'il vaut"} en course, calculé sur {niveau.actuel.source} (chaleur retirée). Plus il monte, plus {soi ? "tu es" : "il est"} fort. On garde les courses et tests des 4 derniers mois.</p>
               <p className="text-xs text-slate-400">C&apos;est l&apos;équivalent de la « VO2max » des montres, mais tiré de {soi ? "tes" : "ses"} vraies courses plutôt que du cœur.</p>
             </section>
           );
         })()}
+
+        {!niveau?.actuel && points.length >= 3 && (
+          <section className={carte}>
+            <h2 className="font-bold text-slate-800">{soi ? "Mon niveau de course" : "Son niveau de course"}</h2>
+            <p className="text-sm text-slate-500">Il sera calculé après {soi ? "ta" : "sa"} prochaine course, ou avec le pré-test au stade (onglet {soi ? "Mes" : "Ses"} tests). On garde les 4 derniers mois.</p>
+          </section>
+        )}
 
         {soi && nuitsVfc.length > 0 && (
           <section className={carte}>

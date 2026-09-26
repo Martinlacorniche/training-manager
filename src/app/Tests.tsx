@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import dayjs from "dayjs";
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid } from "recharts";
 import { supabase } from "@/lib/supabaseClient";
-import { allure, apercuTest, CONSIGNE_VELO, CONSIGNES, CONSIGNES_DEFI, programmerTest, Protocole, PROTOCOLES, VERDICTS } from "./tests";
+import { allure, apercuTest, CONSIGNES, programmerTest, Protocole, PROTOCOLES, VERDICTS } from "./tests";
 
 // ─────────────────────────────────────────────────────────────────────────
 // Les tests de forme sur le site : consignes, résultat d'une séance-test,
@@ -13,13 +13,16 @@ import { allure, apercuTest, CONSIGNE_VELO, CONSIGNES, CONSIGNES_DEFI, programme
 // ─────────────────────────────────────────────────────────────────────────
 
 export function ConsignesTest({ protocole, texte }: { protocole: string; texte?: string | null }) {
-  const liste = protocole === "defi" ? CONSIGNES_DEFI : protocole === "lsct" ? [...CONSIGNES, CONSIGNE_VELO] : CONSIGNES;
+  const liste = CONSIGNES[protocole] ?? CONSIGNES.tranquille;
+  const lignes = texte ? texte.split("\n") : [];
+  // Le pré-test liste une vingtaine de paliers : on montre le début.
+  const court = protocole === "progressif" && lignes.length > 8 ? [...lignes.slice(0, 5), "… un peu plus vite chaque minute, jusqu'à ne plus pouvoir suivre", ...lignes.slice(-1)] : lignes;
   return (
     <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 space-y-2">
-      <h3 className="font-bold text-slate-800">{protocole === "defi" ? "Pour que le défi soit juste" : "Même parcours, mêmes conditions"}</h3>
+      <h3 className="font-bold text-slate-800">{protocole === "progressif" ? "Pour que le pré-test soit juste" : protocole === "defi" ? "Pour que le défi soit juste" : "Même parcours, mêmes conditions"}</h3>
       {texte && (
         <div className="rounded-xl bg-white p-3">
-          <p className="text-sm font-semibold text-slate-800 whitespace-pre-line">{texte}</p>
+          <p className="text-sm font-semibold text-slate-800 whitespace-pre-line">{court.join("\n")}</p>
           <p className="text-xs text-slate-400 mt-1">Envoie-la sur ta montre (bouton « montre » dans l&apos;app) : chaque partie devient un tour, c&apos;est ce qui permet de lire le test.</p>
         </div>
       )}
@@ -30,6 +33,7 @@ export function ConsignesTest({ protocole, texte }: { protocole: string; texte?:
 
 export function ResultatTest({ sessionId, protocole, texte, faite }: { sessionId: string; protocole: string; texte?: string | null; faite: boolean }) {
   const [r, setR] = useState<Record<string, any> | null>(null);
+  const [details, setDetails] = useState(false);
   useEffect(() => {
     supabase.from("test_resultats").select("*").eq("session_id", sessionId).maybeSingle().then(({ data }) => setR(data ?? null));
   }, [sessionId]);
@@ -37,7 +41,12 @@ export function ResultatTest({ sessionId, protocole, texte, faite }: { sessionId
   if (!r) return <p className="text-sm text-slate-500">Le résultat du test arrive dès que la montre a envoyé la séance.</p>;
   const v = VERDICTS[r.verdict] ?? VERDICTS.stable;
   const chiffres: [string, string][] = [];
-  if (protocole === "tranquille") {
+  if (protocole === "progressif") {
+    const d = r.detail ?? {};
+    if (d.vma_kmh) chiffres.push([`${Number(d.vma_kmh).toFixed(1).replace(".", ",")} km/h`, "VMA"]);
+    if (d.fc_max) chiffres.push([`${Math.round(d.fc_max)} bpm`, "Cœur max"]);
+    if (d.allure_a) chiffres.push([`${allure(d.allure_a)} · ${allure(d.allure_b)}`, "Allures des tests"]);
+  } else if (protocole === "tranquille") {
     if (r.fc_a != null) chiffres.push([`${Math.round(r.fc_a)} bpm`, "Cœur, 1ʳᵉ allure"]);
     if (r.fc_b != null) chiffres.push([`${Math.round(r.fc_b)} bpm`, "Cœur, 2ᵉ allure"]);
   } else if (protocole === "lsct") {
@@ -50,7 +59,10 @@ export function ResultatTest({ sessionId, protocole, texte, faite }: { sessionId
       <h3 className="font-bold text-slate-800">Résultat du test</h3>
       <p className={`text-sm font-bold ${v.couleur}`}>{v.libelle}</p>
       <p className="font-semibold text-slate-800">{r.phrase}</p>
-      {chiffres.length > 0 && (
+      {chiffres.length > 0 && protocole !== "progressif" && (
+        <button onClick={() => setDetails((x) => !x)} className="text-sm font-bold text-violet-700">{details ? "Masquer le détail" : "Voir le détail"}</button>
+      )}
+      {chiffres.length > 0 && (details || protocole === "progressif") && (
         <div className="flex flex-wrap gap-2">
           {chiffres.map(([val, lib]) => (
             <div key={lib} className="rounded-xl bg-slate-50 px-3 py-2"><p className="font-extrabold text-slate-800">{val}</p><p className="text-xs text-slate-400">{lib}</p></div>
@@ -99,15 +111,15 @@ function ProgrammerTest({ athleteId, coach, onFait, onFermer }: { athleteId: str
         ) : !sport ? (
           <>
             <p className="text-sm text-slate-600">Un test régulier, toujours dans les mêmes conditions, est la façon la plus fiable de savoir si {coach ? "ton athlète progresse" : "tu progresses"} vraiment.</p>
-            <button className={choix} onClick={() => setSport("Course")}><p className="font-bold text-slate-800">Course</p><p className="text-sm text-slate-500">Test tranquille, ou mini-défi</p></button>
-            <button className={choix} onClick={() => { setSport("Vélo"); setProtocole("lsct"); }}><p className="font-bold text-slate-800">Vélo</p><p className="text-sm text-slate-500">Test tranquille à fréquence cardiaque fixe</p></button>
+            <button className={choix} onClick={() => setSport("Course")}><p className="font-bold text-slate-800">Course</p><p className="text-sm text-slate-500">Pré-test au stade, test forme, mini-défi</p></button>
+            <button className={choix} onClick={() => { setSport("Vélo"); setProtocole("lsct"); }}><p className="font-bold text-slate-800">Vélo</p><p className="text-sm text-slate-500">Test forme sur home-trainer</p></button>
           </>
         ) : !protocole ? (
           <>
-            {(["tranquille", "defi"] as Protocole[]).map((p) => (
+            {(["progressif", "tranquille", "defi"] as Protocole[]).map((p) => (
               <button key={p} className={choix} onClick={() => setProtocole(p)}>
                 <p className="font-bold text-slate-800">{PROTOCOLES[p].titre}</p>
-                <p className="text-sm text-slate-500">{PROTOCOLES[p].quoi} {PROTOCOLES[p].frequence}.</p>
+                <p className="text-sm text-slate-500">{PROTOCOLES[p].quoi}</p>
               </button>
             ))}
             <button onClick={() => setSport(null)} className="text-sm font-semibold text-slate-500">← Retour</button>
@@ -118,11 +130,16 @@ function ProgrammerTest({ athleteId, coach, onFait, onFermer }: { athleteId: str
           <>
             <p className="font-bold text-slate-800">{apercu.titre}</p>
             <p className="text-sm text-slate-600">{PROTOCOLES[apercu.protocole as Protocole].quoi}</p>
-            {apercu.manque ? <p className="text-sm text-amber-700">{apercu.manque}</p> : (
+            {apercu.manque ? (
+              <>
+                <p className="text-sm text-amber-700">{apercu.manque}</p>
+                {apercu.protocole === "tranquille" && <button onClick={() => setProtocole("progressif")} className="w-full py-3 rounded-xl bg-violet-600 text-white font-bold">Programmer le pré-test</button>}
+              </>
+            ) : (
               <>
                 {apercu.allures && (
                   <p className="text-sm text-slate-500">
-                    {apercu.deja_fixees ? "Les mêmes allures que les tests précédents" : `Allures calculées d'après ${apercu.source}, puis gardées identiques à chaque test`} : {apercu.allures.a} puis {apercu.allures.b}/km.
+                    Tes allures, fixées par ton pré-test : {apercu.allures.a} puis {apercu.allures.b}/km. Les mêmes à chaque test.
                   </p>
                 )}
                 <ConsignesTest protocole={apercu.protocole} texte={apercu.texte} />
@@ -143,11 +160,12 @@ function ProgrammerTest({ athleteId, coach, onFait, onFermer }: { athleteId: str
 }
 
 const QUOI: Record<string, string> = {
+  progressif: "Ta VMA, pré-test après pré-test.",
   tranquille: "Ton cœur à la 2ᵉ allure. Plus il descend, plus tu es en forme.",
   lsct: "Ta puissance au 3ᵉ palier. Plus elle monte, plus tu es en forme.",
   defi: "Ton allure 10 km mesurée par le défi. Plus elle est rapide, mieux c'est.",
 };
-const valeur = (p: string, x: number) => (p === "tranquille" ? `${Math.round(x)} bpm` : p === "lsct" ? `${Math.round(x)} W` : `${allure(x)}/km`);
+const valeur = (p: string, x: number) => (p === "progressif" ? `${(x * 3.6).toFixed(1).replace(".", ",")} km/h` : p === "tranquille" ? `${Math.round(x)} bpm` : p === "lsct" ? `${Math.round(x)} W` : `${allure(x)}/km`);
 
 export function SuiviTests({ userId, soi }: { userId: string; soi: boolean }) {
   const [resultats, setResultats] = useState<Record<string, any>[]>([]);
@@ -156,13 +174,15 @@ export function SuiviTests({ userId, soi }: { userId: string; soi: boolean }) {
   const charger = useCallback(async () => {
     const [{ data: r }, { data: p }] = await Promise.all([
       supabase.from("test_resultats").select("session_id, jour, protocole, valide, indicateur, verdict, phrase").eq("user_id", userId).order("jour"),
-      supabase.from("sessions").select("id, date, title, status").eq("user_id", userId).not("test", "is", null).gte("date", dayjs().format("YYYY-MM-DD")).order("date"),
+      supabase.from("sessions").select("id, date, title, status, test").eq("user_id", userId).not("test", "is", null).gte("date", dayjs().format("YYYY-MM-DD")).order("date"),
     ]);
     setResultats(r ?? []);
     setPrevus((p ?? []).filter((s) => s.status !== "valide"));
   }, [userId]);
   useEffect(() => { charger(); }, [charger]);
-  const protocoles = (["tranquille", "lsct", "defi"] as Protocole[]).filter((p) => resultats.some((r) => r.protocole === p));
+  const protocoles = (["tranquille", "lsct", "progressif", "defi"] as Protocole[]).filter((p) => resultats.some((r) => r.protocole === p));
+  const preTestFait = resultats.some((r) => r.protocole === "progressif" && r.valide);
+  const preTestPrevu = prevus.some((s) => s.test === "progressif");
   const carte = "bg-white rounded-2xl border border-slate-200 p-5 space-y-3";
 
   return (
@@ -171,10 +191,16 @@ export function SuiviTests({ userId, soi }: { userId: string; soi: boolean }) {
       {prevus.map((s) => (
         <a key={s.id} href={`/seance/${s.id}`} className="block rounded-xl bg-violet-50 p-3 text-sm font-semibold text-slate-700">{s.title} · {dayjs(s.date).format("dddd D MMMM")}</a>
       ))}
+      {!preTestFait && !preTestPrevu && (
+        <section className="rounded-2xl bg-violet-50 p-4">
+          <p className="font-bold text-slate-800">En course, commence par le pré-test au stade</p>
+          <p className="text-sm text-slate-600">Il mesure {soi ? "ta" : "sa"} VMA et {soi ? "ton" : "son"} cœur max, et fixe les allures des tests course. Sans lui, pas de test course. Le test vélo, lui, se fait sans.</p>
+        </section>
+      )}
       {!resultats.length ? (
         <section className={carte}>
           <h2 className="font-bold text-slate-800">Pas encore de test</h2>
-          <p className="text-sm text-slate-600">Un test tranquille toutes les 4 semaines, toujours sur le même parcours et dans les mêmes conditions : c&apos;est la façon la plus fiable de voir {soi ? "tes" : "ses"} vrais progrès, sans se mettre à fond.</p>
+          <p className="text-sm text-slate-600">Un test tous les mois, toujours dans les mêmes conditions : c&apos;est la façon la plus fiable de voir {soi ? "tes" : "ses"} vrais progrès.</p>
         </section>
       ) : protocoles.map((p) => {
         const liste = resultats.filter((r) => r.protocole === p);
@@ -183,7 +209,7 @@ export function SuiviTests({ userId, soi }: { userId: string; soi: boolean }) {
         const v = VERDICTS[dernier.verdict] ?? VERDICTS.stable;
         return (
           <section key={p} className={carte}>
-            <h2 className="font-bold text-slate-800">{PROTOCOLES[p].titre} · {PROTOCOLES[p].sport}</h2>
+            <h2 className="font-bold text-slate-800">{PROTOCOLES[p].titre}</h2>
             <p className={`text-sm font-bold ${v.couleur}`}>{v.libelle} · {dayjs(dernier.jour).format("DD/MM")}</p>
             <p className="font-semibold text-slate-800">{dernier.phrase}</p>
             {pts.length >= 2 && (
@@ -216,7 +242,7 @@ export function SuiviTests({ userId, soi }: { userId: string; soi: boolean }) {
           </section>
         );
       })}
-      <p className="text-xs text-slate-400">Un seul test ne prouve rien : le cœur varie de quelques battements d&apos;un jour à l&apos;autre. On n&apos;annonce un progrès que quand l&apos;écart dépasse cette marge, ou se confirme deux fois de suite.</p>
+      <p className="text-xs text-slate-400">Un seul test ne prouve rien : le cœur varie un peu d&apos;un jour à l&apos;autre. On ne dit « tu progresses » que quand l&apos;écart est net, ou se confirme deux fois.</p>
       {ouvert && <ProgrammerTest athleteId={userId} coach={!soi} onFait={charger} onFermer={() => setOuvert(false)} />}
     </div>
   );

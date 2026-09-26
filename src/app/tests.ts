@@ -4,43 +4,53 @@ import { supabase } from "@/lib/supabaseClient";
 // supabase/functions/tests et analyse). Mêmes textes que l'app
 // (App-Coach, lib/tests.ts et components/ConsignesTest.tsx).
 
-export type Protocole = "tranquille" | "lsct" | "defi";
+export type Protocole = "progressif" | "tranquille" | "lsct" | "defi";
 
-export const PROTOCOLES: Record<Protocole, { titre: string; sport: string; quoi: string; frequence: string }> = {
-  tranquille: { titre: "Test tranquille", sport: "Course", quoi: "2 × 6 min à allure fixe, sans forcer. On regarde ton cœur : s'il bat moins vite qu'avant, tu as progressé.", frequence: "Toutes les 4 semaines" },
-  lsct: { titre: "Test tranquille", sport: "Vélo", quoi: "3 paliers à fréquence cardiaque fixe. On regarde ta puissance : si tu pousses plus fort pour le même cœur, tu as progressé.", frequence: "Toutes les 3 à 4 semaines" },
-  defi: { titre: "Mini-défi 3 + 12 min", sport: "Course", quoi: "Deux efforts à fond, 3 min puis 12 min. Il mesure ton allure 10 km quand l'entraînement ne suffit pas.", frequence: "Pas plus d'une fois tous les 2 à 3 mois" },
+export const PROTOCOLES: Record<Protocole, { titre: string; quoi: string }> = {
+  progressif: { titre: "Pré-test au stade", quoi: "À faire une fois avant les tests course : il mesure ta VMA et ton cœur max, et fixe les allures de tes tests." },
+  tranquille: { titre: "Test forme course", quoi: "Tous les mois, 2 × 6 min à allure fixe, sans forcer. Si ton cœur bat moins vite qu'avant, tu as progressé." },
+  lsct: { titre: "Test forme vélo", quoi: "Tous les mois, sur home-trainer : 3 paliers à cœur fixe. Si tu pousses plus fort pour le même cœur, tu as progressé." },
+  defi: { titre: "Mini-défi 3 + 12 min", quoi: "Pas obligatoire. Il mesure ton allure 10 km si tu n'as pas fait de course récemment. Pas plus d'une fois tous les 2 à 3 mois." },
 };
 
 export const VERDICTS: Record<string, { libelle: string; couleur: string }> = {
-  repetition: { libelle: "Répétition", couleur: "text-slate-500" },
-  stable: { libelle: "Stable", couleur: "text-blue-600" },
-  probable_progres: { libelle: "Probable progrès", couleur: "text-emerald-600" },
-  net_progres: { libelle: "Progrès", couleur: "text-emerald-700" },
+  repetition: { libelle: "1er test", couleur: "text-slate-500" },
+  stable: { libelle: "Pareil qu'avant", couleur: "text-blue-600" },
+  probable_progres: { libelle: "Ça progresse ?", couleur: "text-emerald-600" },
+  net_progres: { libelle: "Tu progresses", couleur: "text-emerald-700" },
   probable_baisse: { libelle: "Un peu moins bien", couleur: "text-amber-600" },
   net_baisse: { libelle: "Moins bien", couleur: "text-rose-600" },
-  fatigue_possible: { libelle: "Fatigue possible", couleur: "text-amber-600" },
+  fatigue_possible: { libelle: "Fatigué ?", couleur: "text-amber-600" },
   ecarte: { libelle: "Ne compte pas", couleur: "text-slate-400" },
 };
 
-export const CONSIGNES = [
-  "Même parcours à chaque fois, bien plat. Même heure de préférence.",
-  "Reposé : pas de séance dure ni de course dans les 2 jours avant.",
-  "Au début de ta sortie, après l'échauffement. Jamais à la fin.",
-  "Même montre, et la ceinture cardio si tu en as une.",
-  "Tiens l'allure demandée, pas plus vite même si tu te sens bien : le test mesure ton cœur, pas tes jambes.",
-  "Malade, mal dormi, ou très chaud dehors ? Reporte, le test ne vaudrait rien.",
-  "À la fin, note l'effort ressenti comme d'habitude.",
-  "Le premier test sert de répétition : on compare à partir du deuxième.",
-];
-export const CONSIGNES_DEFI = [
-  "Bien reposé, comme avant une course.",
-  "Sur piste ou parcours plat, sans arrêt ni feu rouge.",
-  "Les deux efforts vraiment à fond : c'est ce qui rend le résultat juste.",
-  "Récupère complètement entre les deux (20 min très facile).",
-  "Pas plus d'une fois tous les 2 à 3 mois.",
-];
-export const CONSIGNE_VELO = "Vélo : home-trainer de préférence, et fais le zéro de ton capteur de puissance avant de partir.";
+export const CONSIGNES: Record<string, string[]> = {
+  progressif: [
+    "Au stade, sur la piste.",
+    "Reposé : rien de dur les 2 jours avant.",
+    "Lance la séance sur ta montre : elle te donne l'allure de chaque minute, un peu plus vite à chaque fois.",
+    "Va jusqu'au bout : arrête-toi seulement quand tu ne peux plus suivre. C'est dur, c'est normal, c'est ce qui rend le test juste.",
+    "Une ou deux fois par an suffit.",
+  ],
+  tranquille: [
+    "Même parcours plat, même heure.",
+    "Reposé : rien de dur les 2 jours avant.",
+    "Suis l'allure affichée sur ta montre, même si tu te sens bien.",
+    "Malade ou très chaud ? Reporte.",
+  ],
+  lsct: [
+    "Sur home-trainer, obligatoirement.",
+    "Reposé : rien de dur les 2 jours avant.",
+    "Garde ton cœur autour de la cible affichée : pédale plus ou moins fort pour y rester.",
+    "Fais le zéro de ton capteur de puissance avant.",
+  ],
+  defi: [
+    "Il sert seulement à mesurer ton allure 10 km si tu n'as pas fait de course récemment. Pas obligatoire.",
+    "Bien reposé, sur piste ou parcours plat, sans arrêt.",
+    "Les deux efforts vraiment à fond, et récupère bien entre les deux.",
+    "Pas plus d'une fois tous les 2 à 3 mois.",
+  ],
+};
 
 async function appeler(body: Record<string, unknown>) {
   const { data, error } = await supabase.functions.invoke("tests", { body });

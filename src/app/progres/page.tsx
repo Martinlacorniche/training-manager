@@ -252,7 +252,7 @@ function Progres() {
         {!niveau?.actuel && points.length >= 3 && (
           <section className={carte}>
             <h2 className="font-bold text-slate-800">{soi ? "Mon niveau de course" : "Son niveau de course"}</h2>
-            <p className="text-sm text-slate-500">Il sera calculé après {soi ? "ta" : "sa"} prochaine course, ou avec le test VMA (onglet {soi ? "Mes" : "Ses"} tests). On garde les 4 derniers mois.</p>
+            <p className="text-sm text-slate-500">Il sera calculé après {soi ? "ta" : "sa"} prochaine course, ou avec le calibrage (onglet {soi ? "Mes" : "Ses"} tests). On garde les 4 derniers mois.</p>
           </section>
         )}
 

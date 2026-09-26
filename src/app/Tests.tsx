@@ -94,7 +94,7 @@ export function ResultatTest({ sessionId, protocole, texte, faite }: { sessionId
 }
 
 const MENU: { p: Protocole; titre: string; ligne: string }[] = [
-  { p: "progressif", titre: "Test VMA", ligne: "Mesure ta VMA. Une fois." },
+  { p: "progressif", titre: "Calibrage", ligne: "Règle tes zones. Une fois, au stade." },
   { p: "tranquille", titre: "Test forme course", ligne: "Chaque mois, sans forcer." },
   { p: "lsct", titre: "Test forme vélo", ligne: "Chaque mois, sur home-trainer." },
 ];
@@ -148,7 +148,7 @@ function ProgrammerTest({ athleteId, coach, onFait, onFermer }: { athleteId: str
               return (
                 <button key={p} disabled={bloque} onClick={() => setProtocole(p)}
                   className={`w-full flex items-center gap-3 text-left rounded-xl bg-white p-4 ${enPremier ? "border-2 border-violet-600" : "border border-slate-200 hover:border-violet-300"} ${bloque ? "opacity-45 cursor-not-allowed" : ""}`}>
-                  <span className="flex-1"><span className="block font-bold text-slate-800">{titre}</span><span className="block text-sm text-slate-500">{bloque ? "Après le test VMA." : ligne}</span></span>
+                  <span className="flex-1"><span className="block font-bold text-slate-800">{titre}</span><span className="block text-sm text-slate-500">{bloque ? "Après le calibrage." : ligne}</span></span>
                   {enPremier && <span className="rounded-lg bg-violet-600 px-2 py-1 text-xs font-bold text-white">En premier</span>}
                 </button>
               );
@@ -176,7 +176,7 @@ function ProgrammerTest({ athleteId, coach, onFait, onFermer }: { athleteId: str
 }
 
 const QUOI: Record<string, string> = {
-  progressif: "Ta VMA, test VMA après test VMA.",
+  progressif: "Ta VMA, calibrage après calibrage.",
   tranquille: "Ton cœur à la 2ᵉ allure. Plus il descend, plus tu es en forme.",
   lsct: "Ta puissance au 3ᵉ palier. Plus elle monte, plus tu es en forme.",
   defi: "Ton allure 10 km mesurée par le défi. Plus elle est rapide, mieux c'est.",
@@ -209,7 +209,7 @@ export function SuiviTests({ userId, soi }: { userId: string; soi: boolean }) {
       ))}
       {!resultats.length ? (
         <section className="rounded-2xl bg-violet-50 p-4">
-          <p className="font-bold text-slate-800">{preTestFait || preTestPrevu ? "Ton test VMA est prévu" : "Commence par le test VMA"}</p>
+          <p className="font-bold text-slate-800">{preTestFait || preTestPrevu ? "Ton calibrage est prévu" : "Commence par le calibrage"}</p>
           <p className="text-sm text-slate-600">Au stade, une fois. Ensuite, un test par mois.</p>
         </section>
       ) : protocoles.map((p) => {

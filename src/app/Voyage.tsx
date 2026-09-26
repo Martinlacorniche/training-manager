@@ -86,7 +86,7 @@ export function Voyage({ userId, soi }: { userId: string; soi: boolean }) {
     <div className="space-y-4">
       {d.carte && (
         <iframe title="Carte du voyage" src={`/carte-voyage.html#${encodeURIComponent(JSON.stringify(d.carte))}`}
-          className="h-80 w-full rounded-2xl border-0 bg-[#0b1220]" />
+          className="h-80 w-full rounded-2xl border-0 bg-[#eef2f7]" />
       )}
       <section className={carte}>
         {!discret && <p className="text-4xl font-black text-slate-800">{n0(d.km)} km</p>}

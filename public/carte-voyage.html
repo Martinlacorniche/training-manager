@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
 <title>Mon voyage</title>
 <!--
-  La carte de « Mon voyage » : un globe sombre (MapLibre GL, tuiles OpenFreeMap),
+  La carte de « Mon voyage » : un globe clair (MapLibre GL, tuiles OpenFreeMap),
   le chemin de l'année qui se dessine, les étapes, et un point qui pulse là où
   en est l'athlète. Une seule page pour l'app (WebView) et le site (iframe) :
   les données arrivent dans le fragment d'URL (#…, JSON), rien ne part au
@@ -14,12 +14,12 @@
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/maplibre-gl@5.24.0/dist/maplibre-gl.css" />
 <script src="https://cdn.jsdelivr.net/npm/maplibre-gl@5.24.0/dist/maplibre-gl.js"></script>
 <style>
-  html, body, #carte { margin: 0; height: 100%; background: #0b1220; overflow: hidden; }
-  .point { width: 16px; height: 16px; border-radius: 50%; background: #5eead4; box-shadow: 0 0 0 0 rgba(94,234,212,.7); animation: pouls 1.8s infinite; border: 2px solid #fff; }
-  @keyframes pouls { 0% { box-shadow: 0 0 0 0 rgba(94,234,212,.7); } 70% { box-shadow: 0 0 0 18px rgba(94,234,212,0); } 100% { box-shadow: 0 0 0 0 rgba(94,234,212,0); } }
-  .maison { width: 10px; height: 10px; border-radius: 50%; background: #fff; border: 2px solid #5eead4; }
-  .drapeau { font: 700 11px/1 -apple-system, "Segoe UI", Roboto, sans-serif; color: #e2e8f0; background: rgba(15,23,42,.75); padding: 4px 7px; border-radius: 8px; white-space: nowrap; transform: translateY(-22px); }
-  .maplibregl-ctrl-attrib { font-size: 9px; background: rgba(15,23,42,.6) !important; color: #94a3b8; }
+  html, body, #carte { margin: 0; height: 100%; background: #eef2f7; overflow: hidden; }
+  .point { width: 16px; height: 16px; border-radius: 50%; background: #0d9488; box-shadow: 0 0 0 0 rgba(13,148,136,.6); animation: pouls 1.8s infinite; border: 2px solid #fff; }
+  @keyframes pouls { 0% { box-shadow: 0 0 0 0 rgba(13,148,136,.6); } 70% { box-shadow: 0 0 0 18px rgba(13,148,136,0); } 100% { box-shadow: 0 0 0 0 rgba(13,148,136,0); } }
+  .maison { width: 10px; height: 10px; border-radius: 50%; background: #fff; border: 3px solid #0d9488; }
+  .drapeau { font: 700 11px/1 -apple-system, "Segoe UI", Roboto, sans-serif; color: #0f172a; background: #fff; padding: 5px 8px; border-radius: 8px; box-shadow: 0 2px 8px rgba(15,23,42,.15); white-space: nowrap; transform: translateY(-22px); }
+  .maplibregl-ctrl-attrib { font-size: 9px; background: rgba(255,255,255,.7) !important; color: #64748b; }
   .maplibregl-ctrl-attrib a { color: #94a3b8; }
   .maplibregl-ctrl-attrib.maplibregl-compact:not(:hover) .maplibregl-ctrl-attrib-inner { display: none; }
 </style>
@@ -34,7 +34,7 @@
     const lng = tous.map((p) => p[0]), lat = tous.map((p) => p[1]);
     const map = new maplibregl.Map({
       container: "carte",
-      style: "https://tiles.openfreemap.org/styles/dark",
+      style: "https://tiles.openfreemap.org/styles/positron",
       bounds: [[Math.min(...lng), Math.min(...lat)], [Math.max(...lng), Math.max(...lat)]],
       fitBoundsOptions: { padding: { top: 50, bottom: 40, left: 40, right: 40 }, maxZoom: 6 },
       interactive: false,
@@ -59,12 +59,12 @@
       map.addSource("trace", { type: "geojson", data: ligne([d.trace[0]]) });
       map.addSource("avenir", { type: "geojson", data: ligne(d.a_venir.length ? d.a_venir : [d.cap]) });
       map.addSource("etapes", { type: "geojson", data: { type: "FeatureCollection", features: d.etapes.map((e) => ({ type: "Feature", properties: { passee: e.passee }, geometry: { type: "Point", coordinates: [e.lng, e.lat] } })) } });
-      map.addLayer({ id: "avenir", type: "line", source: "avenir", paint: { "line-color": "#e2e8f0", "line-width": 2, "line-opacity": 0.55, "line-dasharray": [1, 2] } });
-      map.addLayer({ id: "halo", type: "line", source: "trace", layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": "#2dd4bf", "line-width": 12, "line-blur": 8, "line-opacity": 0.45 } });
-      map.addLayer({ id: "trace", type: "line", source: "trace", layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": "#99f6e4", "line-width": 3.5 } });
+      map.addLayer({ id: "avenir", type: "line", source: "avenir", paint: { "line-color": "#64748b", "line-width": 2, "line-opacity": 0.7, "line-dasharray": [1, 2] } });
+      map.addLayer({ id: "halo", type: "line", source: "trace", layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": "#2dd4bf", "line-width": 12, "line-blur": 8, "line-opacity": 0.35 } });
+      map.addLayer({ id: "trace", type: "line", source: "trace", layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": "#0d9488", "line-width": 4 } });
       map.addLayer({ id: "etapes", type: "circle", source: "etapes", paint: {
-        "circle-radius": 4, "circle-color": ["case", ["get", "passee"], "#5eead4", "#0b1220"],
-        "circle-stroke-color": ["case", ["get", "passee"], "#0b1220", "#94a3b8"], "circle-stroke-width": 1.5 } });
+        "circle-radius": 4.5, "circle-color": ["case", ["get", "passee"], "#0d9488", "#ffffff"],
+        "circle-stroke-color": ["case", ["get", "passee"], "#ffffff", "#94a3b8"], "circle-stroke-width": 2 } });
 
       drapeau(null, d.maison, "maison");
       drapeau(d.noms.maison, d.maison, "drapeau");

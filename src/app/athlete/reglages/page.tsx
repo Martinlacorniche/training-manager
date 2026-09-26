@@ -137,8 +137,11 @@ export default function Reglages() {
     const z = zones.map((x) => Math.round(Number(x) || 0));
     if (z.some((x, i) => i > 0 && x <= z[i - 1])) { setMessage("Chaque zone doit commencer plus haut que la précédente."); return; }
     const { error } = await supabase.from("athlete_metrics").upsert({ user_id: moi.id_auth, hr_zones: z, zones_source: "manuel" }, { onConflict: "user_id" });
-    setMessage(error ? error.message : "Zones enregistrées.");
-    if (!error) setZonesSource({ source: "manuel", le: null });
+    if (error) { setMessage(error.message); return; }
+    setZonesSource({ source: "manuel", le: null });
+    // Et dans intervals.icu, pour les séances envoyées à la montre.
+    const { data: icuZ } = await supabase.functions.invoke("zones-icu", { body: { athleteId: moi.id_auth } });
+    setMessage(icuZ?.envoye ? "Zones enregistrées et envoyées à intervals.icu : tes séances viseront ces pulsations." : "Zones enregistrées.");
   }
 
   const coache = !!moi?.coach_id && moi.coach_id !== moi.id_auth;
@@ -167,6 +170,7 @@ export default function Reglages() {
                 <span className="text-sm text-slate-400">{i < 4 ? `– ${zones[i + 1] - 1} bpm` : "et +"}</span>
               </div>
             ))}
+            <p className="text-xs text-slate-400">Envoyées à intervals.icu pour tes séances. Pour les écrans de ta montre, recopie-les une fois dans Garmin Connect (ou l&apos;app de ta montre).</p>
             <button onClick={enregistrerZones} className="w-full rounded-xl bg-blue-600 py-2.5 font-bold text-white">Enregistrer mes zones</button>
           </section>
         )}

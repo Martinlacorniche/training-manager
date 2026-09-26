@@ -84,6 +84,10 @@ export function Voyage({ userId, soi }: { userId: string; soi: boolean }) {
 
   return (
     <div className="space-y-4">
+      {d.carte && (
+        <iframe title="Carte du voyage" src={`/carte-voyage.html#${encodeURIComponent(JSON.stringify(d.carte))}`}
+          className="h-80 w-full rounded-2xl border-0 bg-[#0b1220]" />
+      )}
       <section className={carte}>
         {!discret && <p className="text-4xl font-black text-slate-800">{n0(d.km)} km</p>}
         <p className="text-sm text-slate-500">{discret ? "Ton voyage continue, à ton rythme." : "depuis le 1er janvier, tous sports"}</p>
@@ -127,6 +131,19 @@ export function Voyage({ userId, soi }: { userId: string; soi: boolean }) {
               ))}
             </div>
           ))}
+        </section>
+      )}
+
+      {!discret && d.a_vie?.km > 0 && (
+        <section className={carte}>
+          <p className="text-lg font-extrabold text-slate-800">🌍 {d.a_vie.tours > 0 ? `${d.a_vie.tours} tour${d.a_vie.tours > 1 ? "s" : ""} du monde` : "Ton tour du monde"}</p>
+          <div className="h-2 rounded bg-slate-200"><div className="h-2 rounded bg-teal-600" style={{ width: `${Math.max(2, d.a_vie.vers_le_prochain * 100)}%` }} /></div>
+          <p className="text-sm text-slate-500">{n0(d.a_vie.km)} km depuis le début · {Math.round(d.a_vie.vers_le_prochain * 100)} % {d.a_vie.tours > 0 ? "du suivant" : "du tour de la Terre"}</p>
+          <ul className="space-y-1">
+            {d.a_vie.annees.map((a: Record<string, any>) => (
+              <li key={a.annee} className="flex gap-3 text-sm"><span className="w-12 font-extrabold text-slate-800">{a.annee}</span><span className="text-slate-500">{n0(a.km)} km{a.destinations.length ? ` · ${a.destinations.join(", ")}` : ""}</span></li>
+            ))}
+          </ul>
         </section>
       )}
 

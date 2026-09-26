@@ -18,9 +18,10 @@
   .point { width: 16px; height: 16px; border-radius: 50%; background: #5eead4; box-shadow: 0 0 0 0 rgba(94,234,212,.7); animation: pouls 1.8s infinite; border: 2px solid #fff; }
   @keyframes pouls { 0% { box-shadow: 0 0 0 0 rgba(94,234,212,.7); } 70% { box-shadow: 0 0 0 18px rgba(94,234,212,0); } 100% { box-shadow: 0 0 0 0 rgba(94,234,212,0); } }
   .maison { width: 10px; height: 10px; border-radius: 50%; background: #fff; border: 2px solid #5eead4; }
-  .drapeau { font: 700 11px/1 -apple-system, "Segoe UI", Roboto, sans-serif; color: #e2e8f0; background: rgba(15,23,42,.75); padding: 4px 7px; border-radius: 8px; white-space: nowrap; transform: translateY(-16px); }
+  .drapeau { font: 700 11px/1 -apple-system, "Segoe UI", Roboto, sans-serif; color: #e2e8f0; background: rgba(15,23,42,.75); padding: 4px 7px; border-radius: 8px; white-space: nowrap; transform: translateY(-22px); }
   .maplibregl-ctrl-attrib { font-size: 9px; background: rgba(15,23,42,.6) !important; color: #94a3b8; }
   .maplibregl-ctrl-attrib a { color: #94a3b8; }
+  .maplibregl-ctrl-attrib.maplibregl-compact:not(:hover) .maplibregl-ctrl-attrib-inner { display: none; }
 </style>
 </head>
 <body>
@@ -47,6 +48,14 @@
 
     map.on("style.load", () => {
       try { map.setProjection({ type: "globe" }); } catch (e) {}
+      // Les noms de la carte en français quand ils existent.
+      for (const l of map.getStyle().layers) {
+        if (l.type === "symbol" && map.getLayoutProperty(l.id, "text-field")) {
+          map.setLayoutProperty(l.id, "text-field", ["coalesce", ["get", "name:fr"], ["get", "name"]]);
+        }
+      }
+      // Les sources, repliées derrière le petit « i ».
+      document.querySelectorAll(".maplibregl-ctrl-attrib").forEach((x) => x.classList.remove("maplibregl-compact-show"));
       map.addSource("trace", { type: "geojson", data: ligne([d.trace[0]]) });
       map.addSource("avenir", { type: "geojson", data: ligne(d.a_venir.length ? d.a_venir : [d.cap]) });
       map.addSource("etapes", { type: "geojson", data: { type: "FeatureCollection", features: d.etapes.map((e) => ({ type: "Feature", properties: { passee: e.passee }, geometry: { type: "Point", coordinates: [e.lng, e.lat] } })) } });
@@ -60,7 +69,7 @@
       drapeau(null, d.maison, "maison");
       drapeau(d.noms.maison, d.maison, "drapeau");
       for (const x of d.destinations) drapeau(x.nom, [x.lng, x.lat], "drapeau");
-      if (d.a_venir.length) drapeau(d.noms.cap, d.cap, "drapeau");
+      drapeau(d.noms.cap, d.cap, "drapeau");
 
       // Le chemin se dessine, puis le point se met à pulser.
       const t0 = performance.now(), duree = 1800;

@@ -108,6 +108,12 @@ function ProgrammerTest({ athleteId, coach, onFait, onFermer }: { athleteId: str
   const [occupe, setOccupe] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
   const [fait, setFait] = useState(false);
+  // Les fiches préparées dès l'ouverture, en parallèle : au clic, elles sont là.
+  const [cache] = useState<Partial<Record<Protocole, Promise<Record<string, any>>>>>(() => {
+    const c: Partial<Record<Protocole, Promise<Record<string, any>>>> = {};
+    for (const p of ["progressif", "tranquille", "lsct", "defi"] as Protocole[]) { c[p] = apercuTest(athleteId, p); c[p]!.catch(() => {}); }
+    return c;
+  });
 
   useEffect(() => {
     supabase.from("test_references").select("source").eq("user_id", athleteId).eq("protocole", "tranquille").maybeSingle()
@@ -116,8 +122,8 @@ function ProgrammerTest({ athleteId, coach, onFait, onFermer }: { athleteId: str
   useEffect(() => {
     if (!protocole) return;
     setApercu(null); setErreur(null); setOccupe(true);
-    apercuTest(athleteId, protocole).then(setApercu).catch((e) => setErreur(e.message)).finally(() => setOccupe(false));
-  }, [protocole, athleteId]);
+    (cache[protocole] ?? apercuTest(athleteId, protocole)).then(setApercu).catch((e) => setErreur(e.message)).finally(() => setOccupe(false));
+  }, [protocole, athleteId, cache]);
 
   async function programmer() {
     if (!protocole) return;

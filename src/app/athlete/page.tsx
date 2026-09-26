@@ -406,6 +406,13 @@ function ValidateModal({ open, onClose, onSaved, initial, stravaConnected, onSyn
 }
 
 // ---------- Modal Absence
+// Échelle d'effort 1→10 (mêmes couleurs que l'app).
+const EFFORT = ["#64748b", "#10b981", "#22c55e", "#84cc16", "#eab308", "#f59e0b", "#f97316", "#ef4444", "#dc2626", "#7c3aed"];
+const chronoChamps = (heures?: number | null) => {
+  if (!heures) return { h: "", m: "", s: "" };
+  const t = Math.round(heures * 3600);
+  return { h: String(Math.floor(t / 3600)), m: String(Math.floor((t % 3600) / 60)), s: String(t % 60).padStart(2, "0") };
+};
 function AbsenceModal({ open, onClose, onSaved, initial, athleteId, date }:{ open: boolean; onClose: ()=>void; onSaved: (a: AbsenceType, isEdit: boolean)=>void; initial?: AbsenceType | null; athleteId: string; date: string; }) {
   const isEdit = !!initial;
   const [type, setType] = useState<string>(initial?.type || "off");
@@ -417,8 +424,7 @@ function AbsenceModal({ open, onClose, onSaved, initial, athleteId, date }:{ ope
   const [heure, setHeure] = useState<string>(initial?.heure_depart || "");
   const [comment, setComment] = useState<string>(initial?.comment || "");
   const [rpe, setRpe] = useState<string>(initial?.rpe != null ? String(initial.rpe) : "");
-  const [durHour, setDurHour] = useState<number>(() => initial?.duration_hour ? Math.floor(initial.duration_hour) : 0);
-  const [durMin, setDurMin] = useState<number>(() => initial?.duration_hour ? Math.round((initial.duration_hour % 1) * 60) : 0);
+  const [chrono, setChrono] = useState<{ h: string; m: string; s: string }>(() => chronoChamps(initial?.duration_hour));
   const [status, setStatus] = useState<string>(initial?.status || "");
   const [loading, setLoading] = useState(false);
 
@@ -426,19 +432,23 @@ function AbsenceModal({ open, onClose, onSaved, initial, athleteId, date }:{ ope
     if (!open) return;
     if (initial) {
       setType(initial.type || "off"); setName(initial.name || ""); setDistance(initial.distance_km?.toString() || ""); setElev(initial.elevation_d_plus?.toString() || ""); setLieu(initial.lieu_nom || ""); setHeure(initial.heure_depart || ""); setComment(initial.comment || ""); setRpe(initial.rpe != null ? String(initial.rpe) : "");
-      if (initial.duration_hour != null) { const h = Math.floor(initial.duration_hour); const m = Math.round((initial.duration_hour - h) * 60); setDurHour(h); setDurMin(m); } else { setDurHour(0); setDurMin(0); }
-      setStatus(initial.status || "");
+      setChrono(chronoChamps(initial.duration_hour));
+      // Reliée à Strava : la course a été courue jusqu'au bout, sauf avis contraire.
+      setStatus(initial.status || (initial.strava_activity_id ? "finisher" : ""));
     } else {
-      setType("off"); setName(""); setDistance(""); setElev(""); setLieu(""); setHeure(""); setComment(""); setRpe(""); setDurHour(0); setDurMin(0); setStatus("");
+      setType("off"); setName(""); setDistance(""); setElev(""); setLieu(""); setHeure(""); setComment(""); setRpe(""); setChrono(chronoChamps(null)); setStatus("");
     }
   }, [open, initial]);
 
   if (!open) return null;
+  // Course passée (ou déjà reliée à Strava) : on demande le résultat ; avant, seulement le plan.
+  const passee = !!initial?.strava_activity_id || (initial?.date || date) <= new Date().toLocaleDateString("sv-SE");
+  const sec = (Number(chrono.h) || 0) * 3600 + (Number(chrono.m) || 0) * 60 + (Number(chrono.s) || 0);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
-    const duration_hour = type === "competition" ? durHour + durMin / 60 : null;
+    const duration_hour = type === "competition" && sec ? sec / 3600 : null;
     const rpeNum = type === "competition" && rpe ? Number(rpe) : null;
     const payload: any = { user_id: athleteId, date, type, name: name || null, distance_km: distance ? Number(distance) : null, elevation_d_plus: elev ? Number(elev) : null, comment: comment || null, rpe: rpeNum, duration_hour, status: type === "competition" ? (status || null) : null };
     if (type === "competition") {
@@ -470,31 +480,53 @@ function AbsenceModal({ open, onClose, onSaved, initial, athleteId, date }:{ ope
     <div className="fixed inset-0 z-50 grid place-items-center p-4">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
       <form onSubmit={submit} className="relative w-full max-w-md rounded-2xl bg-white shadow-2xl p-6 space-y-4">
-        <h3 className="text-lg font-bold text-slate-800">{isEdit ? "Modifier" : "Ajouter"} {type==="competition"?"Compétition":"Off"}</h3>
-        <label className="block text-sm font-bold text-slate-700">Type <select value={type} onChange={(e) => setType(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 p-2 bg-slate-50"><option value="off">Off / Repos</option><option value="competition">Compétition</option></select></label>
-        {type === "competition" && (
+        <h3 className="text-lg font-bold text-slate-800">{type === "competition" ? (isEdit && name ? name : "Ma course") : "Repos"}</h3>
+        <div className="grid grid-cols-2 gap-2">
+          {([["competition", "🏁 Course"], ["off", "💤 Repos"]] as const).map(([v, lb]) => (
+            <button key={v} type="button" onClick={() => setType(v)} className={`py-2.5 rounded-xl border font-bold text-sm ${type === v ? "border-blue-600 bg-blue-50 text-blue-700" : "border-slate-200 bg-slate-50 text-slate-500"}`}>{lb}</button>
+          ))}
+        </div>
+        {type === "competition" ? (
           <>
-            <label className="block text-sm font-bold text-slate-700">Nom <input value={name} onChange={(e) => setName(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 p-2 bg-slate-50" /></label>
+            <label className="block text-sm font-bold text-slate-700">Nom de la course <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex : 10 km de la Marine" className="mt-1 w-full rounded-lg border border-slate-200 p-2 bg-slate-50" /></label>
             <div className="grid grid-cols-2 gap-3">
-              <label className="text-sm text-slate-600">Dist (km) <input value={distance} onChange={(e) => setDistance(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 p-2" /></label>
-              <label className="text-sm text-slate-600">D+ (m) <input value={elev} onChange={(e) => setElev(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 p-2" /></label>
-              <label className="text-sm text-slate-600">Ville du départ <input value={lieu} onChange={(e) => setLieu(e.target.value)} placeholder="Ex : Marseille" className="mt-1 w-full rounded-lg border border-slate-200 p-2" /></label>
-              <label className="text-sm text-slate-600">Heure de départ <input value={heure} onChange={(e) => setHeure(e.target.value)} placeholder="09:00" className="mt-1 w-full rounded-lg border border-slate-200 p-2" /></label>
+              <label className="text-sm text-slate-600">Distance (km) <input value={distance} onChange={(e) => setDistance(e.target.value.replace(",", "."))} inputMode="decimal" className="mt-1 w-full rounded-lg border border-slate-200 p-2 bg-slate-50" /></label>
+              <label className="text-sm text-slate-600">Dénivelé (m) <input value={elev} onChange={(e) => setElev(e.target.value)} inputMode="numeric" placeholder="0" className="mt-1 w-full rounded-lg border border-slate-200 p-2 bg-slate-50" /></label>
+              <label className="text-sm text-slate-600">Ville du départ <input value={lieu} onChange={(e) => setLieu(e.target.value)} placeholder="Ex : Toulon" className="mt-1 w-full rounded-lg border border-slate-200 p-2 bg-slate-50" /></label>
+              <label className="text-sm text-slate-600">Heure <input value={heure} onChange={(e) => setHeure(e.target.value)} placeholder="09:00" className="mt-1 w-full rounded-lg border border-slate-200 p-2 bg-slate-50" /></label>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-                <label className="text-sm text-slate-600">Heures <select value={durHour} onChange={(e) => setDurHour(Number(e.target.value))} className="mt-1 w-full rounded-lg border border-slate-200 p-2">{Array.from({ length: 15 }, (_, i) => <option key={i} value={i}>{i} h</option>)}</select></label>
-                <label className="text-sm text-slate-600">Minutes <select value={durMin} onChange={(e) => setDurMin(Number(e.target.value))} className="mt-1 w-full rounded-lg border border-slate-200 p-2">{Array.from({ length: 12 }, (_, i) => <option key={i} value={i * 5}>{String(i * 5).padStart(2, "0")} min</option>)}</select></label>
+            <div>
+              <div className="text-sm font-bold text-slate-700">{passee ? "Ton temps" : "Temps visé"}</div>
+              <div className="mt-1 flex items-center gap-2">
+                {(["h", "m", "s"] as const).map((k) => (
+                  <label key={k} className="flex items-center gap-1 text-sm text-slate-500"><input value={chrono[k]} onChange={(e) => setChrono({ ...chrono, [k]: e.target.value.replace(/[^0-9]/g, "").slice(0, 2) })} inputMode="numeric" placeholder="0" className="w-14 rounded-lg border border-slate-200 p-2 bg-slate-50 text-center font-bold text-slate-800" />{k === "h" ? "h" : k === "m" ? "min" : "s"}</label>
+                ))}
+              </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-                <label className="text-sm text-slate-600">RPE <input type="number" value={rpe} onChange={(e) => setRpe(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 p-2" /></label>
-                <label className="text-sm text-slate-600">Résultat <select value={status} onChange={(e) => setStatus(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 p-2"><option value="">-</option><option value="finisher">Finisher</option><option value="dnf">DNF</option></select></label>
-            </div>
+            {passee && (
+              <>
+                <div>
+                  <div className="text-sm font-bold text-slate-700">Ton effort</div>
+                  <div className="mt-1 flex gap-1">
+                    {EFFORT.map((c, i) => { const n = i + 1, on = Number(rpe) === n; return (
+                      <button key={n} type="button" onClick={() => setRpe(String(n))} className="flex-1 aspect-square max-w-[34px] rounded-lg text-xs font-extrabold transition" style={{ background: on ? c : c + "22", color: on ? "#fff" : c, transform: on ? "scale(1.15)" : undefined }}>{n}</button>
+                    ); })}
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <button type="button" onClick={() => setStatus("finisher")} className={`py-2.5 rounded-xl border font-bold text-sm ${status === "finisher" ? "border-emerald-500 bg-emerald-50 text-emerald-700" : "border-slate-200 bg-slate-50 text-slate-500"}`}>Terminée</button>
+                  <button type="button" onClick={() => setStatus("dnf")} className={`py-2.5 rounded-xl border font-bold text-sm ${status === "dnf" ? "border-rose-500 bg-rose-50 text-rose-700" : "border-slate-200 bg-slate-50 text-slate-500"}`}>Abandon</button>
+                </div>
+              </>
+            )}
+            <label className="block text-sm font-bold text-slate-700">{passee ? "Un mot sur ta course" : "Ton objectif"} <textarea value={comment} onChange={(e) => setComment(e.target.value)} placeholder={passee ? "Facultatif" : "Ex : moins de 40 min (facultatif)"} className="mt-1 w-full rounded-lg border border-slate-200 p-2 bg-slate-50 min-h-[60px]" /></label>
 
-            {/* Données Strava — affichées si la compète vient de Strava */}
+            {/* Données Strava — affichées si la course vient de Strava */}
             <StravaMetrics data={initial} />
           </>
+        ) : (
+          <label className="block text-sm font-bold text-slate-700">Pourquoi ? <textarea value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Ex : vacances, fatigue (facultatif)" className="mt-1 w-full rounded-lg border border-slate-200 p-2 bg-slate-50 min-h-[60px]" /></label>
         )}
-        <label className="block text-sm font-bold text-slate-700">Commentaire <textarea value={comment} onChange={(e) => setComment(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 p-2 bg-slate-50 min-h-[80px]" /></label>
         <div className="flex justify-between pt-2">
           {isEdit ? <button type="button" onClick={del} className="px-3 py-2 rounded-lg text-rose-600 border border-rose-100 hover:bg-rose-50"><Trash size={18}/></button> : <span/>}
           <div className="flex gap-2">

@@ -8,6 +8,7 @@ import { ArrowLeft } from "@phosphor-icons/react";
 import { supabase } from "@/lib/supabaseClient";
 import DemandeVsFait from "../../DemandeVsFait";
 import StravaMetrics from "../../StravaMetrics";
+import { ResultatTest } from "../../Tests";
 import SuiviSeance from "../../SuiviSeance";
 
 dayjs.locale("fr");
@@ -47,7 +48,8 @@ export default function Seance() {
               <p className="text-xs uppercase font-bold text-slate-400">{dayjs(s.date).format("dddd D MMMM YYYY")} · {s.sport}</p>
               <h1 className="text-2xl font-extrabold text-slate-800">{s.title || "Séance"}</h1>
             </header>
-            {s.planned_inter && (
+            {s.test && <ResultatTest sessionId={s.id} protocole={s.test} texte={s.planned_inter} faite={s.status === "valide"} />}
+            {s.planned_inter && !(s.test && s.status !== "valide") && (
               <section className="bg-white rounded-2xl border border-slate-200 p-4">
                 <h3 className="font-bold text-slate-800 mb-1">Consignes</h3>
                 <p className="text-sm text-slate-600 whitespace-pre-line">{s.planned_inter}</p>

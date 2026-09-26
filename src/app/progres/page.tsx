@@ -8,6 +8,7 @@ import { ArrowLeft } from "@phosphor-icons/react";
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid } from "recharts";
 import { supabase } from "@/lib/supabaseClient";
 import InfoWbgt from "../InfoWbgt";
+import { SuiviTests } from "../Tests";
 
 dayjs.locale("fr");
 const jakarta = Plus_Jakarta_Sans({ subsets: ["latin"], weight: ["500", "600", "700", "800"], display: "swap" });
@@ -42,6 +43,9 @@ function Progres() {
   const [points, setPoints] = useState<any[]>([]);
   const [nuits, setNuits] = useState<any[]>([]);
   const [cs, setCs] = useState<{ actuel: any; avant: any | null } | null>(null);
+  const [niveau, setNiveau] = useState<{ actuel: any; avant: any | null } | null>(null);
+  const [cibleId, setCibleId] = useState<string | null>(null);
+  const [onglet, setOnglet] = useState<"forme" | "tests">(params.get("onglet") === "tests" ? "tests" : "forme");
 
   useEffect(() => {
     (async () => {
@@ -50,6 +54,13 @@ function Progres() {
       const id = params.get("athlete") || session.user.id;
       const moi = id === session.user.id;
       setSoi(moi);
+      setCibleId(id);
+      const { data: nc } = await supabase.from("niveau_course").select("jour, niveau, bas, haut, source")
+        .eq("user_id", id).order("jour", { ascending: false }).limit(60);
+      if (nc?.length) {
+        const limite = dayjs(nc[0].jour).subtract(42, "day").format("YYYY-MM-DD");
+        setNiveau({ actuel: nc[0], avant: nc.find((x: any) => x.jour <= limite) ?? null });
+      }
       const { data: u } = await supabase.from("users").select("name").eq("id_auth", id).maybeSingle();
       setNom(u?.name ?? null);
 
@@ -120,7 +131,15 @@ function Progres() {
         <header>
           <h1 className="text-2xl font-extrabold text-slate-800">Progrès{!soi && nom ? ` · ${nom}` : ""}</h1>
           <p className="text-sm text-slate-500">Comparé à {soi ? "toi-même" : "lui-même"}, jamais aux autres.</p>
+          <div className="mt-3 flex rounded-xl bg-slate-200/70 p-1">
+            {([["forme", soi ? "Ma forme" : "Sa forme"], ["tests", soi ? "Mes tests" : "Ses tests"]] as const).map(([k, lib]) => (
+              <button key={k} onClick={() => setOnglet(k)} className={`flex-1 rounded-lg py-2 text-sm font-bold ${onglet === k ? "bg-white text-slate-800 shadow-sm" : "text-slate-500"}`}>{lib}</button>
+            ))}
+          </div>
         </header>
+
+        {onglet === "tests" && cibleId && <SuiviTests userId={cibleId} soi={soi} />}
+        {onglet === "forme" && (<>
 
         <section className={carte}>
           <h2 className="font-bold text-slate-800">{soi ? "Mon état" : "Son état"}</h2>
@@ -195,6 +214,24 @@ function Progres() {
           );
         })()}
 
+        {/* Le niveau de course : un indice de PERFORMANCE (façon VDOT), tiré des
+            vraies courses et du mini-défi, jamais appelé VO2max. */}
+        {niveau?.actuel && (() => {
+          const n = Number(niveau.actuel.niveau), av = niveau.avant ? Number(niveau.avant.niveau) : null;
+          const ecart = av != null ? n - av : null;
+          return (
+            <section className={carte}>
+              <h2 className="font-bold text-slate-800">{soi ? "Mon niveau de course" : "Son niveau de course"}</h2>
+              <p className="text-3xl font-extrabold text-slate-800">{Math.round(n)}<span className="text-base font-bold text-slate-500">  entre {Math.round(niveau.actuel.bas)} et {Math.round(niveau.actuel.haut)}</span></p>
+              {ecart != null && Math.abs(ecart) >= 2 && (
+                <p className={`text-sm font-bold ${ecart > 0 ? "text-emerald-700" : "text-orange-600"}`}>{ecart > 0 ? "En hausse" : "En baisse"} depuis 6 semaines (il était à {Math.round(av!)})</p>
+              )}
+              <p className="text-sm text-slate-700">Un score qui résume {soi ? "ce que tu vaux" : "ce qu'il vaut"} en course, calculé sur {niveau.actuel.source} (chaleur retirée). Plus il monte, plus {soi ? "tu es" : "il est"} fort.</p>
+              <p className="text-xs text-slate-400">C&apos;est l&apos;équivalent de la « VO2max » des montres, mais tiré de {soi ? "tes" : "ses"} vraies courses plutôt que du cœur.</p>
+            </section>
+          );
+        })()}
+
         {soi && nuitsVfc.length > 0 && (
           <section className={carte}>
             <h2 className="font-bold text-slate-800">Mes nuits</h2>
@@ -215,6 +252,7 @@ function Progres() {
             ) : null}
           </section>
         )}
+        </>)}
       </div>
     </main>
   );

@@ -105,6 +105,11 @@ export function Voyage({ userId, soi }: { userId: string; soi: boolean }) {
         <div>
           <div className="h-2 rounded bg-slate-200"><div className="h-2 rounded bg-teal-600" style={{ width: `${pct * 100}%` }} /></div>
           <div className="mt-1 flex justify-between text-sm font-bold text-slate-500"><span>{v.depart}</span><span>{v.cap}</span></div>
+          {!discret && !v.cap_atteint && (
+            <p className="mt-2 text-slate-800">{pct < 0.5
+              ? <><strong>{n0(v.sur_troncon)} km</strong> faits sur {n0(v.jusqu_au_cap)} jusqu&apos;à {v.cap}</>
+              : <>Plus que <strong>{n0(v.reste)} km</strong> jusqu&apos;à {v.cap}</>}</p>
+          )}
         </div>
         {soi && !v.cap_atteint && <button onClick={() => setEdition("cap")} className="rounded-xl border-2 border-teal-600 px-3 py-1.5 text-sm font-extrabold text-teal-700">Changer de destination</button>}
         {v.cap_atteint

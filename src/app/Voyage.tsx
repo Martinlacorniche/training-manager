@@ -122,8 +122,8 @@ export function Voyage({ userId, soi }: { userId: string; soi: boolean }) {
 
       {!discret && (d.d_plus > 0 || d.heures > 0) && (
         <section className={carte}>
-          {d.d_plus > 0 && <p className="text-slate-800"><strong>{n0(d.d_plus)} m</strong> de montée : {everest >= 1 ? `${everest.toFixed(1).replace(".", ",")} fois l'Everest` : `${Math.round(d.d_plus / 1610)} fois le Ventoux`}.</p>}
-          {d.heures > 0 && <p className="text-slate-800"><strong>{n0(d.heures)} heures</strong> en mouvement{d.heures >= 48 ? ` : ${Math.round(d.heures / 24)} jours complets` : ""}.</p>}
+          {d.d_plus > 0 && <p className="text-slate-800"><strong>{n0(d.d_plus)} m</strong> de montée depuis janvier : {everest >= 1 ? `${everest.toFixed(1).replace(".", ",")} fois l'Everest` : `${Math.round(d.d_plus / 1610)} fois le Ventoux`}.</p>}
+          {d.heures > 0 && <p className="text-slate-800"><strong>{n0(d.heures)} heures</strong> en mouvement depuis janvier{d.heures >= 48 ? ` : ${Math.round(d.heures / 24)} jours complets` : ""}.</p>}
         </section>
       )}
 

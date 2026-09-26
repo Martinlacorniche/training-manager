@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
 <title>Mon voyage</title>
 <!--
   La carte de « Mon voyage » : un globe clair (MapLibre GL, tuiles OpenFreeMap),
@@ -23,6 +23,8 @@
   .annees { position: absolute; left: 10px; bottom: 10px; display: flex; gap: 6px; font: 700 11px -apple-system, "Segoe UI", Roboto, sans-serif; }
   .annees span { background: #fff; border-radius: 8px; padding: 4px 7px; box-shadow: 0 2px 8px rgba(15,23,42,.12); display: flex; align-items: center; gap: 5px; color: #0f172a; }
   .annees i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  /* Plein écran dans l'app : les boutons sous la barre d'état du téléphone. */
+  body.plein .maplibregl-ctrl-top-right { top: max(env(safe-area-inset-top), 44px); }
   .maplibregl-ctrl-attrib a { color: #94a3b8; }
   .maplibregl-ctrl-attrib.maplibregl-compact:not(:hover) .maplibregl-ctrl-attrib-inner { display: none; }
 </style>
@@ -35,6 +37,7 @@
   // sans mode : la carte fixe de l'onglet.
   const mode = new URLSearchParams(location.search).get("mode");
   const interactif = mode === "plein" || mode === "site";
+  if (mode === "plein") document.body.classList.add("plein");
   let d = null;
   try { d = JSON.parse(decodeURIComponent(location.hash.slice(1))); } catch (e) {}
   if (d) {
@@ -101,10 +104,28 @@
       map.addLayer({ id: "halo", type: "line", source: "trace", layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": "#2dd4bf", "line-width": 12, "line-blur": 8, "line-opacity": 0.35 } });
       map.addLayer({ id: "trace", type: "line", source: "trace", layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": "#0d9488", "line-width": 4 } });
       map.addLayer({ id: "avoir", type: "circle", source: "avoir", paint: { "circle-radius": ["interpolate", ["linear"], ["zoom"], 1, 2.5, 5, 4.5], "circle-color": "#ffffff", "circle-stroke-color": "#94a3b8", "circle-stroke-width": 1.5 } });
-      // Les pins des villes traversées : une goutte colorée par année.
-      map.addLayer({ id: "pins", type: "circle", source: "pins", paint: {
-        "circle-radius": ["interpolate", ["linear"], ["zoom"], 1, 3, 4, 5, 7, 7], "circle-color": ["get", "couleur"],
-        "circle-stroke-color": "#ffffff", "circle-stroke-width": ["interpolate", ["linear"], ["zoom"], 1, 1, 5, 2] } });
+      // Les pins des villes traversées : une vraie épingle, colorée par année,
+      // et le nom de la ville quand on zoome.
+      const pin = (() => {
+        const w = 48, h = 64, c = document.createElement("canvas"); c.width = w; c.height = h;
+        const g = c.getContext("2d");
+        g.beginPath(); g.moveTo(w / 2, h - 2);
+        g.bezierCurveTo(w * 0.2, h * 0.62, 2, h * 0.45, 2, w / 2 - 2);
+        g.arc(w / 2, w / 2 - 2, w / 2 - 2, Math.PI, 0);
+        g.bezierCurveTo(w - 2, h * 0.45, w * 0.8, h * 0.62, w / 2, h - 2);
+        g.fillStyle = "#000"; g.fill();
+        g.globalCompositeOperation = "destination-out";
+        g.beginPath(); g.arc(w / 2, w / 2 - 2, 8, 0, 2 * Math.PI); g.fill();
+        return g.getImageData(0, 0, w, h);
+      })();
+      map.addImage("pin", pin, { sdf: true, pixelRatio: 2 });
+      map.addLayer({ id: "pins", type: "symbol", source: "pins", layout: {
+          "icon-image": "pin", "icon-anchor": "bottom", "icon-allow-overlap": true,
+          "icon-size": ["interpolate", ["linear"], ["zoom"], 1, 0.45, 4, 0.7, 7, 1],
+          "text-field": ["step", ["zoom"], "", 4.5, ["get", "nom"]], "text-size": 12, "text-offset": [0, 0.4], "text-anchor": "top",
+          "text-font": ["Noto Sans Bold"], "text-optional": true },
+        paint: { "icon-color": ["get", "couleur"], "icon-halo-color": "#ffffff", "icon-halo-width": 1.5,
+          "text-color": "#0f172a", "text-halo-color": "#ffffff", "text-halo-width": 1.5 } });
       const ans = [...new Set(pins.map((p) => p.annee))].sort();
       if (ans.length > 1) {
         const leg = document.createElement("div"); leg.className = "annees";

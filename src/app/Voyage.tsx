@@ -16,10 +16,18 @@ const SUGGESTIONS: Lieu[] = [
   { nom: "Rome", lat: 41.894, lng: 12.483 }, { nom: "Berlin", lat: 52.52, lng: 13.405 }, { nom: "Lisbonne", lat: 38.717, lng: -9.139 },
   { nom: "Oslo", lat: 59.913, lng: 10.752 }, { nom: "Athènes", lat: 37.984, lng: 23.728 }, { nom: "Marrakech", lat: 31.63, lng: -8.008 },
 ];
+// Distance à vol d'oiseau +10 % (la route passe par les grandes villes), « ≈ ».
+function kmVers(depuis: { lat: number; lng: number } | null, l: Lieu): string | null {
+  if (!depuis) return null;
+  const r = (x: number) => (x * Math.PI) / 180;
+  const hh = Math.sin(r(l.lat - depuis.lat) / 2) ** 2 + Math.cos(r(depuis.lat)) * Math.cos(r(l.lat)) * Math.sin(r(l.lng - depuis.lng) / 2) ** 2;
+  const d = 2 * 6371 * Math.asin(Math.sqrt(hh)) * 1.1;
+  return d < 50 ? "tout près" : `≈ ${(Math.round(d / 50) * 50).toLocaleString("fr-FR")} km`;
+}
 const n0 = (x: number) => Math.round(x).toLocaleString("fr-FR");
 const h = (x: number) => (x >= 1 ? `${Math.floor(x)} h ${String(Math.round((x % 1) * 60)).padStart(2, "0")}` : `${Math.round(x * 60)} min`);
 
-function ChoixLieu({ titre, onChoix, suggestions }: { titre: string; onChoix: (l: Lieu) => void; suggestions?: Lieu[] }) {
+function ChoixLieu({ titre, onChoix, suggestions, depuis }: { titre: string; onChoix: (l: Lieu) => void; suggestions?: Lieu[]; depuis?: { lat: number; lng: number } | null }) {
   const [q, setQ] = useState("");
   const [res, setRes] = useState<Lieu[]>([]);
   useEffect(() => {
@@ -38,11 +46,12 @@ function ChoixLieu({ titre, onChoix, suggestions }: { titre: string; onChoix: (l
       {res.map((l) => (
         <button key={`${l.lat},${l.lng}`} onClick={() => onChoix(l)} className="block w-full text-left py-1">
           <span className="font-bold text-slate-800">{l.nom}</span> <span className="text-sm text-slate-400">{l.detail}</span>
+          {kmVers(depuis ?? null, l) && <span className="float-right text-sm font-bold text-teal-700">{kmVers(depuis ?? null, l)}</span>}
         </button>
       ))}
       {!q && suggestions && (
         <div className="flex flex-wrap gap-2">
-          {suggestions.map((l) => <button key={l.nom} onClick={() => onChoix(l)} className="rounded-full bg-teal-50 px-4 py-2 text-sm font-bold text-teal-700">{l.nom}</button>)}
+          {suggestions.map((l) => <button key={l.nom} onClick={() => onChoix(l)} className="rounded-2xl bg-teal-50 px-4 py-2 text-sm font-bold text-teal-700">{l.nom}{kmVers(depuis ?? null, l) && <span className="block text-xs font-semibold text-slate-500">{kmVers(depuis ?? null, l)}</span>}</button>)}
         </div>
       )}
     </div>
@@ -73,7 +82,8 @@ export function Voyage({ userId, soi }: { userId: string; soi: boolean }) {
       <section className={carte}>
         {etape === "ville"
           ? <ChoixLieu titre="D'où pars-tu ?" onChoix={(l) => regler({ ville: l })} />
-          : <ChoixLieu titre={v?.cap_atteint ? `Tu es arrivé à ${d.cap} ! Et maintenant ?` : "Où veux-tu aller ?"} onChoix={(l) => regler({ cap: l })} suggestions={SUGGESTIONS} />}
+          : <ChoixLieu titre={v?.cap_atteint ? `Tu es arrivé à ${d.cap} ! Et maintenant ?` : "Où veux-tu aller ?"} onChoix={(l) => regler({ cap: l })} suggestions={SUGGESTIONS}
+              depuis={v?.position ?? (d.carte ? { lat: d.carte.maison[1], lng: d.carte.maison[0] } : null)} />}
         {edition && <button onClick={() => setEdition(null)} className="text-sm font-bold text-slate-500">Annuler</button>}
       </section>
     );
@@ -96,6 +106,7 @@ export function Voyage({ userId, soi }: { userId: string; soi: boolean }) {
           <div className="h-2 rounded bg-slate-200"><div className="h-2 rounded bg-teal-600" style={{ width: `${pct * 100}%` }} /></div>
           <div className="mt-1 flex justify-between text-sm font-bold text-slate-500"><span>{v.depart}</span><span>{v.cap}</span></div>
         </div>
+        {soi && !v.cap_atteint && <button onClick={() => setEdition("cap")} className="rounded-xl border-2 border-teal-600 px-3 py-1.5 text-sm font-extrabold text-teal-700">Changer de destination</button>}
         {v.cap_atteint
           ? (soi && <button onClick={() => setEdition("cap")} className="w-full rounded-xl bg-teal-600 py-3 font-bold text-white">Choisir la prochaine destination</button>)
           : v.prochaine && !discret && <p className="text-sm text-slate-700">Prochaine étape : <strong>{v.prochaine.nom}</strong>, dans {n0(v.prochaine.dans)} km.</p>}
@@ -139,6 +150,7 @@ export function Voyage({ userId, soi }: { userId: string; soi: boolean }) {
           <p className="text-lg font-extrabold text-slate-800">🌍 {d.a_vie.tours > 0 ? `${d.a_vie.tours} tour${d.a_vie.tours > 1 ? "s" : ""} du monde` : "Ton tour du monde"}</p>
           <div className="h-2 rounded bg-slate-200"><div className="h-2 rounded bg-teal-600" style={{ width: `${Math.max(2, d.a_vie.vers_le_prochain * 100)}%` }} /></div>
           <p className="text-sm text-slate-500">{n0(d.a_vie.km)} km depuis le début · {Math.round(d.a_vie.vers_le_prochain * 100)} % {d.a_vie.tours > 0 ? "du suivant" : "du tour de la Terre"}</p>
+          <p className="text-xs text-slate-400">Un tour du monde = {n0(d.a_vie.tour_km ?? 40075)} km.</p>
           <ul className="space-y-1">
             {d.a_vie.annees.map((a: Record<string, any>) => (
               <li key={a.annee} className="flex gap-3 text-sm"><span className="w-12 font-extrabold text-slate-800">{a.annee}</span><span className="text-slate-500">{n0(a.km)} km{a.destinations.length ? ` · ${a.destinations.join(", ")}` : ""}</span></li>
@@ -149,7 +161,6 @@ export function Voyage({ userId, soi }: { userId: string; soi: boolean }) {
 
       {soi && (
         <section className={carte}>
-          <button onClick={() => setEdition("cap")} className="block font-bold text-teal-700">Changer de destination</button>
           <button onClick={() => setEdition("ville")} className="block font-bold text-teal-700">J&apos;ai déménagé : changer ma ville ({d.ville})</button>
           <label className="flex items-center justify-between gap-4">
             <span><span className="block font-bold text-slate-800">Mode discret</span><span className="block text-sm text-slate-400">Cache les chiffres, pour une pause ou une blessure.</span></span>

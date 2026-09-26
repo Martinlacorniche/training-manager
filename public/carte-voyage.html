@@ -20,6 +20,9 @@
   .maison { width: 10px; height: 10px; border-radius: 50%; background: #fff; border: 3px solid #0d9488; }
   .drapeau { font: 700 11px/1 -apple-system, "Segoe UI", Roboto, sans-serif; color: #0f172a; background: #fff; padding: 5px 8px; border-radius: 8px; box-shadow: 0 2px 8px rgba(15,23,42,.15); white-space: nowrap; transform: translateY(-22px); }
   .maplibregl-ctrl-attrib { font-size: 9px; background: rgba(255,255,255,.7) !important; color: #64748b; }
+  .annees { position: absolute; left: 10px; bottom: 10px; display: flex; gap: 6px; font: 700 11px -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .annees span { background: #fff; border-radius: 8px; padding: 4px 7px; box-shadow: 0 2px 8px rgba(15,23,42,.12); display: flex; align-items: center; gap: 5px; color: #0f172a; }
+  .annees i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
   .maplibregl-ctrl-attrib a { color: #94a3b8; }
   .maplibregl-ctrl-attrib.maplibregl-compact:not(:hover) .maplibregl-ctrl-attrib-inner { display: none; }
 </style>
@@ -30,7 +33,11 @@
   let d = null;
   try { d = JSON.parse(decodeURIComponent(location.hash.slice(1))); } catch (e) {}
   if (d) {
-    const tous = [...d.trace, ...d.a_venir, d.maison, d.cap];
+    // Une couleur par année : l'année en cours en turquoise, les autres tournent.
+    const PALETTE = ["#6366f1", "#f59e0b", "#ec4899", "#22c55e", "#0ea5e9", "#a855f7"];
+    const couleur = (a) => (a === d.annee ? "#0d9488" : PALETTE[a % PALETTE.length]);
+    const pins = d.pins || [], aVoir = d.a_voir || [];
+    const tous = [...d.trace, ...d.a_venir, d.maison, d.cap, ...pins.filter((p) => p.annee === d.annee).map((p) => [p.lng, p.lat])];
     const lng = tous.map((p) => p[0]), lat = tous.map((p) => p[1]);
     const map = new maplibregl.Map({
       container: "carte",
@@ -58,17 +65,27 @@
       document.querySelectorAll(".maplibregl-ctrl-attrib").forEach((x) => x.classList.remove("maplibregl-compact-show"));
       map.addSource("trace", { type: "geojson", data: ligne([d.trace[0]]) });
       map.addSource("avenir", { type: "geojson", data: ligne(d.a_venir.length ? d.a_venir : [d.cap]) });
-      map.addSource("etapes", { type: "geojson", data: { type: "FeatureCollection", features: d.etapes.map((e) => ({ type: "Feature", properties: { passee: e.passee }, geometry: { type: "Point", coordinates: [e.lng, e.lat] } })) } });
+      const points = (l, prop) => ({ type: "FeatureCollection", features: l.map((e) => ({ type: "Feature", properties: prop(e), geometry: { type: "Point", coordinates: [e.lng, e.lat] } })) });
+      map.addSource("pins", { type: "geojson", data: points(pins, (p) => ({ couleur: couleur(p.annee), nom: p.nom })) });
+      map.addSource("avoir", { type: "geojson", data: points(aVoir, (p) => ({ nom: p.nom })) });
       map.addLayer({ id: "avenir", type: "line", source: "avenir", paint: { "line-color": "#64748b", "line-width": 2, "line-opacity": 0.7, "line-dasharray": [1, 2] } });
       map.addLayer({ id: "halo", type: "line", source: "trace", layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": "#2dd4bf", "line-width": 12, "line-blur": 8, "line-opacity": 0.35 } });
       map.addLayer({ id: "trace", type: "line", source: "trace", layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": "#0d9488", "line-width": 4 } });
-      map.addLayer({ id: "etapes", type: "circle", source: "etapes", paint: {
-        "circle-radius": 4.5, "circle-color": ["case", ["get", "passee"], "#0d9488", "#ffffff"],
-        "circle-stroke-color": ["case", ["get", "passee"], "#ffffff", "#94a3b8"], "circle-stroke-width": 2 } });
+      map.addLayer({ id: "avoir", type: "circle", source: "avoir", paint: { "circle-radius": ["interpolate", ["linear"], ["zoom"], 1, 2.5, 5, 4.5], "circle-color": "#ffffff", "circle-stroke-color": "#94a3b8", "circle-stroke-width": 1.5 } });
+      // Les pins des villes traversées : une goutte colorée par année.
+      map.addLayer({ id: "pins", type: "circle", source: "pins", paint: {
+        "circle-radius": ["interpolate", ["linear"], ["zoom"], 1, 3, 4, 5, 7, 7], "circle-color": ["get", "couleur"],
+        "circle-stroke-color": "#ffffff", "circle-stroke-width": ["interpolate", ["linear"], ["zoom"], 1, 1, 5, 2] } });
+      const ans = [...new Set(pins.map((p) => p.annee))].sort();
+      if (ans.length > 1) {
+        const leg = document.createElement("div"); leg.className = "annees";
+        leg.innerHTML = ans.map((a) => `<span><i style="background:${couleur(a)}"></i>${a}</span>`).join("");
+        document.body.appendChild(leg);
+      }
 
       drapeau(null, d.maison, "maison");
       drapeau(d.noms.maison, d.maison, "drapeau");
-      for (const x of d.destinations) drapeau(x.nom, [x.lng, x.lat], "drapeau");
+      for (const x of pins.filter((p) => p.annee === d.annee && (d.destinations || []).some((y) => y === p.nom))) drapeau(x.nom, [x.lng, x.lat], "drapeau");
       drapeau(d.noms.cap, d.cap, "drapeau");
 
       // Le chemin se dessine, puis le point se met à pulser.

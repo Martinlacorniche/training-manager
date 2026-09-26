@@ -12,21 +12,40 @@ import { allure, apercuTest, CONSIGNES, programmerTest, Protocole, PROTOCOLES, V
 // ProgrammerTest).
 // ─────────────────────────────────────────────────────────────────────────
 
+const PASTILLES: Record<string, string[]> = {
+  progressif: ["🏟️ Au stade", "⏱ ≈ 35 min", "⚡ À fond à la fin"],
+  tranquille: ["📍 Même parcours", "⏱ ≈ 40 min", "🙂 Sans forcer"],
+  lsct: ["🚲 Home-trainer", "⏱ ≈ 40 min", "❤️ Cœur dans la cible"],
+  defi: ["📍 Piste ou plat", "⏱ ≈ 1 h", "⚡ 2 efforts à fond"],
+};
+// Une phrase à la place de la liste des paliers (le détail part sur la montre).
+function resume(protocole: string, texte?: string | null): string {
+  const t = texte ?? "";
+  if (protocole === "progressif") return "5 min facile, puis tu accélères un peu chaque minute jusqu'à ne plus suivre.";
+  if (protocole === "tranquille") {
+    const a = t.match(/6' à ([\d:]+)\/km/g)?.map((x) => x.replace("6' à ", "")) ?? [];
+    return a.length === 2 ? `15 min facile, puis 6 min à ${a[0]} et 6 min à ${a[1]}.` : "15 min facile, puis 2 × 6 min à allure fixe.";
+  }
+  if (protocole === "lsct") {
+    const f = t.match(/cœur à (\d+) bpm/g)?.map((x) => x.replace(/\D/g, "")) ?? [];
+    return f.length === 3 ? `10 min facile, puis 3 paliers en gardant ton cœur à ${f[0]}, ${f[1]} et ${f[2]}.` : "10 min facile, puis 3 paliers à cœur fixe.";
+  }
+  return "3 min à fond, 20 min de récup, 12 min à fond.";
+}
+
+// La fiche d'un test, lisible en 8 secondes : trois pastilles, une phrase,
+// les consignes repliées. Même fiche que l'app (App-Coach, components/ConsignesTest.tsx).
 export function ConsignesTest({ protocole, texte }: { protocole: string; texte?: string | null }) {
-  const liste = CONSIGNES[protocole] ?? CONSIGNES.tranquille;
-  const lignes = texte ? texte.split("\n") : [];
-  // Le pré-test liste une vingtaine de paliers : on montre le début.
-  const court = protocole === "progressif" && lignes.length > 8 ? [...lignes.slice(0, 5), "… un peu plus vite chaque minute, jusqu'à ne plus pouvoir suivre", ...lignes.slice(-1)] : lignes;
+  const [ouvert, setOuvert] = useState(false);
   return (
-    <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 space-y-2">
-      <h3 className="font-bold text-slate-800">{protocole === "progressif" ? "Pour que le pré-test soit juste" : protocole === "defi" ? "Pour que le défi soit juste" : "Même parcours, mêmes conditions"}</h3>
-      {texte && (
-        <div className="rounded-xl bg-white p-3">
-          <p className="text-sm font-semibold text-slate-800 whitespace-pre-line">{court.join("\n")}</p>
-          <p className="text-xs text-slate-400 mt-1">Envoie-la sur ta montre (bouton « montre » dans l&apos;app) : chaque partie devient un tour, c&apos;est ce qui permet de lire le test.</p>
-        </div>
-      )}
-      <ul className="space-y-1">{liste.map((c) => <li key={c} className="text-sm text-slate-600">• {c}</li>)}</ul>
+    <section className="space-y-3">
+      <div className="grid grid-cols-3 gap-2">
+        {(PASTILLES[protocole] ?? []).map((x) => <div key={x} className="rounded-xl bg-violet-50 py-2 text-center text-sm font-bold text-slate-700">{x}</div>)}
+      </div>
+      <p className="font-semibold text-slate-800">{resume(protocole, texte)}</p>
+      <p className="text-sm text-slate-400">Envoie-le sur ta montre depuis l&apos;app : elle te guide.</p>
+      <button onClick={() => setOuvert((o) => !o)} className="text-sm font-bold text-violet-700">{ouvert ? "Masquer les consignes" : "Voir les consignes"}</button>
+      {ouvert && <ul className="space-y-1">{(CONSIGNES[protocole] ?? []).map((c) => <li key={c} className="text-sm text-slate-600">• {c}</li>)}</ul>}
     </section>
   );
 }
@@ -74,15 +93,25 @@ export function ResultatTest({ sessionId, protocole, texte, faite }: { sessionId
   );
 }
 
+const MENU: { p: Protocole; titre: string; ligne: string }[] = [
+  { p: "progressif", titre: "Test VMA", ligne: "Mesure ta VMA. Une fois." },
+  { p: "tranquille", titre: "Test forme course", ligne: "Chaque mois, sans forcer." },
+  { p: "lsct", titre: "Test forme vélo", ligne: "Chaque mois, sur home-trainer." },
+];
+
 function ProgrammerTest({ athleteId, coach, onFait, onFermer }: { athleteId: string; coach: boolean; onFait: () => void; onFermer: () => void }) {
-  const [sport, setSport] = useState<"Course" | "Vélo" | null>(null);
   const [protocole, setProtocole] = useState<Protocole | null>(null);
+  const [vmaFait, setVmaFait] = useState(false);
   const [apercu, setApercu] = useState<Record<string, any> | null>(null);
   const [date, setDate] = useState(dayjs().add(1, "day").format("YYYY-MM-DD"));
   const [occupe, setOccupe] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
   const [fait, setFait] = useState(false);
 
+  useEffect(() => {
+    supabase.from("test_references").select("source").eq("user_id", athleteId).eq("protocole", "tranquille").maybeSingle()
+      .then(({ data }) => setVmaFait(data?.source === "progressif"));
+  }, [athleteId]);
   useEffect(() => {
     if (!protocole) return;
     setApercu(null); setErreur(null); setOccupe(true);
@@ -95,64 +124,51 @@ function ProgrammerTest({ athleteId, coach, onFait, onFermer }: { athleteId: str
     try { await programmerTest(athleteId, protocole, date); setFait(true); onFait(); }
     catch (e) { setErreur((e as Error).message); } finally { setOccupe(false); }
   }
-  const choix = "w-full text-left rounded-xl border border-slate-200 bg-white p-4 hover:border-violet-300";
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center p-4" onClick={onFermer}>
       <div className="absolute inset-0 bg-slate-900/55" />
-      <div className="relative w-full max-w-lg max-h-[90vh] overflow-y-auto bg-slate-50 rounded-2xl shadow-xl p-5 space-y-3" onClick={(e) => e.stopPropagation()}>
-        <h3 className="text-lg font-extrabold text-slate-800">Test de forme</h3>
+      <div className="relative w-full max-w-md max-h-[90vh] overflow-y-auto bg-slate-50 rounded-2xl shadow-xl p-5 space-y-3" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center gap-2">
+          {protocole && !fait && <button onClick={() => { setProtocole(null); setApercu(null); setErreur(null); }} className="text-slate-500 font-bold">←</button>}
+          <h3 className="flex-1 text-lg font-extrabold text-slate-800">{apercu ? apercu.titre : "Test de forme"}</h3>
+          <button onClick={onFermer} className="text-slate-400 font-bold">✕</button>
+        </div>
         {fait ? (
           <div className="space-y-3 text-center py-4">
-            <p className="text-lg font-bold text-emerald-700">✓ Test programmé le {dayjs(date).format("dddd D MMMM")}</p>
-            <p className="text-sm text-slate-600">{coach ? "" : "Pense à l'envoyer sur ta montre depuis l'app. "}Le résultat arrivera tout seul après la séance, dans Progrès › Mes tests.</p>
+            <p className="text-lg font-bold text-emerald-700">✓ C&apos;est dans le planning</p>
+            <p className="text-sm text-slate-600">{dayjs(date).format("dddd D MMMM")}.{coach ? "" : " Envoie-le sur ta montre depuis l'app."}</p>
             <button onClick={onFermer} className="px-6 py-2 rounded-xl bg-blue-600 text-white font-bold">OK</button>
           </div>
-        ) : !sport ? (
-          <>
-            <p className="text-sm text-slate-600">Un test régulier, toujours dans les mêmes conditions, est la façon la plus fiable de savoir si {coach ? "ton athlète progresse" : "tu progresses"} vraiment.</p>
-            <button className={choix} onClick={() => setSport("Course")}><p className="font-bold text-slate-800">Course</p><p className="text-sm text-slate-500">Pré-test au stade, test forme, mini-défi</p></button>
-            <button className={choix} onClick={() => { setSport("Vélo"); setProtocole("lsct"); }}><p className="font-bold text-slate-800">Vélo</p><p className="text-sm text-slate-500">Test forme sur home-trainer</p></button>
-          </>
         ) : !protocole ? (
           <>
-            {(["progressif", "tranquille", "defi"] as Protocole[]).map((p) => (
-              <button key={p} className={choix} onClick={() => setProtocole(p)}>
-                <p className="font-bold text-slate-800">{PROTOCOLES[p].titre}</p>
-                <p className="text-sm text-slate-500">{PROTOCOLES[p].quoi}</p>
-              </button>
-            ))}
-            <button onClick={() => setSport(null)} className="text-sm font-semibold text-slate-500">← Retour</button>
+            {MENU.map(({ p, titre, ligne }) => {
+              const bloque = p === "tranquille" && !vmaFait;
+              const enPremier = p === "progressif" && !vmaFait;
+              return (
+                <button key={p} disabled={bloque} onClick={() => setProtocole(p)}
+                  className={`w-full flex items-center gap-3 text-left rounded-xl bg-white p-4 ${enPremier ? "border-2 border-violet-600" : "border border-slate-200 hover:border-violet-300"} ${bloque ? "opacity-45 cursor-not-allowed" : ""}`}>
+                  <span className="flex-1"><span className="block font-bold text-slate-800">{titre}</span><span className="block text-sm text-slate-500">{bloque ? "Après le test VMA." : ligne}</span></span>
+                  {enPremier && <span className="rounded-lg bg-violet-600 px-2 py-1 text-xs font-bold text-white">En premier</span>}
+                </button>
+              );
+            })}
+            <button onClick={() => setProtocole("defi")} className="w-full text-center text-sm font-semibold text-slate-500">Autre : mini-défi 3 + 12 min (optionnel)</button>
           </>
         ) : occupe && !apercu ? <p className="text-slate-500">…</p> : erreur && !apercu ? (
           <p className="text-sm text-amber-700">{erreur}</p>
         ) : apercu ? (
-          <>
-            <p className="font-bold text-slate-800">{apercu.titre}</p>
-            <p className="text-sm text-slate-600">{PROTOCOLES[apercu.protocole as Protocole].quoi}</p>
-            {apercu.manque ? (
-              <>
-                <p className="text-sm text-amber-700">{apercu.manque}</p>
-                {apercu.protocole === "tranquille" && <button onClick={() => setProtocole("progressif")} className="w-full py-3 rounded-xl bg-violet-600 text-white font-bold">Programmer le pré-test</button>}
-              </>
-            ) : (
-              <>
-                {apercu.allures && (
-                  <p className="text-sm text-slate-500">
-                    Tes allures, fixées par ton pré-test : {apercu.allures.a} puis {apercu.allures.b}/km. Les mêmes à chaque test.
-                  </p>
-                )}
-                <ConsignesTest protocole={apercu.protocole} texte={apercu.texte} />
-                <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3">
-                  <span className="text-sm font-semibold text-slate-700">Date</span>
-                  <input type="date" value={date} min={dayjs().format("YYYY-MM-DD")} onChange={(e) => setDate(e.target.value)} className="flex-1 outline-none text-slate-800" />
-                </label>
-                {erreur && <p className="text-sm text-rose-600">{erreur}</p>}
-                <button disabled={occupe} onClick={programmer} className="w-full py-3 rounded-xl bg-violet-600 text-white font-bold disabled:opacity-50">Programmer le test</button>
-              </>
-            )}
-            <button onClick={() => { setProtocole(null); setApercu(null); if (sport === "Vélo") setSport(null); }} className="text-sm font-semibold text-slate-500">← Retour</button>
-          </>
+          apercu.manque ? <p className="text-sm text-amber-700">{apercu.manque}</p> : (
+            <>
+              <ConsignesTest protocole={apercu.protocole} texte={apercu.texte} />
+              <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3">
+                <span className="text-sm font-semibold text-slate-700">Date</span>
+                <input type="date" value={date} min={dayjs().format("YYYY-MM-DD")} onChange={(e) => setDate(e.target.value)} className="flex-1 outline-none text-slate-800" />
+              </label>
+              {erreur && <p className="text-sm text-rose-600">{erreur}</p>}
+              <button disabled={occupe} onClick={programmer} className="w-full py-3 rounded-xl bg-violet-600 text-white font-bold disabled:opacity-50">Programmer</button>
+            </>
+          )
         ) : null}
       </div>
     </div>
@@ -160,7 +176,7 @@ function ProgrammerTest({ athleteId, coach, onFait, onFermer }: { athleteId: str
 }
 
 const QUOI: Record<string, string> = {
-  progressif: "Ta VMA, pré-test après pré-test.",
+  progressif: "Ta VMA, test VMA après test VMA.",
   tranquille: "Ton cœur à la 2ᵉ allure. Plus il descend, plus tu es en forme.",
   lsct: "Ta puissance au 3ᵉ palier. Plus elle monte, plus tu es en forme.",
   defi: "Ton allure 10 km mesurée par le défi. Plus elle est rapide, mieux c'est.",
@@ -191,16 +207,10 @@ export function SuiviTests({ userId, soi }: { userId: string; soi: boolean }) {
       {prevus.map((s) => (
         <a key={s.id} href={`/seance/${s.id}`} className="block rounded-xl bg-violet-50 p-3 text-sm font-semibold text-slate-700">{s.title} · {dayjs(s.date).format("dddd D MMMM")}</a>
       ))}
-      {!preTestFait && !preTestPrevu && (
-        <section className="rounded-2xl bg-violet-50 p-4">
-          <p className="font-bold text-slate-800">En course, commence par le pré-test au stade</p>
-          <p className="text-sm text-slate-600">Il mesure {soi ? "ta" : "sa"} VMA et {soi ? "ton" : "son"} cœur max, et fixe les allures des tests course. Sans lui, pas de test course. Le test vélo, lui, se fait sans.</p>
-        </section>
-      )}
       {!resultats.length ? (
-        <section className={carte}>
-          <h2 className="font-bold text-slate-800">Pas encore de test</h2>
-          <p className="text-sm text-slate-600">Un test tous les mois, toujours dans les mêmes conditions : c&apos;est la façon la plus fiable de voir {soi ? "tes" : "ses"} vrais progrès.</p>
+        <section className="rounded-2xl bg-violet-50 p-4">
+          <p className="font-bold text-slate-800">{preTestFait || preTestPrevu ? "Ton test VMA est prévu" : "Commence par le test VMA"}</p>
+          <p className="text-sm text-slate-600">Au stade, une fois. Ensuite, un test par mois.</p>
         </section>
       ) : protocoles.map((p) => {
         const liste = resultats.filter((r) => r.protocole === p);
@@ -242,7 +252,7 @@ export function SuiviTests({ userId, soi }: { userId: string; soi: boolean }) {
           </section>
         );
       })}
-      <p className="text-xs text-slate-400">Un seul test ne prouve rien : le cœur varie un peu d&apos;un jour à l&apos;autre. On ne dit « tu progresses » que quand l&apos;écart est net, ou se confirme deux fois.</p>
+      {resultats.length >= 2 && <p className="text-xs text-slate-400">On ne dit « tu progresses » que quand l&apos;écart est net.</p>}
       {ouvert && <ProgrammerTest athleteId={userId} coach={!soi} onFait={charger} onFermer={() => setOuvert(false)} />}
     </div>
   );

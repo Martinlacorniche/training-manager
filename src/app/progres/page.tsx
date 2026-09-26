@@ -26,6 +26,21 @@ const NIVEAU: Record<string, { pastille: string }> = {
   habituel: { pastille: "bg-emerald-500" }, a_surveiller: { pastille: "bg-amber-500" },
   ecart: { pastille: "bg-rose-500" }, inconnu: { pastille: "bg-slate-300" },
 };
+// LA TENDANCE, PAS LE BRUIT : moyenne par semaine puis glissante sur 3 semaines
+// (forme), glissante sur 7 nuits (récup). Même calcul que l'app
+// (App-Coach, components/SuiviProgres.tsx).
+function tendance(pts: { iso: string; v: number }[], parSemaine: boolean, fenetre: number) {
+  const g = new Map<string, number[]>();
+  for (const p of pts) { const k = parSemaine ? dayjs(p.iso).subtract((dayjs(p.iso).day() + 6) % 7, "day").format("YYYY-MM-DD") : p.iso; g.set(k, [...(g.get(k) ?? []), p.v]); }
+  const base = [...g].sort(([a], [b]) => a.localeCompare(b)).map(([iso, vs]) => ({ iso, v: vs.reduce((x, y) => x + y, 0) / vs.length }));
+  const r = Math.floor(fenetre / 2);
+  return base.map((p, i) => { const f = base.slice(Math.max(0, i - r), i + r + 1); return { jour: dayjs(p.iso).format("DD/MM"), v: Math.round((f.reduce((x, y) => x + y.v, 0) / f.length) * 10) / 10 }; });
+}
+// Une échelle d'au moins `amplitude` : ne pas grossir des variations minuscules.
+function domaine(vals: number[], amplitude: number): [number, number] {
+  const mn = Math.min(...vals), mx = Math.max(...vals), m = Math.max(0, amplitude - (mx - mn)) / 2 + 1;
+  return [Math.floor(mn - m), Math.ceil(mx + m)];
+}
 const allure = (v: unknown) => {
   const x = Number(v);
   if (!Number.isFinite(x) || x <= 0) return "—";
@@ -93,7 +108,7 @@ function Progres() {
       }
       const c = Number(m?.c ?? 0);
       setPoints((a ?? []).map((x: any) => ({
-        jour: dayjs(x.jour).format("DD/MM"),
+        jour: dayjs(x.jour).format("DD/MM"), iso: x.jour,
         corrigee: Math.round(Number(x.fc_reference) * 10) / 10,
         // Sans la correction de chaleur : ce que montrerait une montre.
         brute: Math.round((Number(x.fc_reference) + c * Math.max(0, Number(x.wbgt_moy ?? 0) - 13)) * 10) / 10,
@@ -102,7 +117,7 @@ function Progres() {
       if (moi) {
         const { data: b } = await supabase.from("bien_etre_quotidien").select("jour, vfc_rmssd, fc_repos, sommeil_s")
           .eq("user_id", id).gte("jour", dayjs().subtract(30, "day").format("YYYY-MM-DD")).order("jour");
-        setNuits((b ?? []).map((n: any) => ({ ...n, jour: dayjs(n.jour).format("DD/MM"), vfc: n.vfc_rmssd, fc: n.fc_repos })));
+        setNuits((b ?? []).map((n: any) => ({ ...n, jour: dayjs(n.jour).format("DD/MM"), iso: n.jour, vfc: n.vfc_rmssd, fc: n.fc_repos })));
       }
     })();
   }, [params]);
@@ -118,6 +133,8 @@ function Progres() {
   const decouper = (r: string) => { const i = (r ?? "").search(/(?<=\.)\s/); return i > 0 ? [r.slice(0, i), r.slice(i + 1)] : [r ?? "", ""]; };
   const temps = (v: number, km: number, f: number) => { const x = Math.round(km * 1000 / (v * f)); const h = Math.floor(x / 3600), m = Math.floor((x % 3600) / 60), ss = x % 60; return h ? `${h} h ${String(m).padStart(2, "0")}` : `${m}:${String(ss).padStart(2, "0")}`; };
   const nuitsVfc = nuits.filter((n) => n.vfc != null);
+  const tForme = tendance(points.map((p) => ({ iso: p.iso, v: p.corrigee })), true, 3);
+  const tNuits = tendance(nuitsVfc.map((n) => ({ iso: n.iso, v: Number(n.vfc) })), false, 7);
   const derniere = nuits[nuits.length - 1];
 
   // UNE PHRASE SIMPLE D'ABORD, les chiffres ensuite et en petit, comme dans
@@ -179,11 +196,11 @@ function Progres() {
             </p>
             <div className="h-48">
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={points} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
+                <LineChart data={tForme} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
                   <CartesianGrid stroke="#f1f5f9" vertical={false} />
                   <XAxis dataKey="jour" tick={{ fontSize: 11, fill: "#94a3b8" }} minTickGap={40} />
-                  <YAxis hide domain={["dataMin - 3", "dataMax + 3"]} />
-                  <Line type="monotone" dataKey="corrigee" stroke="#2563eb" strokeWidth={2.5} dot={false} />
+                  <YAxis hide domain={domaine(tForme.map((x) => x.v), 12)} />
+                  <Line type="monotone" dataKey="v" stroke="#2563eb" strokeWidth={3} dot={false} />
                 </LineChart>
               </ResponsiveContainer>
             </div>
@@ -235,7 +252,7 @@ function Progres() {
         {!niveau?.actuel && points.length >= 3 && (
           <section className={carte}>
             <h2 className="font-bold text-slate-800">{soi ? "Mon niveau de course" : "Son niveau de course"}</h2>
-            <p className="text-sm text-slate-500">Il sera calculé après {soi ? "ta" : "sa"} prochaine course, ou avec le pré-test au stade (onglet {soi ? "Mes" : "Ses"} tests). On garde les 4 derniers mois.</p>
+            <p className="text-sm text-slate-500">Il sera calculé après {soi ? "ta" : "sa"} prochaine course, ou avec le test VMA (onglet {soi ? "Mes" : "Ses"} tests). On garde les 4 derniers mois.</p>
           </section>
         )}
 
@@ -246,11 +263,11 @@ function Progres() {
             <p className="text-sm text-slate-500">Ta récupération la nuit, mesurée par ta montre. <strong>Plus la courbe monte, mieux tu récupères.</strong> Ton coach ne voit pas ces chiffres.</p>
             <div className="h-32">
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={nuitsVfc} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
+                <LineChart data={tNuits} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
                   <CartesianGrid stroke="#f1f5f9" vertical={false} />
                   <XAxis dataKey="jour" tick={{ fontSize: 11, fill: "#94a3b8" }} minTickGap={40} />
-                  <YAxis hide domain={["dataMin - 5", "dataMax + 5"]} />
-                  <Line type="monotone" dataKey="vfc" stroke="#7c3aed" strokeWidth={2} dot={false} connectNulls />
+                  <YAxis hide domain={domaine(tNuits.map((x) => x.v), 20)} />
+                  <Line type="monotone" dataKey="v" stroke="#7c3aed" strokeWidth={2.5} dot={false} connectNulls />
                 </LineChart>
               </ResponsiveContainer>
             </div>

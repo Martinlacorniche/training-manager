@@ -9,6 +9,7 @@ import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid } fro
 import { supabase } from "@/lib/supabaseClient";
 import InfoWbgt from "../InfoWbgt";
 import { SuiviTests } from "../Tests";
+import { Voyage } from "../Voyage";
 
 dayjs.locale("fr");
 const jakarta = Plus_Jakarta_Sans({ subsets: ["latin"], weight: ["500", "600", "700", "800"], display: "swap" });
@@ -60,7 +61,7 @@ function Progres() {
   const [cs, setCs] = useState<{ actuel: any; avant: any | null } | null>(null);
   const [niveau, setNiveau] = useState<{ actuel: any; avant: any | null } | null>(null);
   const [cibleId, setCibleId] = useState<string | null>(null);
-  const [onglet, setOnglet] = useState<"forme" | "tests">(params.get("onglet") === "tests" ? "tests" : "forme");
+  const [onglet, setOnglet] = useState<"forme" | "tests" | "voyage">((["tests", "voyage"].includes(params.get("onglet") ?? "") ? params.get("onglet") : "forme") as "forme" | "tests" | "voyage");
 
   useEffect(() => {
     (async () => {
@@ -149,13 +150,14 @@ function Progres() {
           <h1 className="text-2xl font-extrabold text-slate-800">Progrès{!soi && nom ? ` · ${nom}` : ""}</h1>
           <p className="text-sm text-slate-500">Comparé à {soi ? "toi-même" : "lui-même"}, jamais aux autres.</p>
           <div className="mt-3 flex rounded-xl bg-slate-200/70 p-1">
-            {([["forme", soi ? "Ma forme" : "Sa forme"], ["tests", soi ? "Mes tests" : "Ses tests"]] as const).map(([k, lib]) => (
+            {([["forme", soi ? "Ma forme" : "Sa forme"], ["tests", soi ? "Mes tests" : "Ses tests"], ["voyage", soi ? "Mon voyage" : "Son voyage"]] as const).map(([k, lib]) => (
               <button key={k} onClick={() => setOnglet(k)} className={`flex-1 rounded-lg py-2 text-sm font-bold ${onglet === k ? "bg-white text-slate-800 shadow-sm" : "text-slate-500"}`}>{lib}</button>
             ))}
           </div>
         </header>
 
         {onglet === "tests" && cibleId && <SuiviTests userId={cibleId} soi={soi} />}
+        {onglet === "voyage" && cibleId && <Voyage userId={cibleId} soi={soi} />}
         {onglet === "forme" && (<>
 
         <section className={carte}>

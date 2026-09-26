@@ -7,6 +7,9 @@ import { ArrowLeft, Watch, Robot, UserCircleGear } from "@phosphor-icons/react";
 
 const jakarta = Plus_Jakarta_Sans({ subsets: ["latin"], weight: ["500", "600", "700", "800"], display: "swap" });
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
+// Le connecteur passe par notre domaine (relais Netlify, Site-Coach/netlify.toml) :
+// sous le domaine Supabase, Claude affichait « échec » à la connexion.
+const LIEN_MCP = "https://ngsportcoaching.com/mcp";
 
 // Réglages de l'athlète sur le site : les mêmes que dans l'app
 // (App-Coach, app/ConnectionsModal.tsx et app/SettingsModal.tsx) — la
@@ -88,7 +91,7 @@ export default function Reglages() {
     setOccupe(false);
     if (error) { setMessage(error.message); return; }
     await charger();
-    setLienFrais(`${SUPABASE_URL}/functions/v1/mcp/${data}`);
+    setLienFrais(`${LIEN_MCP}/${data}`);
   }
 
   async function revoquer() {

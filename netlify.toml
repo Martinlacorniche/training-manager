@@ -1,0 +1,11 @@
+# Le connecteur IA (MCP) servi depuis notre domaine, relayé vers la fonction
+# Supabase. Pourquoi : à la connexion, Claude interroge des adresses de
+# découverte OAuth ; sous le domaine Supabase, l'une d'elles
+# (/.well-known/oauth-protected-resource/functions/v1/mcp/…) répond 401,
+# géré par Supabase et pas par nous — Claude affichait « échec » puis le
+# connecteur marchait quand même. Ici, ces adresses répondent un 404 propre.
+[[redirects]]
+  from = "/mcp/*"
+  to = "https://ihigmlpgliasczlvxttd.supabase.co/functions/v1/mcp/:splat"
+  status = 200
+  force = true

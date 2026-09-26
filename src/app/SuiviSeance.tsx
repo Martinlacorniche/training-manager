@@ -100,14 +100,16 @@ export default function SuiviSeance({ sessionId, sport, rpe }: { sessionId: stri
       {an?.wbgt_moy != null && (
         <Carte titre="Météo">
           <p className="font-bold text-slate-800">
-            {pen >= 0.3 ? "Il faisait chaud : ça t'a coûté un peu." : "Conditions fraîches : la météo n'a pas pesé."}
+            {pen < 0.3 ? "La météo n'a pas pesé sur cette séance."
+              : an.meteo_cote === "froid" ? "Il faisait froid pour toi : ça t'a coûté un peu."
+              : "Il faisait chaud : ça t'a coûté un peu."}
           </p>
           {course && pen >= 0.3 && an.gap_effort && gain > 0 && (
             <p className="text-sm text-slate-700">
-              Par temps frais, la même séance t&apos;aurait fait courir à <strong>{allure(an.gap_effort_frais)}/km</strong> au lieu de {allure(an.gap_effort)}, soit {gain} s/km plus vite.
+              Par une météo idéale pour toi, la même séance t&apos;aurait fait courir à <strong>{allure(an.gap_effort_frais)}/km</strong> au lieu de {allure(an.gap_effort)}, soit {gain} s/km plus vite.
             </p>
           )}
-          <p className="text-xs text-slate-400">Chaleur, humidité et soleil comptent. <InfoWbgt /></p>
+          <p className="text-xs text-slate-400">Chaleur, froid, humidité : chacun réagit à sa façon. <InfoWbgt /></p>
         </Carte>
       )}
 

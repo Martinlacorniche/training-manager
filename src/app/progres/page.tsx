@@ -101,7 +101,7 @@ function Progres() {
   const enApprentissage = etats.filter((e) => e.domaine !== "global" && e.niveau === "inconnu").map((e) => (DOMAINE[e.domaine] ?? e.domaine).toLowerCase());
   const perf = etats.find((e) => e.domaine === "performance");
   const recup = etats.find((e) => e.domaine === "recuperation");
-  const valide = modele?.r_residu_wbgt != null && Math.abs(Number(modele.r_residu_wbgt)) < 0.1;
+  const valide = modele?.valide ?? (modele?.r_residu_wbgt != null && Math.abs(Number(modele.r_residu_wbgt)) < 0.1);
   const carte = "bg-white rounded-2xl border border-slate-200 p-5 space-y-3";
   // La première phrase d'une raison : le message ; la suite (chiffres) en petit.
   const decouper = (r: string) => { const i = (r ?? "").search(/(?<=\.)\s/); return i > 0 ? [r.slice(0, i), r.slice(i + 1)] : [r ?? "", ""]; };
@@ -169,7 +169,7 @@ function Progres() {
               </ResponsiveContainer>
             </div>
             {!valide && <p className="text-xs text-slate-400">Encore en rodage : cette mesure s&apos;affine avec les semaines.</p>}
-            <p className="text-xs text-slate-400">La chaleur est déjà retirée : un été chaud ne fait pas croire à une baisse. <InfoWbgt /></p>
+            <p className="text-xs text-slate-400">La météo est déjà retirée, selon ta propre sensibilité au chaud et au froid : un été chaud ne fait pas croire à une baisse. <InfoWbgt /></p>
             {cs?.actuel?.statut !== "estimee" && (
               <p className="text-sm text-slate-500">{soi ? "Ton" : "Son"} allure sur 10 km sera mesurée après {soi ? "ta" : "sa"} prochaine course.</p>
             )}

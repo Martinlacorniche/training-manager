@@ -12,8 +12,9 @@ export default function InfoWbgt() {
         <div className="fixed inset-0 z-50 grid place-items-center p-4" onClick={() => setOuvert(false)}>
           <div className="absolute inset-0 bg-black/50" />
           <div className="relative w-full max-w-md bg-white rounded-2xl shadow-xl p-6 space-y-3 text-slate-600 leading-relaxed" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-lg font-extrabold text-slate-800">La chaleur, pas que la température</h3>
+            <h3 className="text-lg font-extrabold text-slate-800">Chaleur, froid, humidité</h3>
             <p>Quand l&apos;air est humide, ta sueur sèche mal et ne te refroidit plus : par 25 °C humides, on souffre autant que par 30 °C au sec. Le soleil compte aussi.</p>
+            <p>Et chacun est différent : certains souffrent de la chaleur, d&apos;autres du froid. L&apos;app apprend, sortie après sortie, la météo où toi tu es le mieux.</p>
             <p>On le calcule avec la vraie météo de l&apos;endroit où tu as couru, pas avec ta montre, qui chauffe sur ton poignet.</p>
             <button onClick={() => setOuvert(false)} className="w-full py-2.5 rounded-xl bg-blue-600 text-white font-bold hover:bg-blue-700">Compris</button>
           </div>

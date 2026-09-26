@@ -30,6 +30,11 @@
 <body>
 <div id="carte"></div>
 <script>
+  // ?mode=plein : l'app, en plein écran, tous les gestes ; ?mode=site : le site
+  // (Ctrl + molette pour zoomer, deux doigts sur mobile, bouton plein écran) ;
+  // sans mode : la carte fixe de l'onglet.
+  const mode = new URLSearchParams(location.search).get("mode");
+  const interactif = mode === "plein" || mode === "site";
   let d = null;
   try { d = JSON.parse(decodeURIComponent(location.hash.slice(1))); } catch (e) {}
   if (d) {
@@ -44,9 +49,33 @@
       style: "https://tiles.openfreemap.org/styles/positron",
       bounds: [[Math.min(...lng), Math.min(...lat)], [Math.max(...lng), Math.max(...lat)]],
       fitBoundsOptions: { padding: { top: 50, bottom: 40, left: 40, right: 40 }, maxZoom: 6 },
-      interactive: false,
+      interactive: interactif,
+      cooperativeGestures: mode === "site",
+      locale: {
+        "CooperativeGesturesHandler.WindowsHelpText": "Ctrl + molette pour zoomer",
+        "CooperativeGesturesHandler.MacHelpText": "⌘ + molette pour zoomer",
+        "CooperativeGesturesHandler.MobileHelpText": "Deux doigts pour déplacer la carte",
+        "NavigationControl.ZoomIn": "Zoomer", "NavigationControl.ZoomOut": "Dézoomer", "NavigationControl.ResetBearing": "Remettre le nord en haut",
+        "FullscreenControl.Enter": "Plein écran", "FullscreenControl.Exit": "Quitter le plein écran",
+      },
       attributionControl: { compact: true },
     });
+    const cadrage = [[Math.min(...lng), Math.min(...lat)], [Math.max(...lng), Math.max(...lat)]];
+    if (interactif) {
+      map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "top-right");
+      if (mode === "site") map.addControl(new maplibregl.FullscreenControl(), "top-right");
+      // Recentrer sur le voyage.
+      class Recentrer {
+        onAdd() {
+          const b = document.createElement("div"); b.className = "maplibregl-ctrl maplibregl-ctrl-group";
+          b.innerHTML = '<button type="button" title="Recentrer sur mon voyage" style="font-size:16px">◎</button>';
+          b.onclick = () => map.fitBounds(cadrage, { padding: 50, maxZoom: 6, duration: 900 });
+          return b;
+        }
+        onRemove() {}
+      }
+      map.addControl(new Recentrer(), "top-right");
+    }
     const ligne = (c) => ({ type: "Feature", geometry: { type: "LineString", coordinates: c.length > 1 ? c : [c[0], c[0]] } });
     const drapeau = (txt, p, cls) => {
       const el = document.createElement("div"); el.className = cls; if (txt) el.textContent = txt;

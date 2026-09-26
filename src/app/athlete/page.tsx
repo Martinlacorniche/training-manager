@@ -87,7 +87,7 @@ type UserType = {
 type SessionType = { id: string; user_id: string; sport?: string; title?: string; planned_hour?: number; planned_inter?: string; intensity?: string; status?: string; rpe?: number | null; athlete_comment?: string | null; date: string; strava_activity_id?: number | null; strava_imported?: boolean | null; strava_distance?: number | null; strava_elevation?: number | null; strava_avg_hr?: number | null; strava_avg_watts?: number | null; strava_tss?: number | null; strava_trimp?: number | null; strava_hr_drift?: number | null; strava_time_in_zone?: number[] | null; strava_pace_100?: number | null; strava_swolf?: number | null; vu_coach?: boolean; };
 type AbsenceType = {
   id: string; user_id: string; date: string; type: string; name?: string | null;
-  distance_km?: number | null; elevation_d_plus?: number | null; comment?: string | null;
+  distance_km?: number | null; elevation_d_plus?: number | null; comment?: string | null; lieu_nom?: string | null; heure_depart?: string | null;
   rpe?: number | null; duration_hour?: number | null; status?: string | null;
   strava_activity_id?: number | null; strava_distance?: number | null; strava_elevation?: number | null; strava_avg_hr?: number | null; strava_avg_watts?: number | null;
   strava_tss?: number | null; strava_trimp?: number | null; strava_hr_drift?: number | null; strava_time_in_zone?: number[] | null; strava_pace_100?: number | null; strava_swolf?: number | null;
@@ -412,6 +412,9 @@ function AbsenceModal({ open, onClose, onSaved, initial, athleteId, date }:{ ope
   const [name, setName] = useState<string>(initial?.name || "");
   const [distance, setDistance] = useState<string>(initial?.distance_km?.toString() || "");
   const [elev, setElev] = useState<string>(initial?.elevation_d_plus?.toString() || "");
+  // Lieu et heure de départ : pour la prévision météo du plan « course au chaud ».
+  const [lieu, setLieu] = useState<string>(initial?.lieu_nom || "");
+  const [heure, setHeure] = useState<string>(initial?.heure_depart || "");
   const [comment, setComment] = useState<string>(initial?.comment || "");
   const [rpe, setRpe] = useState<string>(initial?.rpe != null ? String(initial.rpe) : "");
   const [durHour, setDurHour] = useState<number>(() => initial?.duration_hour ? Math.floor(initial.duration_hour) : 0);
@@ -422,11 +425,11 @@ function AbsenceModal({ open, onClose, onSaved, initial, athleteId, date }:{ ope
   useEffect(() => {
     if (!open) return;
     if (initial) {
-      setType(initial.type || "off"); setName(initial.name || ""); setDistance(initial.distance_km?.toString() || ""); setElev(initial.elevation_d_plus?.toString() || ""); setComment(initial.comment || ""); setRpe(initial.rpe != null ? String(initial.rpe) : "");
+      setType(initial.type || "off"); setName(initial.name || ""); setDistance(initial.distance_km?.toString() || ""); setElev(initial.elevation_d_plus?.toString() || ""); setLieu(initial.lieu_nom || ""); setHeure(initial.heure_depart || ""); setComment(initial.comment || ""); setRpe(initial.rpe != null ? String(initial.rpe) : "");
       if (initial.duration_hour != null) { const h = Math.floor(initial.duration_hour); const m = Math.round((initial.duration_hour - h) * 60); setDurHour(h); setDurMin(m); } else { setDurHour(0); setDurMin(0); }
       setStatus(initial.status || "");
     } else {
-      setType("off"); setName(""); setDistance(""); setElev(""); setComment(""); setRpe(""); setDurHour(0); setDurMin(0); setStatus("");
+      setType("off"); setName(""); setDistance(""); setElev(""); setLieu(""); setHeure(""); setComment(""); setRpe(""); setDurHour(0); setDurMin(0); setStatus("");
     }
   }, [open, initial]);
 
@@ -438,6 +441,15 @@ function AbsenceModal({ open, onClose, onSaved, initial, athleteId, date }:{ ope
     const duration_hour = type === "competition" ? durHour + durMin / 60 : null;
     const rpeNum = type === "competition" && rpe ? Number(rpe) : null;
     const payload: any = { user_id: athleteId, date, type, name: name || null, distance_km: distance ? Number(distance) : null, elevation_d_plus: elev ? Number(elev) : null, comment: comment || null, rpe: rpeNum, duration_hour, status: type === "competition" ? (status || null) : null };
+    if (type === "competition") {
+      payload.heure_depart = /^\d{1,2}[:h]\d{2}$/.test(heure.trim()) ? heure.trim().replace("h", ":").padStart(5, "0") : null;
+      payload.lieu_nom = lieu.trim() || null; payload.lieu_lat = null; payload.lieu_lng = null;
+      if (lieu.trim()) {
+        const r = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(lieu.trim())}&count=1&language=fr&format=json`).then((x) => x.json()).catch(() => null);
+        const g = r?.results?.[0];
+        if (g) { payload.lieu_nom = g.name; payload.lieu_lat = g.latitude; payload.lieu_lng = g.longitude; }
+      }
+    }
 
     try {
       let data: any, error: any;
@@ -466,6 +478,8 @@ function AbsenceModal({ open, onClose, onSaved, initial, athleteId, date }:{ ope
             <div className="grid grid-cols-2 gap-3">
               <label className="text-sm text-slate-600">Dist (km) <input value={distance} onChange={(e) => setDistance(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 p-2" /></label>
               <label className="text-sm text-slate-600">D+ (m) <input value={elev} onChange={(e) => setElev(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 p-2" /></label>
+              <label className="text-sm text-slate-600">Ville du départ <input value={lieu} onChange={(e) => setLieu(e.target.value)} placeholder="Ex : Marseille" className="mt-1 w-full rounded-lg border border-slate-200 p-2" /></label>
+              <label className="text-sm text-slate-600">Heure de départ <input value={heure} onChange={(e) => setHeure(e.target.value)} placeholder="09:00" className="mt-1 w-full rounded-lg border border-slate-200 p-2" /></label>
             </div>
             <div className="grid grid-cols-2 gap-3">
                 <label className="text-sm text-slate-600">Heures <select value={durHour} onChange={(e) => setDurHour(Number(e.target.value))} className="mt-1 w-full rounded-lg border border-slate-200 p-2">{Array.from({ length: 15 }, (_, i) => <option key={i} value={i}>{i} h</option>)}</select></label>

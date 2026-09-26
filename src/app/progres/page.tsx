@@ -10,6 +10,7 @@ import { supabase } from "@/lib/supabaseClient";
 import InfoWbgt from "../InfoWbgt";
 import { SuiviTests } from "../Tests";
 import { Voyage } from "../Voyage";
+import { Chaleur } from "../Chaleur";
 
 dayjs.locale("fr");
 const jakarta = Plus_Jakarta_Sans({ subsets: ["latin"], weight: ["500", "600", "700", "800"], display: "swap" });
@@ -232,6 +233,8 @@ function Progres() {
             </section>
           );
         })()}
+
+        {cibleId && <Chaleur userId={cibleId} soi={soi} />}
 
         {/* Le niveau de course : un indice de PERFORMANCE (façon VDOT), tiré des
             vraies courses et du test allure 10 km, jamais appelé VO2max. */}

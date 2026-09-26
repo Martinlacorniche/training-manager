@@ -232,7 +232,7 @@ function Progres() {
         })()}
 
         {/* Le niveau de course : un indice de PERFORMANCE (façon VDOT), tiré des
-            vraies courses et du mini-défi, jamais appelé VO2max. */}
+            vraies courses et du test allure 10 km, jamais appelé VO2max. */}
         {niveau?.actuel && (() => {
           const n = Number(niveau.actuel.niveau), av = niveau.avant ? Number(niveau.avant.niveau) : null;
           const ecart = av != null ? n - av : null;

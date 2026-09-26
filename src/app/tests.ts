@@ -8,9 +8,9 @@ export type Protocole = "progressif" | "tranquille" | "lsct" | "defi";
 
 export const PROTOCOLES: Record<Protocole, { titre: string; quoi: string }> = {
   progressif: { titre: "Calibrage", quoi: "À faire une fois avant les tests course : il mesure ta VMA et ton cœur max, et fixe les allures de tes tests." },
-  tranquille: { titre: "Test forme course", quoi: "Tous les mois, 2 × 6 min à allure fixe, sans forcer. Si ton cœur bat moins vite qu'avant, tu as progressé." },
-  lsct: { titre: "Test forme vélo", quoi: "Tous les mois, sur home-trainer : 3 paliers à cœur fixe. Si tu pousses plus fort pour le même cœur, tu as progressé." },
-  defi: { titre: "Mini-défi 3 + 12 min", quoi: "Pas obligatoire. Il mesure ton allure 10 km si tu n'as pas fait de course récemment. Pas plus d'une fois tous les 2 à 3 mois." },
+  tranquille: { titre: "Check-up course", quoi: "Tous les mois, 2 × 6 min à allure fixe, sans forcer. Si ton cœur bat moins vite qu'avant, tu as progressé." },
+  lsct: { titre: "Check-up vélo", quoi: "Tous les mois, sur home-trainer : 3 paliers à cœur fixe. Si tu pousses plus fort pour le même cœur, tu as progressé." },
+  defi: { titre: "Test allure 10 km", quoi: "Pas obligatoire. Il mesure ton allure 10 km si tu n'as pas fait de course récemment. Pas plus d'une fois tous les 2 à 3 mois." },
 };
 
 export const VERDICTS: Record<string, { libelle: string; couleur: string }> = {

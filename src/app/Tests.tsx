@@ -95,8 +95,9 @@ export function ResultatTest({ sessionId, protocole, texte, faite }: { sessionId
 
 const MENU: { p: Protocole; titre: string; ligne: string }[] = [
   { p: "progressif", titre: "Calibrage", ligne: "Règle tes zones. Une fois, au stade." },
-  { p: "tranquille", titre: "Test forme course", ligne: "Chaque mois, sans forcer." },
-  { p: "lsct", titre: "Test forme vélo", ligne: "Chaque mois, sur home-trainer." },
+  { p: "tranquille", titre: "Check-up course", ligne: "Chaque mois, sans forcer." },
+  { p: "lsct", titre: "Check-up vélo", ligne: "Chaque mois, sur home-trainer." },
+  { p: "defi", titre: "Test allure 10 km", ligne: "Optionnel, si pas de course récente." },
 ];
 
 function ProgrammerTest({ athleteId, coach, onFait, onFermer }: { athleteId: string; coach: boolean; onFait: () => void; onFermer: () => void }) {
@@ -153,7 +154,6 @@ function ProgrammerTest({ athleteId, coach, onFait, onFermer }: { athleteId: str
                 </button>
               );
             })}
-            <button onClick={() => setProtocole("defi")} className="w-full text-center text-sm font-semibold text-slate-500">Autre : mini-défi 3 + 12 min (optionnel)</button>
           </>
         ) : occupe && !apercu ? <p className="text-slate-500">…</p> : erreur && !apercu ? (
           <p className="text-sm text-amber-700">{erreur}</p>
@@ -179,7 +179,7 @@ const QUOI: Record<string, string> = {
   progressif: "Ta VMA, calibrage après calibrage.",
   tranquille: "Ton cœur à la 2ᵉ allure. Plus il descend, plus tu es en forme.",
   lsct: "Ta puissance au 3ᵉ palier. Plus elle monte, plus tu es en forme.",
-  defi: "Ton allure 10 km mesurée par le défi. Plus elle est rapide, mieux c'est.",
+  defi: "Ton allure 10 km mesurée par le test. Plus elle est rapide, mieux c'est.",
 };
 const valeur = (p: string, x: number) => (p === "progressif" ? `${(x * 3.6).toFixed(1).replace(".", ",")} km/h` : p === "tranquille" ? `${Math.round(x)} bpm` : p === "lsct" ? `${Math.round(x)} W` : `${allure(x)}/km`);
 

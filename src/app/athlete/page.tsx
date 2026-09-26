@@ -406,6 +406,9 @@ function ValidateModal({ open, onClose, onSaved, initial, stravaConnected, onSyn
   );
 }
 
+// Couleurs des sports (mêmes que l'app).
+const COULEUR_SPORT: Record<string, string> = { "Vélo": "#7c3aed", "Run": "#2563eb", "Natation": "#06b6d4", "Renfo": "#f59e0b", "Muscu": "#f59e0b", "Trail": "#16a34a", "Autre": "#64748b" };
+
 // ---------- Modal Absence
 // Échelle d'effort 1→10 (mêmes couleurs que l'app).
 const EFFORT = ["#64748b", "#10b981", "#22c55e", "#84cc16", "#eab308", "#f59e0b", "#f97316", "#ef4444", "#dc2626", "#7c3aed"];
@@ -848,6 +851,8 @@ export default function AthletePage() {
   const [sessions, setSessions] = useState<SessionType[]>([]);
   const [absences, setAbsences] = useState<AbsenceType[]>([]);
   const [weeklyReview, setWeeklyReview] = useState<WeeklyReviewType | null>(null);
+  // La semaine du binôme (comme dans l'app) : ses séances, à copier dans son plan.
+  const [partner, setPartner] = useState<{ nom: string; seances: SessionType[] }>({ nom: "", seances: [] });
 
   const [validateOpen, setValidateOpen] = useState(false);
   const [currentSession, setCurrentSession] = useState<SessionType | null>(null);
@@ -890,6 +895,15 @@ export default function AthletePage() {
 
       const { data: abs } = await supabase.from("absences_competitions").select("*").eq("user_id", athlete.id_auth).gte("date", start).lte("date", end);
       setAbsences((abs || []) as AbsenceType[]);
+
+      const pid = (athlete as UserType & { partner_id?: string | null }).partner_id;
+      if (pid) {
+        const [{ data: ps }, { data: pu }] = await Promise.all([
+          supabase.from("sessions").select("id, sport, title, planned_hour, status, date, planned_inter, intensity").eq("user_id", pid).gte("date", start).lte("date", end).order("date"),
+          supabase.from("users").select("name").eq("id_auth", pid).maybeSingle(),
+        ]);
+        setPartner({ nom: (pu?.name || "").split(" ")[0], seances: (ps || []) as SessionType[] });
+      } else setPartner({ nom: "", seances: [] });
 
       // Load Weekly Review
       const { data: review } = await supabase.from("weekly_reviews").select("id, rpe_life, comment, fatigue, sommeil, stress, jambes, douleur, douleur_zone").eq("user_id", athlete.id_auth).eq("week_start", start).single();
@@ -1212,6 +1226,41 @@ export default function AthletePage() {
               })}
             </div>
           </DragDropContext>
+
+          {partner.seances.length > 0 && (
+            <div className="mt-4 rounded-2xl border border-rose-200 bg-white p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <span className="grid place-items-center w-8 h-8 rounded-full bg-rose-50 text-rose-600">❤</span>
+                <div className="flex-1 font-extrabold text-slate-800">La semaine de {partner.nom || "ton binôme"}</div>
+                <div className="text-xs font-extrabold text-rose-600">{partner.seances.filter((x) => x.status === "valide").length}/{partner.seances.length} faites</div>
+              </div>
+              <div className="space-y-1.5">
+                {partner.seances.map((pe) => {
+                  const col = COULEUR_SPORT[pe.sport || ""] || "#64748b";
+                  const done = pe.status === "valide";
+                  const deja = sessions.some((x) => x.date === pe.date && x.sport === pe.sport);
+                  return (
+                    <div key={pe.id} className="flex items-center gap-2">
+                      <span className="w-10 text-[11px] font-extrabold uppercase text-slate-400">{dayjs(pe.date).format("ddd")}</span>
+                      <div className="flex-1 min-w-0 flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-[13px] font-bold" style={{ background: done ? col : "#fff", borderColor: done ? col : "#e2e8f0", color: done ? "#fff" : "#334155" }}>
+                        <span className="truncate flex-1">{pe.title || pe.sport}{pe.planned_hour ? ` · ${fmtTime(pe.planned_hour)}` : ""}</span>
+                        {done && <span>✓</span>}
+                      </div>
+                      {deja ? (
+                        <span className="w-9 text-center text-rose-600" title="Aussi dans ton plan">❤</span>
+                      ) : (
+                        <button title="L'ajouter à ton plan" onClick={async () => {
+                          const { error } = await supabase.from("sessions").insert({ user_id: athlete!.id_auth, date: pe.date, sport: pe.sport || "Vélo", title: pe.title || "", planned_hour: pe.planned_hour ?? null, intensity: pe.intensity || "basse", planned_inter: pe.planned_inter || "", status: "planned" });
+                          if (error) alert(error.message); else setRefreshTick((t) => t + 1);
+                        }} className="w-9 h-8 rounded-lg bg-blue-50 text-blue-600 font-black hover:bg-blue-100">+</button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="mt-2 text-[11px] text-slate-400">❤ = aussi dans ton plan · + = l&apos;ajouter à ton plan</div>
+            </div>
+          )}
 
         </section>
       </div>

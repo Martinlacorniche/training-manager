@@ -19,7 +19,7 @@ const LIEN_MCP = "https://ngsportcoaching.com/mcp";
 type Bouton = { texte: string; valeur: string; genre?: "annuler" | "danger" | "principal" };
 type Dialogue = { titre: string; texte: string[]; boutons: Bouton[]; couleur: string; resolve: (v: string | null) => void };
 
-type Moi = { id_auth: string; coach_id: string | null; partage_etat_coach: boolean | null; partage_informe_le: string | null; consentement_ia_le: string | null };
+type Moi = { id_auth: string; coach_id: string | null; strava_athlete_id: number | null; partage_etat_coach: boolean | null; partage_informe_le: string | null; consentement_ia_le: string | null };
 
 export default function Reglages() {
   const router = useRouter();
@@ -31,6 +31,9 @@ export default function Reglages() {
   const [occupe, setOccupe] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [copie, setCopie] = useState(false);
+  // Zones cardiaques (même carte que l'app, App-Coach app/SettingsModal.tsx).
+  const [zones, setZones] = useState<number[] | null>(null);
+  const [zonesSource, setZonesSource] = useState<{ source: string | null; le: string | null }>({ source: null, le: null });
   // Nos propres fenêtres plutôt que confirm() du navigateur, comme dans l'app.
   const [dialogue, setDialogue] = useState<Dialogue | null>(null);
   const demander = (d: Omit<Dialogue, "resolve">) => new Promise<string | null>((resolve) => setDialogue({ ...d, resolve }));
@@ -42,11 +45,14 @@ export default function Reglages() {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) { router.push("/login"); return; }
     const [{ data: u }, { data: secret }, { data: m }] = await Promise.all([
-      supabase.from("users").select("id_auth, coach_id, partage_etat_coach, partage_informe_le, consentement_ia_le").eq("id_auth", session.user.id).single(),
+      supabase.from("users").select("id_auth, coach_id, strava_athlete_id, partage_etat_coach, partage_informe_le, consentement_ia_le").eq("id_auth", session.user.id).single(),
       supabase.rpc("intervals_est_connecte"),
       supabase.rpc("mcp_token_status"),
     ]);
     setMoi(u as Moi);
+    const { data: am } = await supabase.from("athlete_metrics").select("hr_zones, zones_source, zones_le").eq("user_id", session.user.id).maybeSingle();
+    setZones(Array.isArray(am?.hr_zones) && am.hr_zones.length === 5 ? am.hr_zones : null);
+    setZonesSource({ source: am?.zones_source ?? null, le: am?.zones_le ?? null });
     setIcu(!!secret);
     setMcp(Array.isArray(m) ? m[0] ?? null : m ?? null);
   }
@@ -116,6 +122,25 @@ export default function Reglages() {
     await charger();
   }
 
+  async function connecterStrava() {
+    const { data, error } = await supabase.functions.invoke("strava-connect", { body: { web: true } });
+    if (error || !data?.url) { setMessage("La connexion Strava a échoué, réessaie."); return; }
+    window.location.href = data.url;
+  }
+  async function deconnecterStrava() {
+    if (!moi || !(await confirmer("Déconnecter Strava ?", ["La synchronisation automatique sera désactivée."], "Déconnecter", "danger", "rose"))) return;
+    await supabase.from("users").update({ strava_athlete_id: null }).eq("id_auth", moi.id_auth);
+    await charger();
+  }
+  async function enregistrerZones() {
+    if (!moi || !zones) return;
+    const z = zones.map((x) => Math.round(Number(x) || 0));
+    if (z.some((x, i) => i > 0 && x <= z[i - 1])) { setMessage("Chaque zone doit commencer plus haut que la précédente."); return; }
+    const { error } = await supabase.from("athlete_metrics").upsert({ user_id: moi.id_auth, hr_zones: z, zones_source: "manuel" }, { onConflict: "user_id" });
+    setMessage(error ? error.message : "Zones enregistrées.");
+    if (!error) setZonesSource({ source: "manuel", le: null });
+  }
+
   const coache = !!moi?.coach_id && moi.coach_id !== moi.id_auth;
   const carte = "bg-white rounded-2xl border border-slate-200 p-5 space-y-3";
 
@@ -128,8 +153,36 @@ export default function Reglages() {
         <h1 className="text-2xl font-extrabold text-slate-800">Réglages</h1>
         {message && <div className="rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-sm p-3">{message}</div>}
 
+        {zones && (
+          <section className={carte}>
+            <h2 className="font-bold text-slate-800">Zones cardiaques ❤️</h2>
+            <p className="text-xs text-slate-400">
+              {zonesSource.source === "calibrage" ? `Réglées par ton calibrage${zonesSource.le ? ` du ${zonesSource.le.slice(8, 10)}/${zonesSource.le.slice(5, 7)}` : ""}` : zonesSource.source === "manuel" ? "Réglées à la main" : "Importées de Strava"} · borne basse de chaque zone (bpm)
+            </p>
+            {zones.map((z, i) => (
+              <div key={i} className="flex items-center gap-3">
+                <span className="w-8 font-extrabold text-slate-700">Z{i + 1}</span>
+                <input type="number" value={z} disabled={i === 0} onChange={(e) => setZones(zones.map((x, j) => (j === i ? Number(e.target.value) : x)))}
+                  className="w-20 rounded-lg border border-slate-200 p-1.5 text-center font-bold text-slate-800 disabled:text-slate-400" />
+                <span className="text-sm text-slate-400">{i < 4 ? `– ${zones[i + 1] - 1} bpm` : "et +"}</span>
+              </div>
+            ))}
+            <button onClick={enregistrerZones} className="w-full rounded-xl bg-blue-600 py-2.5 font-bold text-white">Enregistrer mes zones</button>
+          </section>
+        )}
+
         <section className={carte}>
-          <h2 className="flex items-center gap-2 font-bold text-slate-800"><Watch size={20} className="text-cyan-600" /> Ma montre</h2>
+          <h2 className="flex items-center gap-2 font-bold text-slate-800"><Watch size={20} className="text-cyan-600" /> Connexions</h2>
+          {/* Strava, la montre et le connecteur IA au même endroit, comme dans l'app. */}
+          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+            <div>
+              <p className="font-semibold text-slate-700">{moi?.strava_athlete_id ? "Strava connecté" : "Strava"}</p>
+              <p className="text-sm text-slate-500">{moi?.strava_athlete_id ? "Synchro automatique de tes activités" : "Pour l'analyse détaillée de tes séances"}</p>
+            </div>
+            {moi?.strava_athlete_id
+              ? <button onClick={deconnecterStrava} className="text-sm font-bold text-rose-600 hover:underline">Déconnecter</button>
+              : <button onClick={connecterStrava} className="rounded-lg bg-orange-600 px-4 py-2 text-sm font-bold text-white">Connecter Strava</button>}
+          </div>
           {icu ? (
             <div className="flex items-center justify-between">
               <div>

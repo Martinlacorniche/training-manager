@@ -29,6 +29,7 @@ import {
 
 // Animations
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
+import CarteCourse from "../CarteCourse";
 
 // ---------- HELPERS & CONSTANTES ----------
 
@@ -455,6 +456,12 @@ const SessionCard = React.memo(function SessionCard({ s, onEdit, onDelete }:{ s:
 
 const AbsenceCard = React.memo(function AbsenceCard({ a, onDelete }:{ a: AbsenceType; onDelete: ()=>void; }) {
     const isComp = a.type === "competition";
+    if (isComp) return (
+      <CarteCourse a={a} action={<button onClick={onDelete} className="opacity-60 hover:opacity-100"><Trash size={14}/></button>}>
+        {a.rpe ? <div>Effort {a.rpe}/10</div> : null}
+        {a.strava_tss != null || a.strava_trimp != null ? <div>{a.strava_tss != null ? `TSS ${Math.round(a.strava_tss)}` : ""}{a.strava_tss != null && a.strava_trimp != null ? " • " : ""}{a.strava_trimp != null ? `Charge FC ${Math.round(a.strava_trimp)}` : ""}</div> : null}
+      </CarteCourse>
+    );
     let cls = "bg-slate-50 border-slate-200 text-slate-500";
     if (isComp) {
       if (a.status === "finisher") cls = "bg-emerald-50 border-emerald-200 text-emerald-800";

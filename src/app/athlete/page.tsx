@@ -30,6 +30,7 @@ import {
 // DnD
 import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
 import { AnimatePresence, motion } from "framer-motion";
+import CarteCourse from "../CarteCourse";
 
 // ---------- HELPERS & STYLES (COHÉRENCE COACH) ----------
 
@@ -619,6 +620,7 @@ const SessionCard = React.memo(function SessionCard({ s, onEdit, onDelete }:{ s:
 
 const AbsenceCard = React.memo(function AbsenceCard({ a, onEdit }:{ a: AbsenceType; onEdit: () => void; }) {
   const isComp = a.type === "competition";
+  if (isComp) return <CarteCourse a={a} onClick={onEdit} />;
   let cls = "bg-slate-50 border-slate-200 text-slate-500";
   if (isComp) {
     if (a.status === "finisher") cls = "bg-emerald-50 border-emerald-200 text-emerald-800";

@@ -31,6 +31,7 @@ import {
 import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
 import { AnimatePresence, motion } from "framer-motion";
 import CarteCourse from "../CarteCourse";
+import { meteoDuJour, couleurWbgt, type MeteoJour } from "../meteoJour";
 
 // ---------- HELPERS & STYLES (COHÉRENCE COACH) ----------
 
@@ -866,6 +867,13 @@ export default function AthletePage() {
 
   const [prevWeekLoad, setPrevWeekLoad] = useState<number>(0);
   const [nextRaceText, setNextRaceText] = useState<string>("");
+  // La météo du jour, en discret dans l'en-tête (ville de « Mon voyage »).
+  const [meteo, setMeteo] = useState<MeteoJour | null>(null);
+  useEffect(() => {
+    const u = athlete as (UserType & { ville_lat?: number | null; ville_lng?: number | null }) | null;
+    if (!u?.ville_lat || !u?.ville_lng) { setMeteo(null); return; }
+    meteoDuJour(Number(u.ville_lat), Number(u.ville_lng)).then(setMeteo);
+  }, [athlete]);
 
   // RPE Help state global (header)
   const [showRpeHelp, setShowRpeHelp] = useState(false);
@@ -1041,6 +1049,7 @@ export default function AthletePage() {
           <div className="flex items-center gap-3">
              <div className="bg-blue-600 text-white px-2 py-1 rounded font-bold text-sm tracking-tight">ATHLÈTE</div>
              <div className="text-sm font-medium text-slate-600 hidden sm:block">Bonjour {athlete?.name?.split(" ")[0]}</div>
+             {meteo && <div className="text-xs font-semibold text-slate-400 hidden md:block">Aujourd&apos;hui {meteo.t}° · <span className="font-bold" style={{ color: couleurWbgt(meteo.wbgt) }}>WBGT {meteo.wbgt}</span></div>}
           </div>
           
           <div className="flex items-center bg-slate-100 rounded-full p-1 gap-2 border border-slate-200">

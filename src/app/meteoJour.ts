@@ -1,6 +1,6 @@
 // La météo du jour, en discret dans l'en-tête (Martin, 27/09 ; même code que l'app, App-Coach/lib/meteoJour.ts) : température et
 // WBGT maximum de la journée (6 h – 21 h) à la ville de l'athlète (celle de
-// « Mon voyage »). WBGT à l'ombre, même formule que l'analyse
+// « Mon voyage »), sinon au départ de sa dernière sortie. WBGT à l'ombre, même formule que l'analyse
 // (App-Coach, supabase/functions/_shared/icu.ts : Stull 2011, 0,7·Tw + 0,3·T).
 
 export type MeteoJour = { t: number; wbgt: number };

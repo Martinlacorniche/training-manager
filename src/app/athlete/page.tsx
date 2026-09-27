@@ -867,12 +867,22 @@ export default function AthletePage() {
 
   const [prevWeekLoad, setPrevWeekLoad] = useState<number>(0);
   const [nextRaceText, setNextRaceText] = useState<string>("");
-  // La météo du jour, en discret dans l'en-tête (ville de « Mon voyage »).
+  // La météo du jour, en discret dans l'en-tête : à la ville de « Mon voyage »,
+  // sinon au départ de la dernière sortie en extérieur.
   const [meteo, setMeteo] = useState<MeteoJour | null>(null);
   useEffect(() => {
     const u = athlete as (UserType & { ville_lat?: number | null; ville_lng?: number | null }) | null;
-    if (!u?.ville_lat || !u?.ville_lng) { setMeteo(null); return; }
-    meteoDuJour(Number(u.ville_lat), Number(u.ville_lng)).then(setMeteo);
+    if (!u?.id_auth) return;
+    (async () => {
+      let lat = Number(u.ville_lat), lng = Number(u.ville_lng);
+      if (!u.ville_lat || !u.ville_lng) {
+        const { data } = await supabase.from("activites").select("depart_lat, depart_lng").eq("user_id", u.id_auth)
+          .not("depart_lat", "is", null).order("jour", { ascending: false }).limit(1).maybeSingle();
+        if (!data) { setMeteo(null); return; }
+        lat = Number(data.depart_lat); lng = Number(data.depart_lng);
+      }
+      setMeteo(await meteoDuJour(lat, lng));
+    })();
   }, [athlete]);
 
   // RPE Help state global (header)

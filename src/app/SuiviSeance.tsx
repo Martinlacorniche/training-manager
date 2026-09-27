@@ -72,15 +72,16 @@ export default function SuiviSeance({ sessionId, sport, rpe }: { sessionId: stri
 
   // UNE PHRASE SIMPLE D'ABORD, les chiffres ensuite et en petit : les détails
   // techniques (contact au sol, équilibre, indices) sont réservés au MCP.
-  // Départ et fin (J. Mestrallet, 27/09) : le « parti trop vite » seulement pour
-  // une course (à l'entraînement on part souvent lentement exprès).
-  const fin = an?.fin_pct != null ? Number(an.fin_pct) : null, dep = an?.depart_pct != null ? Number(an.depart_pct) : null;
+  // Départ et fin (J. Mestrallet, 27/09) : sur les COURSES seulement (Martin) —
+  // à l'entraînement, partir lentement ou accélérer à la fin est souvent voulu.
+  const enCourse = !!act?.competition_id;
+  const fin = enCourse && an?.fin_pct != null ? Number(an.fin_pct) : null, dep = enCourse && an?.depart_pct != null ? Number(an.depart_pct) : null;
   const phraseFin = fin == null ? null
     : fin <= -5 ? `Tu as ralenti de ${Math.round(-fin)} % sur la fin.`
     : fin < -2 ? `Léger ralentissement sur la fin (${Math.round(fin)} %).`
     : fin < 2 ? "Allure tenue jusqu'au bout."
     : `Tu as fini plus vite que tu es parti (+${Math.round(fin)} %).`;
-  const phraseDepart = act?.competition_id && dep != null && dep >= 3
+  const phraseDepart = dep != null && dep >= 3
     ? `Parti un peu vite : ton premier tiers était ${Math.round(dep)} % plus rapide que la suite.` : null;
   const pen = Number(an?.penalite_pct ?? 0);
   const gain = an?.gap_effort && an?.gap_effort_frais ? Math.round(1000 / an.gap_effort - 1000 / an.gap_effort_frais) : 0;

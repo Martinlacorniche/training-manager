@@ -160,7 +160,7 @@ export default function Reglages() {
           <section className={carte}>
             <h2 className="font-bold text-slate-800">Zones cardiaques ❤️</h2>
             <p className="text-xs text-slate-400">
-              {zonesSource.source === "calibrage" ? `Réglées par ton calibrage${zonesSource.le ? ` du ${zonesSource.le.slice(8, 10)}/${zonesSource.le.slice(5, 7)}` : ""}` : zonesSource.source === "manuel" ? "Réglées à la main" : "Importées de Strava"} · borne basse de chaque zone (bpm)
+              {zonesSource.source === "calibrage" ? `Réglées par ton calibrage${zonesSource.le ? ` du ${zonesSource.le.slice(8, 10)}/${zonesSource.le.slice(5, 7)}` : ""}` : zonesSource.source === "manuel" ? "Réglées à la main" : zonesSource.source === "estime" ? "Estimées d'après tes sorties (fais un calibrage pour les affiner)" : "Importées de Strava"} · borne basse de chaque zone (bpm)
             </p>
             {zones.map((z, i) => (
               <div key={i} className="flex items-center gap-3">

@@ -426,6 +426,7 @@ function AbsenceModal({ open, onClose, onSaved, initial, athleteId, date }:{ ope
   const [comment, setComment] = useState<string>(initial?.comment || "");
   const [rpe, setRpe] = useState<string>(initial?.rpe != null ? String(initial.rpe) : "");
   const [chrono, setChrono] = useState<{ h: string; m: string; s: string }>(() => chronoChamps(initial?.duration_hour));
+  const [syncCourse, setSyncCourse] = useState(false);   // forcer le lien avec l'activité Strava
   const [status, setStatus] = useState<string>(initial?.status || "");
   const [loading, setLoading] = useState(false);
 
@@ -522,6 +523,12 @@ function AbsenceModal({ open, onClose, onSaved, initial, athleteId, date }:{ ope
             )}
             <label className="block text-sm font-bold text-slate-700">{passee ? "Un mot sur ta course" : "Ton objectif"} <textarea value={comment} onChange={(e) => setComment(e.target.value)} placeholder={passee ? "Facultatif" : "Ex : moins de 40 min (facultatif)"} className="mt-1 w-full rounded-lg border border-slate-200 p-2 bg-slate-50 min-h-[60px]" /></label>
 
+            {isEdit && passee && (
+              <button type="button" onClick={() => setSyncCourse(true)} className="w-full rounded-xl bg-orange-50 py-2 text-sm font-bold text-orange-600 hover:bg-orange-100">
+                ⟳ {initial?.strava_activity_id ? "Changer l'activité Strava" : "Retrouver mon activité Strava"}
+              </button>
+            )}
+
             {/* Données Strava — affichées si la course vient de Strava */}
             <StravaMetrics data={initial} />
           </>
@@ -536,6 +543,15 @@ function AbsenceModal({ open, onClose, onSaved, initial, athleteId, date }:{ ope
           </div>
         </div>
       </form>
+      <StravaSyncDialog
+        open={syncCourse}
+        onClose={() => setSyncCourse(false)}
+        athleteId={athleteId}
+        cible="competition"
+        session={initial ? { id: initial.id, title: initial.name || "Ma course" } : null}
+        mode="sync"
+        onDone={() => { setSyncCourse(false); onClose(); }}
+      />
     </div>
   );
 }

@@ -30,7 +30,7 @@ function fmtDuration(min: number | null) {
   return h > 0 ? `${h}h${String(m).padStart(2, "0")}` : `${m}min`;
 }
 
-export default function StravaSyncDialog({ open, onClose, athleteId, session, mode, onDone }: Props) {
+export default function StravaSyncDialog({ open, onClose, athleteId, session, mode, onDone, cible = "session" }: Props & { cible?: "session" | "competition" }) {
   const [phase, setPhase] = useState<Phase>("loading");
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [targets, setTargets] = useState<Target[]>([]);
@@ -65,7 +65,7 @@ export default function StravaSyncDialog({ open, onClose, athleteId, session, mo
         setTargets(list); setSelected(list[0].session_id); setPhase("propose");
         return;
       }
-      const data = await callFn({ action: "scan", user_id: athleteId, target_type: "session", target_id: session!.id });
+      const data = await callFn({ action: "scan", user_id: athleteId, target_type: cible, target_id: session!.id });
       if (data.error) { setErrorMsg(data.error); setPhase("error"); return; }
       switch (data.status) {
         case "matched": setMatchedName(data.candidate?.name ?? null); setPhase("matched"); break;
@@ -88,7 +88,7 @@ export default function StravaSyncDialog({ open, onClose, athleteId, session, mo
         data = await callFn({ action: "merge_orphan", user_id: athleteId, target_id: session!.id, planned_session_id: selected });
         if (!data.error) setMatchedName(targets.find(t => t.session_id === selected)?.title ?? null);
       } else {
-        data = await callFn({ action: "attach", user_id: athleteId, target_type: "session", target_id: session!.id, activity_id: selected });
+        data = await callFn({ action: "attach", user_id: athleteId, target_type: cible, target_id: session!.id, activity_id: selected });
         if (!data.error) setMatchedName(candidates.find(c => c.activity_id === selected)?.name ?? null);
       }
       if (data.error) { setErrorMsg(data.error); setPhase("error"); return; }

@@ -41,7 +41,7 @@ export default function SuiviSeance({ sessionId, sport, rpe }: { sessionId: stri
   useEffect(() => {
     (async () => {
       const [{ data: a }, { data: r }] = await Promise.all([
-        supabase.from("activites").select("id, user_id, source, appareil").eq("session_id", sessionId).maybeSingle(),
+        supabase.from("activites").select("id, user_id, source, appareil, competition_id").eq("session_id", sessionId).maybeSingle(),
         supabase.rpc("rpe_attendu", { p_session: sessionId }),
       ]);
       setAct(a ?? null);
@@ -72,6 +72,16 @@ export default function SuiviSeance({ sessionId, sport, rpe }: { sessionId: stri
 
   // UNE PHRASE SIMPLE D'ABORD, les chiffres ensuite et en petit : les détails
   // techniques (contact au sol, équilibre, indices) sont réservés au MCP.
+  // Départ et fin (J. Mestrallet, 27/09) : le « parti trop vite » seulement pour
+  // une course (à l'entraînement on part souvent lentement exprès).
+  const fin = an?.fin_pct != null ? Number(an.fin_pct) : null, dep = an?.depart_pct != null ? Number(an.depart_pct) : null;
+  const phraseFin = fin == null ? null
+    : fin <= -5 ? `Tu as ralenti de ${Math.round(-fin)} % sur la fin.`
+    : fin < -2 ? `Léger ralentissement sur la fin (${Math.round(fin)} %).`
+    : fin < 2 ? "Allure tenue jusqu'au bout."
+    : `Tu as fini plus vite que tu es parti (+${Math.round(fin)} %).`;
+  const phraseDepart = act?.competition_id && dep != null && dep >= 3
+    ? `Parti un peu vite : ton premier tiers était ${Math.round(dep)} % plus rapide que la suite.` : null;
   const pen = Number(an?.penalite_pct ?? 0);
   const gain = an?.gap_effort && an?.gap_effort_frais ? Math.round(1000 / an.gap_effort - 1000 / an.gap_effort_frais) : 0;
   const lecture = (() => {
@@ -99,6 +109,18 @@ export default function SuiviSeance({ sessionId, sport, rpe }: { sessionId: stri
               : "Aussi dure que d'habitude pour ce type de séance."}
           </p>
           <p className="text-sm text-slate-500">Tu l&apos;as notée {rpe} sur 10 ; d&apos;habitude, {Math.round(attendu.attendu)} pour ce genre de séance.</p>
+        </Carte>
+      )}
+
+      {an?.fc_douteuse && (
+        <p className="text-sm text-slate-400">Ton cœur a peut-être été mal mesuré ({an.fc_douteuse_raison}) : cette sortie ne compte pas dans ton suivi de forme.</p>
+      )}
+
+      {(phraseFin || phraseDepart) && (
+        <Carte titre="Allure">
+          {phraseDepart && <p className="font-bold text-slate-800">{phraseDepart}</p>}
+          {phraseFin && <p className={phraseDepart ? "text-sm text-slate-700" : "font-bold text-slate-800"}>{phraseFin}</p>}
+          <p className="text-xs text-slate-400">Allure ramenée à plat, montées et descentes retirées.</p>
         </Carte>
       )}
 

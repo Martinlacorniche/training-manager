@@ -1059,7 +1059,7 @@ export default function AthletePage() {
         <div className="fixed inset-0 z-50 grid place-items-center p-4" onClick={() => setLignesChaleur(null)}>
           <div className="absolute inset-0 bg-black/40" />
           <div className="relative w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-            <div className="text-lg font-black text-slate-800 mb-2">Aujourd&apos;hui : WBGT {meteo.wbgt}</div>
+            <div className="text-lg font-black text-slate-800 mb-2">Indice chaleur : {meteo.wbgt}</div>
             {lignesChaleur.map((t, i) => <p key={i} className={`text-sm leading-6 ${i ? "mt-2 text-slate-600" : "text-slate-400"}`}>{t}</p>)}
             <button onClick={() => setLignesChaleur(null)} className="mt-4 w-full rounded-xl bg-blue-600 py-2.5 font-bold text-white">Compris</button>
           </div>
@@ -1071,7 +1071,7 @@ export default function AthletePage() {
           <div className="flex items-center gap-3">
              <div className="bg-blue-600 text-white px-2 py-1 rounded font-bold text-sm tracking-tight">ATHLÈTE</div>
              <div className="text-sm font-medium text-slate-600 hidden sm:block">Bonjour {athlete?.name?.split(" ")[0]}</div>
-             {meteo && <button onClick={ouvrirChaleur} className="text-xs font-semibold text-slate-400 hidden md:block hover:text-slate-600">Aujourd&apos;hui {meteo.t}° · <span className="font-bold" style={{ color: couleurWbgt(meteo.wbgt) }}>WBGT {meteo.wbgt} ⓘ</span></button>}
+             {meteo && <button onClick={ouvrirChaleur} className="text-xs font-semibold text-slate-400 hidden md:block hover:text-slate-600">Aujourd&apos;hui {meteo.t}° · <span className="font-bold" style={{ color: couleurWbgt(meteo.wbgt) }}>indice chaleur {meteo.wbgt} ⓘ</span></button>}
           </div>
           
           <div className="flex items-center bg-slate-100 rounded-full p-1 gap-2 border border-slate-200">

@@ -41,7 +41,7 @@ export const couleurWbgt = (w: number) => (w >= 25 ? "#dc2626" : w >= 20 ? "#ea5
 // effacé à 70 % par l'habitude de la chaleur (Racinais 2015).
 export type ProfilChaleur = { c: number; wOpt: number; valide: boolean } | null;
 export function lectureChaleur(m: MeteoJour, p: ProfilChaleur, acclimatation: number): string[] {
-  const l = ["Le WBGT mélange chaleur, humidité et soleil : c'est ce que ton corps ressent vraiment."];
+  const l = ["L'indice chaleur mélange température, humidité et soleil : c'est ce que ton corps ressent vraiment."];
   if (!p || !p.valide) return [...l, "Pas encore assez de sorties pour savoir comment toi, tu réagis à la chaleur."];
   const exces = m.wbgt - p.wOpt;
   if (exces <= 0) return [...l, `Tu es bien jusqu'à ${Math.round(p.wOpt)}. Aujourd'hui, rien à changer.`];

@@ -32,15 +32,11 @@ import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea
 import { AnimatePresence, motion } from "framer-motion";
 import CarteCourse from "../CarteCourse";
 import { meteoDuJour, couleurWbgt, type MeteoJour } from "../meteoJour";
+import { chargeCourse, chargePrevue, chargeSeance } from "../charge";
 
 // ---------- HELPERS & STYLES (COHÉRENCE COACH) ----------
 
 const EST_RPE: Record<string, number> = { basse: 3, moyenne: 6, haute: 9 };
-
-function getPlannedLoad(s: SessionType) {
-  const rpe = EST_RPE[s.intensity || "moyenne"] || 6;
-  return (s.planned_hour || 0) * rpe;
-}
 
 function getSportStyle(s?: string) {
   switch (s) {
@@ -695,7 +691,7 @@ function AthleteThematicCalendar({ athleteId, onWeekClick }:{ athleteId: string;
     }, [athleteId, calendarStart, numWeeks]);
 
     // Calculer la charge par semaine (IC et Heures).
-    // Logique alignée sur la vue hebdo : si la séance est validée et a un RPE réel → on l'utilise ; sinon → RPE estimé via intensité.
+    // Une seule charge partout (charge.ts) : le réel pour le fait, une estimation pour ce qui reste à venir.
     const weeklyMetrics = useMemo(() => {
         const metrics: Record<string, { load: number, hours: number }> = {};
         for(const key of weeksKeys) metrics[key] = { load: 0, hours: 0 };
@@ -704,16 +700,15 @@ function AthleteThematicCalendar({ athleteId, onWeekClick }:{ athleteId: string;
             const weekStart = dayjs(s.date).startOf('isoWeek').format("YYYY-MM-DD");
             if (metrics[weekStart]) {
                 metrics[weekStart].hours += s.planned_hour || 0;
-                const rpe = (s.status === "valide" && s.rpe != null) ? Number(s.rpe) : (EST_RPE[s.intensity || "moyenne"] || 6);
-                metrics[weekStart].load += (s.planned_hour || 0) * rpe;
+                // Réel pour le fait ; prévu (estimé) seulement pour ce qui reste à venir.
+                metrics[weekStart].load += s.status === "valide" ? chargeSeance(s) : s.date >= dayjs().format("YYYY-MM-DD") ? chargePrevue(s) : 0;
             }
         });
         races.forEach(r => {
             const weekStart = dayjs(r.date).startOf('isoWeek').format("YYYY-MM-DD");
             if (metrics[weekStart] && r.duration_hour) {
                 metrics[weekStart].hours += r.duration_hour;
-                const rpe = (r.status === "finisher" && r.rpe != null) ? Number(r.rpe) : (r.rpe || 9);
-                metrics[weekStart].load += r.duration_hour * rpe;
+                metrics[weekStart].load += chargeCourse(r);
             }
         });
         return metrics;
@@ -937,7 +932,7 @@ export default function AthletePage() {
       const prevStart = weekStart.add(-7, "day").format("YYYY-MM-DD");
       const prevEnd = weekStart.add(-1, "day").format("YYYY-MM-DD");
       const { data: prevSessions } = await supabase.from("sessions").select("planned_hour,rpe,status").eq("user_id", athlete.id_auth).gte("date", prevStart).lte("date", prevEnd);
-      const loadSessions = (prevSessions || []).filter((s) => s.status === "valide").reduce((acc, s) => acc + (Number(s.rpe) || 0) * (Number(s.planned_hour) || 0), 0);
+      const loadSessions = (prevSessions || []).reduce((acc, s) => acc + chargeSeance(s), 0);
       setPrevWeekLoad(loadSessions); 
 
       const base = weekStart.startOf("day");
@@ -1037,13 +1032,9 @@ export default function AthletePage() {
 
     const timeSessions = sessions.reduce((acc, s) => acc + (Number(s.planned_hour) || 0), 0);
 
-    const loadSessions = sessions
-      .filter(s => s.status === "valide")
-      .reduce((acc, s) => acc + (Number(s.rpe) || 0) * (Number(s.planned_hour) || 0), 0);
-
-    const loadCompetitions = absences
-      .filter(a => a.type === "competition" && a.status === "finisher" && a.duration_hour)
-      .reduce((acc, a) => acc + (Number(a.rpe) || 9) * (Number(a.duration_hour) || 0), 0);
+    // Une seule charge partout (charge.ts) : ressenti × heures, fait seulement.
+    const loadSessions = sessions.reduce((acc, s) => acc + chargeSeance(s), 0);
+    const loadCompetitions = absences.filter(a => a.type === "competition").reduce((acc, a) => acc + chargeCourse(a), 0);
 
     const progress = total > 0 ? Math.round((validated / total) * 100) : 0;
 

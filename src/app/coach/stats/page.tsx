@@ -11,6 +11,7 @@ import isLeapYear from "dayjs/plugin/isLeapYear";
 import "dayjs/locale/fr";
 import { Trophy, ChartBar, Lightning, Users, User } from "@phosphor-icons/react";
 import { Plus_Jakarta_Sans } from "next/font/google";
+import { chargeSeance } from "../../charge";
 
 // Config DayJS
 dayjs.extend(isoWeek);
@@ -74,7 +75,7 @@ export default function StatsCoach() {
       const start = dayjs(`${year}-01-01`).startOf("isoWeek").format("YYYY-MM-DD");
       const end = dayjs(`${year}-12-31`).endOf("isoWeek").format("YYYY-MM-DD");
 
-      let query = supabase.from("sessions").select("user_id, date, planned_hour, sport, rpe").gte("date", start).lte("date", end);
+      let query = supabase.from("sessions").select("user_id, date, planned_hour, sport, rpe, status").gte("date", start).lte("date", end);
 
       if (viewMode === "details" && selectedAthleteId) {
         query = query.eq("user_id", selectedAthleteId);
@@ -104,9 +105,8 @@ export default function StatsCoach() {
         const w = dayjs(s.date).isoWeek();
         if (weeks[w]) {
             const h = Number(s.planned_hour || 0);
-            const rpe = s.rpe ? Number(s.rpe) : 5;
             weeks[w].totalHours += h;
-            weeks[w].load += (h * rpe);
+            weeks[w].load += chargeSeance(s);   // une seule charge partout (charge.ts)
             const sportKey = (s.sport && SPORT_COLORS[s.sport]) ? s.sport : "Autre";
             const finalSportKey = sportKey === "Renfo" ? "Muscu" : sportKey;
             if (weeks[w][finalSportKey] !== undefined) weeks[w][finalSportKey] += h;
@@ -126,9 +126,8 @@ export default function StatsCoach() {
     rawData.forEach(s => {
         if (totals[s.user_id]) {
             const h = Number(s.planned_hour || 0);
-            const rpe = s.rpe ? Number(s.rpe) : 5;
             totals[s.user_id].totalHours += h;
-            totals[s.user_id].totalLoad += (h * rpe);
+            totals[s.user_id].totalLoad += chargeSeance(s);
         }
     });
     return Object.values(totals).sort((a, b) => b.totalHours - a.totalHours);

@@ -11,6 +11,7 @@ import isLeapYear from "dayjs/plugin/isLeapYear";
 import "dayjs/locale/fr";
 import { Trophy, ChartBar, Lightning } from "@phosphor-icons/react";
 import { Plus_Jakarta_Sans } from "next/font/google";
+import { chargeCourse, chargeSeance } from "../../charge";
 
 // Config DayJS
 dayjs.extend(isoWeek);
@@ -70,7 +71,7 @@ export default function StatsAthlete() {
 
       const { data: comps } = await supabase
         .from("absences_competitions")
-        .select("date, duration_hour, rpe")
+        .select("date, duration_hour, rpe, status, strava_activity_id")
         .eq("user_id", session.user.id)
         .eq("type", "competition")
         .gte("date", start)
@@ -104,12 +105,10 @@ export default function StatsAthlete() {
         const w = dayjs(s.date).isoWeek();
         if (weeks[w]) {
             const h = Number(s.planned_hour || 0);
-            // Si RPE vide, on met une valeur par défaut faible (ex: 3) ou moyenne (5) pour l'estimation
-            const rpe = s.rpe ? Number(s.rpe) : 5; 
             
             weeks[w].count += 1;
             weeks[w].totalHours += h;
-            weeks[w].load += (h * rpe);
+            weeks[w].load += chargeSeance(s);   // une seule charge partout (charge.ts)
 
             // Répartition par sport
             const sportKey = (s.sport && SPORT_COLORS[s.sport]) ? s.sport : "Autre";
@@ -127,9 +126,8 @@ export default function StatsAthlete() {
         const w = dayjs(c.date).isoWeek();
         if (weeks[w] && c.duration_hour) {
             const h = Number(c.duration_hour);
-            const rpe = c.rpe ? Number(c.rpe) : 9;
             weeks[w].totalHours += h;
-            weeks[w].load += h * rpe;
+            weeks[w].load += chargeCourse(c);
             weeks[w].Autre += h;
         }
     });

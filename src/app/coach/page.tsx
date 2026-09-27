@@ -30,6 +30,7 @@ import {
 // Animations
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import CarteCourse from "../CarteCourse";
+import { chargeCourse, chargePrevue, chargeSeance } from "../charge";
 
 // ---------- HELPERS & CONSTANTES ----------
 
@@ -50,11 +51,6 @@ function getTotem(uid: string) {
     let hash = 0;
     for (let i = 0; i < uid.length; i++) hash = uid.charCodeAt(i) + ((hash << 5) - hash);
     return TOTEMS_LIST[Math.abs(hash) % TOTEMS_LIST.length];
-}
-
-function getPlannedLoad(s: SessionType) {
-  const rpe = EST_RPE[s.intensity || "moyenne"] || 6;
-  return (s.planned_hour || 0) * rpe;
 }
 
 function getSessionAlert(s: SessionType): string | null {
@@ -616,7 +612,7 @@ function CoachThematicCalendar({ athleteId, onWeekClick }:{ athleteId: string; o
         });
     }, [athleteId, calendarStart, numWeeks]);
 
-    // Charge par semaine. RPE réel si séance validée (resp. compétition finisher), sinon RPE estimé via intensité.
+    // Charge par semaine (charge.ts) : le réel pour le fait, une estimation pour ce qui reste à venir.
     const weeklyMetrics = useMemo(() => {
         const metrics: Record<string, { load: number, hours: number }> = {};
         for(const key of weeksKeys) metrics[key] = { load: 0, hours: 0 };
@@ -625,16 +621,15 @@ function CoachThematicCalendar({ athleteId, onWeekClick }:{ athleteId: string; o
             const weekStart = dayjs(s.date).startOf('isoWeek').format("YYYY-MM-DD");
             if (metrics[weekStart]) {
                 metrics[weekStart].hours += s.planned_hour || 0;
-                const rpe = (s.status === "valide" && s.rpe != null) ? Number(s.rpe) : (EST_RPE[s.intensity || "moyenne"] || 6);
-                metrics[weekStart].load += (s.planned_hour || 0) * rpe;
+                // Réel pour le fait ; prévu (estimé) seulement pour ce qui reste à venir.
+                metrics[weekStart].load += s.status === "valide" ? chargeSeance(s) : s.date >= dayjs().format("YYYY-MM-DD") ? chargePrevue(s) : 0;
             }
         });
         races.forEach(r => {
             const weekStart = dayjs(r.date).startOf('isoWeek').format("YYYY-MM-DD");
             if (metrics[weekStart] && r.duration_hour) {
                 metrics[weekStart].hours += r.duration_hour;
-                const rpe = (r.status === "finisher" && r.rpe != null) ? Number(r.rpe) : (r.rpe || 9);
-                metrics[weekStart].load += r.duration_hour * rpe;
+                metrics[weekStart].load += chargeCourse(r);
             }
         });
         return metrics;
@@ -918,7 +913,7 @@ export default function CoachAthleteFocusV13() {
       const prevStart = weekStart.add(-7, "day").format("YYYY-MM-DD");
       const prevEnd = weekStart.add(-1, "day").format("YYYY-MM-DD");
       const { data: prevSessions } = await supabase.from("sessions").select("planned_hour,rpe,status").eq("user_id", selectedAthleteId).gte("date", prevStart).lte("date", prevEnd);
-      const loadSessions = (prevSessions || []).filter((s) => s.status === "valide").reduce((acc, s) => acc + (Number(s.rpe) || 0) * (Number(s.planned_hour) || 0), 0);
+      const loadSessions = (prevSessions || []).reduce((acc, s) => acc + chargeSeance(s), 0);
       setPrevWeekLoad(loadSessions);
 
       const base = weekStart.startOf("day");
@@ -952,13 +947,14 @@ export default function CoachAthleteFocusV13() {
 
   const stats = useMemo(() => {
     const validatedSessions = sessions.filter(s => s.status === "valide");
-    const loadRealized = validatedSessions.reduce((acc, s) => acc + (Number(s.rpe) || 0) * (Number(s.planned_hour) || 0), 0);
+    const loadRealized = validatedSessions.reduce((acc, s) => acc + chargeSeance(s), 0)
+      + absences.filter((a) => a.type === "competition").reduce((acc, a) => acc + chargeCourse(a), 0);
     const timeRealized = validatedSessions.reduce((acc, s) => acc + (Number(s.planned_hour) || 0), 0);
     const totalPlannedHours = sessions.reduce((acc, s) => acc + (Number(s.planned_hour)||0), 0);
-    const totalPlannedLoad = sessions.reduce((acc, s) => acc + getPlannedLoad(s), 0);
+    const totalPlannedLoad = sessions.reduce((acc, s) => acc + chargePrevue(s), 0);
 
     return { count: sessions.length, valCount: validatedSessions.length, loadRealized, loadPlanned: totalPlannedLoad, timeRealized, timePlanned: totalPlannedHours };
-  }, [sessions]);
+  }, [sessions, absences]);
 
   const athlete = athletes.find(a => a.id_auth === selectedAthleteId) || null;
   async function logout() { await supabase.auth.signOut(); router.push("/login"); }

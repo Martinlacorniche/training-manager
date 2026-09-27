@@ -1228,37 +1228,34 @@ export default function AthletePage() {
           </DragDropContext>
 
           {partner.seances.length > 0 && (
-            <div className="mt-4 rounded-2xl border border-rose-200 bg-white p-4">
-              <div className="flex items-center gap-2 mb-3">
-                <span className="grid place-items-center w-8 h-8 rounded-full bg-rose-50 text-rose-600">❤</span>
-                <div className="flex-1 font-extrabold text-slate-800">La semaine de {partner.nom || "ton binôme"}</div>
-                <div className="text-xs font-extrabold text-rose-600">{partner.seances.filter((x) => x.status === "valide").length}/{partner.seances.length} faites</div>
+            <div className="mt-4 rounded-xl bg-slate-50 px-4 py-3">
+              <div className="flex items-center gap-2 mb-2 text-xs font-extrabold uppercase tracking-wide text-slate-500">
+                <span className="text-slate-400">❤</span>
+                <span className="flex-1">{partner.nom || "Ton binôme"} cette semaine</span>
+                <span className="font-bold text-slate-400">{partner.seances.filter((x) => x.status === "valide").length}/{partner.seances.length}</span>
               </div>
-              <div className="space-y-1.5">
+              <div className="grid gap-x-6 md:grid-cols-2">
                 {partner.seances.map((pe) => {
                   const col = COULEUR_SPORT[pe.sport || ""] || "#64748b";
-                  const done = pe.status === "valide";
                   const deja = sessions.some((x) => x.date === pe.date && x.sport === pe.sport);
                   return (
-                    <div key={pe.id} className="flex items-center gap-2">
-                      <span className="w-10 text-[11px] font-extrabold uppercase text-slate-400">{dayjs(pe.date).format("ddd")}</span>
-                      <div className="flex-1 min-w-0 flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-[13px] font-bold" style={{ background: done ? col : "#fff", borderColor: done ? col : "#e2e8f0", color: done ? "#fff" : "#334155" }}>
-                        <span className="truncate flex-1">{pe.title || pe.sport}{pe.planned_hour ? ` · ${fmtTime(pe.planned_hour)}` : ""}</span>
-                        {done && <span>✓</span>}
-                      </div>
+                    <div key={pe.id} className="flex items-center gap-2 py-1 text-[13px]">
+                      <span className="w-9 text-[11px] font-bold uppercase text-slate-400">{dayjs(pe.date).format("ddd")}</span>
+                      <span className="w-2 h-2 rounded-full shrink-0" style={{ background: col }} />
+                      <span className="truncate flex-1 font-semibold text-slate-600">{pe.title || pe.sport}{pe.planned_hour ? ` · ${fmtTime(pe.planned_hour)}` : ""}</span>
+                      {pe.status === "valide" && <span className="text-emerald-500 text-xs">✓</span>}
                       {deja ? (
-                        <span className="w-9 text-center text-rose-600" title="Aussi dans ton plan">❤</span>
+                        <span className="w-7 text-center text-xs text-rose-500" title="Aussi dans ton plan">❤</span>
                       ) : (
                         <button title="L'ajouter à ton plan" onClick={async () => {
                           const { error } = await supabase.from("sessions").insert({ user_id: athlete!.id_auth, date: pe.date, sport: pe.sport || "Vélo", title: pe.title || "", planned_hour: pe.planned_hour ?? null, intensity: pe.intensity || "basse", planned_inter: pe.planned_inter || "", status: "planned" });
                           if (error) alert(error.message); else setRefreshTick((t) => t + 1);
-                        }} className="w-9 h-8 rounded-lg bg-blue-50 text-blue-600 font-black hover:bg-blue-100">+</button>
+                        }} className="w-7 h-6 rounded-md bg-slate-200 text-blue-600 font-black text-sm hover:bg-slate-300">+</button>
                       )}
                     </div>
                   );
                 })}
               </div>
-              <div className="mt-2 text-[11px] text-slate-400">❤ = aussi dans ton plan · + = l&apos;ajouter à ton plan</div>
             </div>
           )}
 

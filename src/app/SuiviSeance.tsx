@@ -36,11 +36,12 @@ export default function SuiviSeance({ sessionId, sport, rpe }: { sessionId: stri
   const [an, setAn] = useState<any | null>(null);
   const [series, setSeries] = useState<any[]>([]);
   const [attendu, setAttendu] = useState<{ attendu: number; n: number } | null>(null);
+  const [confort, setConfort] = useState<number | null>(null);
 
   useEffect(() => {
     (async () => {
       const [{ data: a }, { data: r }] = await Promise.all([
-        supabase.from("activites").select("id, source, appareil").eq("session_id", sessionId).maybeSingle(),
+        supabase.from("activites").select("id, user_id, source, appareil").eq("session_id", sessionId).maybeSingle(),
         supabase.rpc("rpe_attendu", { p_session: sessionId }),
       ]);
       setAct(a ?? null);
@@ -52,10 +53,14 @@ export default function SuiviSeance({ sessionId, sport, rpe }: { sessionId: stri
         supabase.from("activite_series").select("*").eq("activite_id", a.id).order("idx"),
       ]);
       setAn(x ?? null);
+      // Sa zone de confort (modèle du sport), pour situer l'indice chaleur de la sortie.
+      const groupe = sport === "Vélo" ? "velo" : "course";
+      const { data: m } = await supabase.from("modele_fc").select("w_opt, valide").eq("user_id", a.user_id).eq("sport", groupe).maybeSingle();
+      setConfort(m?.valide && m.w_opt != null ? Number(m.w_opt) : null);
       // Une série d'une poignée de secondes (bouton tour pressé en fin de sortie) n'apprend rien.
       setSeries((s ?? []).filter((l: any) => (l.duree_s ?? 0) >= 20));
     })();
-  }, [sessionId]);
+  }, [sessionId, sport]);
 
   const course = sport === "Run" || sport === "Trail";
   const dynamiques = series.some((s) => s.gct_ms != null);
@@ -104,6 +109,7 @@ export default function SuiviSeance({ sessionId, sport, rpe }: { sessionId: stri
               : an.meteo_cote === "froid" ? "Il faisait froid pour toi : ça t'a coûté un peu."
               : "Il faisait chaud : ça t'a coûté un peu."}
           </p>
+          <p className="text-xs text-slate-400">Indice chaleur {Math.round(Number(an.wbgt_moy))} pendant ta sortie{confort != null ? ` · tu es bien jusqu'à ${Math.round(confort)}` : ""}</p>
           {course && pen >= 0.3 && an.gap_effort && gain > 0 && (
             <p className="text-sm text-slate-700">
               Par une météo idéale pour toi, la même séance t&apos;aurait fait courir à <strong>{allure(an.gap_effort_frais)}/km</strong> au lieu de {allure(an.gap_effort)}, soit {gain} s/km plus vite.

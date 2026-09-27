@@ -34,3 +34,20 @@ export async function meteoDuJour(lat: number, lng: number): Promise<MeteoJour |
 
 // Couleur discrète : gris tant que c'est confortable, puis orange, puis rouge.
 export const couleurWbgt = (w: number) => (w >= 25 ? "#dc2626" : w >= 20 ? "#ea580c" : "#94a3b8");
+
+// Ce que la chaleur du jour change POUR CET ATHLÈTE, en 3-4 phrases simples
+// (Martin, 27/09 : « en cliquant sur WBGT, version condensée »). Même modèle
+// que l'analyse : c bpm par °C de WBGT au-dessus de sa zone de confort,
+// effacé à 70 % par l'habitude de la chaleur (Racinais 2015).
+export type ProfilChaleur = { c: number; wOpt: number; valide: boolean } | null;
+export function lectureChaleur(m: MeteoJour, p: ProfilChaleur, acclimatation: number): string[] {
+  const l = ["Le WBGT mélange chaleur, humidité et soleil : c'est ce que ton corps ressent vraiment."];
+  if (!p || !p.valide) return [...l, "Pas encore assez de sorties pour savoir comment toi, tu réagis à la chaleur."];
+  const exces = m.wbgt - p.wOpt;
+  if (exces <= 0) return [...l, `Tu es bien jusqu'à ${Math.round(p.wOpt)}. Aujourd'hui, rien à changer.`];
+  const brut = Math.round(p.c * exces), reel = Math.round(p.c * exces * (1 - 0.7 * acclimatation));
+  l.push(`Tu es bien jusqu'à ${Math.round(p.wOpt)}. À ${m.wbgt}, ton cœur battrait environ ${brut} fois de plus par minute à la même allure.`);
+  if (acclimatation >= 0.3) l.push(`Mais tu es habitué à la chaleur (${Math.round(acclimatation * 100)} %) : ça tombe à environ ${reel}.`);
+  l.push(reel >= 5 ? "Pars un peu plus lentement, et bois." : "Rien à changer.");
+  return l;
+}

@@ -31,7 +31,7 @@ import {
 import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
 import { AnimatePresence, motion } from "framer-motion";
 import CarteCourse from "../CarteCourse";
-import { meteoDuJour, couleurWbgt, type MeteoJour } from "../meteoJour";
+import { meteoDuJour, couleurWbgt, lectureChaleur, type MeteoJour, type ProfilChaleur } from "../meteoJour";
 import { chargeCourse, chargePrevue, chargeSeance } from "../charge";
 
 // ---------- HELPERS & STYLES (COHÉRENCE COACH) ----------
@@ -865,6 +865,17 @@ export default function AthletePage() {
   // La météo du jour, en discret dans l'en-tête : à la ville de « Mon voyage »,
   // sinon au départ de la dernière sortie en extérieur.
   const [meteo, setMeteo] = useState<MeteoJour | null>(null);
+  // Touchée, la ligne dit ce que la chaleur du jour change pour TOI (même texte que l'app).
+  const [lignesChaleur, setLignesChaleur] = useState<string[] | null>(null);
+  async function ouvrirChaleur() {
+    if (!meteo || !athlete?.id_auth) return;
+    const [{ data: m }, { data: c }] = await Promise.all([
+      supabase.from("modele_fc").select("c, w_opt, valide").eq("user_id", athlete.id_auth).eq("sport", "course").maybeSingle(),
+      supabase.from("chaleur_athlete").select("acclimatation").eq("user_id", athlete.id_auth).maybeSingle(),
+    ]);
+    const p: ProfilChaleur = m ? { c: Number(m.c), wOpt: Number(m.w_opt ?? 13), valide: !!m.valide } : null;
+    setLignesChaleur(lectureChaleur(meteo, p, Number(c?.acclimatation ?? 0)));
+  }
   useEffect(() => {
     const u = athlete as (UserType & { ville_lat?: number | null; ville_lng?: number | null }) | null;
     if (!u?.id_auth) return;
@@ -1044,13 +1055,23 @@ export default function AthletePage() {
   return (
     <main className={`${jakarta.className} min-h-screen bg-slate-100 text-slate-800`}>
       <PartageCoachInfo athlete={athlete} />
+      {lignesChaleur && meteo && (
+        <div className="fixed inset-0 z-50 grid place-items-center p-4" onClick={() => setLignesChaleur(null)}>
+          <div className="absolute inset-0 bg-black/40" />
+          <div className="relative w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="text-lg font-black text-slate-800 mb-2">Aujourd&apos;hui : WBGT {meteo.wbgt}</div>
+            {lignesChaleur.map((t, i) => <p key={i} className={`text-sm leading-6 ${i ? "mt-2 text-slate-600" : "text-slate-400"}`}>{t}</p>)}
+            <button onClick={() => setLignesChaleur(null)} className="mt-4 w-full rounded-xl bg-blue-600 py-2.5 font-bold text-white">Compris</button>
+          </div>
+        </div>
+      )}
       {/* Header */}
       <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/90 backdrop-blur-md shadow-sm">
         <div className="max-w-screen-2xl mx-auto px-3 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
              <div className="bg-blue-600 text-white px-2 py-1 rounded font-bold text-sm tracking-tight">ATHLÈTE</div>
              <div className="text-sm font-medium text-slate-600 hidden sm:block">Bonjour {athlete?.name?.split(" ")[0]}</div>
-             {meteo && <div className="text-xs font-semibold text-slate-400 hidden md:block">Aujourd&apos;hui {meteo.t}° · <span className="font-bold" style={{ color: couleurWbgt(meteo.wbgt) }}>WBGT {meteo.wbgt}</span></div>}
+             {meteo && <button onClick={ouvrirChaleur} className="text-xs font-semibold text-slate-400 hidden md:block hover:text-slate-600">Aujourd&apos;hui {meteo.t}° · <span className="font-bold" style={{ color: couleurWbgt(meteo.wbgt) }}>WBGT {meteo.wbgt} ⓘ</span></button>}
           </div>
           
           <div className="flex items-center bg-slate-100 rounded-full p-1 gap-2 border border-slate-200">

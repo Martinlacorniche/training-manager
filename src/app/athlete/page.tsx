@@ -521,9 +521,9 @@ function AbsenceModal({ open, onClose, onSaved, initial, athleteId, date }:{ ope
             {passee && (
               <>
                 <div>
-                  <div className="text-sm font-bold text-slate-700">Classement (facultatif)</div>
+                  <div className="text-sm font-bold text-slate-700">Ta place (facultatif)</div>
                   <div className="mt-1 flex items-center gap-2 text-sm text-slate-500">
-                    <input value={rang} onChange={(e) => setRang(e.target.value.replace(/[^0-9]/g, ""))} inputMode="numeric" placeholder="12" className="w-20 rounded-lg border border-slate-200 p-2 bg-slate-50 text-center font-bold text-slate-800" />e sur
+                    <input value={rang} onChange={(e) => setRang(e.target.value.replace(/[^0-9]/g, ""))} inputMode="numeric" placeholder="12" className="w-20 rounded-lg border border-slate-200 p-2 bg-slate-50 text-center font-bold text-slate-800" />sur
                     <input value={total} onChange={(e) => setTotal(e.target.value.replace(/[^0-9]/g, ""))} inputMode="numeric" placeholder="340" className="w-20 rounded-lg border border-slate-200 p-2 bg-slate-50 text-center font-bold text-slate-800" />
                   </div>
                 </div>

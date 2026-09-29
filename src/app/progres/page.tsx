@@ -118,7 +118,7 @@ function Progres() {
 
       if (moi) {
         const { data: b } = await supabase.from("bien_etre_quotidien").select("jour, vfc_rmssd, fc_repos, sommeil_s")
-          .eq("user_id", id).gte("jour", dayjs().subtract(30, "day").format("YYYY-MM-DD")).order("jour");
+          .eq("user_id", id).gte("jour", dayjs().subtract(60, "day").format("YYYY-MM-DD")).order("jour");
         setNuits((b ?? []).map((n: any) => ({ ...n, jour: dayjs(n.jour).format("DD/MM"), iso: n.jour, vfc: n.vfc_rmssd, fc: n.fc_repos })));
       }
     })();
@@ -138,6 +138,17 @@ function Progres() {
   const tForme = tendance(points.map((p) => ({ iso: p.iso, v: p.corrigee })), true, 3);
   const tNuits = tendance(nuitsVfc.map((n) => ({ iso: n.iso, v: Number(n.vfc) })), false, 7);
   const derniere = nuits[nuits.length - 1];
+  // La durée de sommeil : les 7 dernières nuits contre ton habitude (même règle que l'app).
+  const nuitsDuree = nuits.filter((n) => Number(n.sommeil_s) > 7200);
+  const hm = (sec: number) => `${Math.floor(sec / 3600)} h ${String(Math.round((sec % 3600) / 60)).padStart(2, "0")}`;
+  const phraseSommeil = (() => {
+    if (nuitsDuree.length < 10) return null;
+    const recents = nuitsDuree.slice(-7), avant = nuitsDuree.slice(0, -7).map((n) => Number(n.sommeil_s)).sort((a, b) => a - b);
+    const moy = recents.reduce((a, n) => a + Number(n.sommeil_s), 0) / recents.length, hab = avant[Math.floor(avant.length / 2)];
+    return moy < hab - 1800 ? `Tu dors moins que d'habitude : ${hm(moy)} par nuit ces 7 derniers jours (d'habitude ${hm(hab)}).`
+      : moy > hab + 1800 ? `Tu dors plus que d'habitude : ${hm(moy)} par nuit ces 7 derniers jours (d'habitude ${hm(hab)}).`
+      : `Tu dors comme d'habitude : ${hm(moy)} par nuit ces 7 derniers jours.`;
+  })();
 
   // UNE PHRASE SIMPLE D'ABORD, les chiffres ensuite et en petit, comme dans
   // l'app : le détail technique est réservé au MCP.
@@ -261,12 +272,15 @@ function Progres() {
           </section>
         )}
 
-        {soi && nuitsVfc.length > 0 && (
+        {soi && (nuitsVfc.length > 0 || phraseSommeil) && (
           <section className={carte}>
             <h2 className="font-bold text-slate-800">Mes nuits</h2>
-            <p className="font-bold text-slate-800">{recup && recup.niveau !== "inconnu" ? decouper(recup.raison)[0] : "On apprend encore tes nuits."}</p>
-            <p className="text-sm text-slate-500">Ta récupération la nuit, mesurée par ta montre. <strong>Plus la courbe monte, mieux tu récupères.</strong> Ton coach ne voit pas ces chiffres.</p>
-            <div className="h-32">
+            {phraseSommeil && <p className="font-bold text-slate-800">{phraseSommeil}</p>}
+            {recup && recup.niveau !== "inconnu"
+              ? <p className={phraseSommeil ? "text-sm text-slate-700" : "font-bold text-slate-800"}>{decouper(recup.raison)[0]}</p>
+              : <p className="text-xs text-slate-400">Ta récupération (ton cœur la nuit) : on l&apos;apprend encore, il faut environ 3 semaines de nuits avec ta montre.</p>}
+            {nuitsVfc.length >= 7 && <p className="text-sm text-slate-500">Ta récupération la nuit, mesurée par ta montre. <strong>Plus la courbe monte, mieux tu récupères.</strong> Ton coach ne voit pas ces chiffres.</p>}
+            {nuitsVfc.length >= 7 && <div className="h-32">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={tNuits} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
                   <CartesianGrid stroke="#f1f5f9" vertical={false} />
@@ -275,7 +289,7 @@ function Progres() {
                   <Line type="monotone" dataKey="v" stroke="#7c3aed" strokeWidth={2.5} dot={false} connectNulls />
                 </LineChart>
               </ResponsiveContainer>
-            </div>
+            </div>}
             {derniere?.sommeil_s ? (
               <p className="text-sm text-slate-500">Cette nuit : {Math.floor(derniere.sommeil_s / 3600)} h {String(Math.round((derniere.sommeil_s % 3600) / 60)).padStart(2, "0")} de sommeil.</p>
             ) : null}

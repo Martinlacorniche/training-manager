@@ -89,7 +89,7 @@ type AbsenceType = {
   rpe?: number | null; duration_hour?: number | null; status?: string | null;
   strava_activity_id?: number | null; strava_distance?: number | null; strava_elevation?: number | null; strava_avg_hr?: number | null; strava_avg_watts?: number | null;
   strava_tss?: number | null; strava_trimp?: number | null; strava_hr_drift?: number | null; strava_time_in_zone?: number[] | null; strava_pace_100?: number | null; strava_swolf?: number | null;
-};
+ temps_vise_h?: number | null; classement?: number | null; participants?: number | null; };
 type WeeklyReviewType = {
   id?: string; week_start: string; rpe_life: number; comment: string;
   // Détails facultatifs (2026-09-25), de 1 = très bien à 5 = très difficile.
@@ -409,6 +409,10 @@ const COULEUR_SPORT: Record<string, string> = { "Vélo": "#7c3aed", "Run": "#256
 // ---------- Modal Absence
 // Échelle d'effort 1→10 (mêmes couleurs que l'app).
 const EFFORT = ["#64748b", "#10b981", "#22c55e", "#84cc16", "#eab308", "#f59e0b", "#f97316", "#ef4444", "#dc2626", "#7c3aed"];
+const chronoTexte = (heures: number) => {
+  const t = Math.round(heures * 3600);
+  return t >= 3600 ? `${Math.floor(t / 3600)}h${String(Math.floor((t % 3600) / 60)).padStart(2, "0")}` : `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`;
+};
 const chronoChamps = (heures?: number | null) => {
   if (!heures) return { h: "", m: "", s: "" };
   const t = Math.round(heures * 3600);
@@ -428,6 +432,8 @@ function AbsenceModal({ open, onClose, onSaved, initial, athleteId, date }:{ ope
   const [chrono, setChrono] = useState<{ h: string; m: string; s: string }>(() => chronoChamps(initial?.duration_hour));
   const [syncCourse, setSyncCourse] = useState(false);   // forcer le lien avec l'activité Strava
   const [status, setStatus] = useState<string>(initial?.status || "");
+  const [rang, setRang] = useState<string>(initial?.classement != null ? String(initial.classement) : "");
+  const [total, setTotal] = useState<string>(initial?.participants != null ? String(initial.participants) : "");
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -437,6 +443,7 @@ function AbsenceModal({ open, onClose, onSaved, initial, athleteId, date }:{ ope
       setChrono(chronoChamps(initial.duration_hour));
       // Reliée à Strava : la course a été courue jusqu'au bout, sauf avis contraire.
       setStatus(initial.status || (initial.strava_activity_id ? "finisher" : ""));
+      setRang(initial.classement != null ? String(initial.classement) : ""); setTotal(initial.participants != null ? String(initial.participants) : "");
     } else {
       setType("off"); setName(""); setDistance(""); setElev(""); setLieu(""); setHeure(""); setComment(""); setRpe(""); setChrono(chronoChamps(null)); setStatus("");
     }
@@ -454,6 +461,11 @@ function AbsenceModal({ open, onClose, onSaved, initial, athleteId, date }:{ ope
     const rpeNum = type === "competition" && rpe ? Number(rpe) : null;
     const payload: any = { user_id: athleteId, date, type, name: name || null, distance_km: distance ? Number(distance) : null, elevation_d_plus: elev ? Number(elev) : null, comment: comment || null, rpe: rpeNum, duration_hour, status: type === "competition" ? (status || null) : null };
     if (type === "competition") {
+      // Avant la course, le chrono saisi est le temps VISÉ, gardé à part (le lien
+      // Strava remplace ensuite duration_hour par le vrai temps). Après : le classement.
+      if (!passee) payload.temps_vise_h = duration_hour;
+      payload.classement = rang ? Number(rang) : null;
+      payload.participants = total ? Number(total) : null;
       payload.heure_depart = /^\d{1,2}[:h]\d{2}$/.test(heure.trim()) ? heure.trim().replace("h", ":").padStart(5, "0") : null;
       payload.lieu_nom = lieu.trim() || null; payload.lieu_lat = null; payload.lieu_lng = null;
       if (lieu.trim()) {
@@ -505,8 +517,16 @@ function AbsenceModal({ open, onClose, onSaved, initial, athleteId, date }:{ ope
                 ))}
               </div>
             </div>
+            {passee && initial?.temps_vise_h ? <div className="text-sm text-slate-500">Ton objectif : {chronoTexte(initial.temps_vise_h)}</div> : null}
             {passee && (
               <>
+                <div>
+                  <div className="text-sm font-bold text-slate-700">Classement (facultatif)</div>
+                  <div className="mt-1 flex items-center gap-2 text-sm text-slate-500">
+                    <input value={rang} onChange={(e) => setRang(e.target.value.replace(/[^0-9]/g, ""))} inputMode="numeric" placeholder="12" className="w-20 rounded-lg border border-slate-200 p-2 bg-slate-50 text-center font-bold text-slate-800" />e sur
+                    <input value={total} onChange={(e) => setTotal(e.target.value.replace(/[^0-9]/g, ""))} inputMode="numeric" placeholder="340" className="w-20 rounded-lg border border-slate-200 p-2 bg-slate-50 text-center font-bold text-slate-800" />
+                  </div>
+                </div>
                 <div>
                   <div className="text-sm font-bold text-slate-700">Ton effort</div>
                   <div className="mt-1 flex gap-1">

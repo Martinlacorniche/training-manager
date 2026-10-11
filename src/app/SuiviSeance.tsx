@@ -31,7 +31,9 @@ function Carte({ titre, children }: { titre: string; children: React.ReactNode }
   );
 }
 
-export default function SuiviSeance({ sessionId, sport, rpe }: { sessionId: string; sport: string; rpe: number | null }) {
+export default function SuiviSeance({ sessionId, sport, rpe, date }: { sessionId: string; sport: string; rpe: number | null; date?: string | null }) {
+  const [recharge, setRecharge] = useState(0);
+  const [cherche, setCherche] = useState<"non" | "en_cours" | "rien">("non");
   const [act, setAct] = useState<any | null>(null);
   const [an, setAn] = useState<any | null>(null);
   const [series, setSeries] = useState<any[]>([]);
@@ -60,13 +62,30 @@ export default function SuiviSeance({ sessionId, sport, rpe }: { sessionId: stri
       // Une série d'une poignée de secondes (bouton tour pressé en fin de sortie) n'apprend rien.
       setSeries((s ?? []).filter((l: any) => (l.duree_s ?? 0) >= 20));
     })();
-  }, [sessionId, sport]);
+  }, [sessionId, sport, recharge]);
+
+  // « Chercher ma sortie maintenant » (11/10, comme dans l'app) : sans attendre le passage des 10 min.
+  const chercher = async () => {
+    setCherche("en_cours");
+    const { data } = await supabase.functions.invoke("icu-complement", { body: { mode: "maintenant", sessionId } });
+    setCherche(data?.trouvee ? "non" : "rien");
+    setRecharge((n) => n + 1);
+  };
+  const recente = !!date && (Date.now() - new Date(date + "T00:00:00").getTime()) / 86400000 <= 4 && new Date(date + "T00:00:00").getTime() <= Date.now();
+  const boutonChercher = !act && recente ? (
+    <div className="bg-white rounded-2xl border border-slate-200 p-4 text-center space-y-2">
+      <p className="text-sm text-slate-600">{cherche === "rien" ? "Toujours rien : ta montre n'a peut-être pas encore synchronisé. Ouvre Garmin Connect, puis réessaie." : "Ta sortie n'est pas encore arrivée de ta montre."}</p>
+      <button onClick={chercher} disabled={cherche === "en_cours"} className="px-4 py-2 rounded-xl bg-blue-600 text-white font-bold text-sm disabled:opacity-60">
+        {cherche === "en_cours" ? "Je cherche…" : "Chercher ma sortie maintenant"}
+      </button>
+    </div>
+  ) : null;
 
   const course = sport === "Run" || sport === "Trail";
   const dynamiques = series.some((s) => s.gct_ms != null);
   const ecart = rpe != null && attendu ? rpe - attendu.attendu : null;
 
-  if (!act && !attendu) return (
+  if (!act && !attendu) return boutonChercher ?? (
     <p className="text-sm text-slate-400 italic">Pas encore d&apos;activité reçue de la montre pour cette séance.</p>
   );
 
@@ -101,6 +120,7 @@ export default function SuiviSeance({ sessionId, sport, rpe }: { sessionId: stri
 
   return (
     <div className="space-y-4">
+      {boutonChercher}
       {attendu && rpe != null && ecart != null && (
         <Carte titre="Ressenti">
           <p className={`font-bold ${ecart >= 1.5 ? "text-amber-700" : "text-slate-800"}`}>

@@ -60,7 +60,7 @@ export default function Seance() {
               <StravaMetrics data={s} />
               {s.athlete_comment && <p className="text-sm text-slate-600 italic">« {s.athlete_comment} »</p>}
             </section>
-            <SuiviSeance sessionId={s.id} sport={s.sport} rpe={s.rpe ?? null} />
+            <SuiviSeance sessionId={s.id} sport={s.sport} rpe={s.rpe ?? null} date={s.date ?? null} />
           </>
         )}
       </div>

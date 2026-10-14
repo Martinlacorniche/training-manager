@@ -12,6 +12,7 @@ import { SuiviTests } from "../Tests";
 import { Voyage } from "../Voyage";
 import { Chaleur } from "../Chaleur";
 import { MonMoteur } from "../MonMoteur";
+import { MeteoCorps } from "../MeteoCorps";
 
 dayjs.locale("fr");
 const jakarta = Plus_Jakarta_Sans({ subsets: ["latin"], weight: ["500", "600", "700", "800"], display: "swap" });
@@ -173,7 +174,10 @@ function Progres() {
         {onglet === "voyage" && cibleId && <Voyage userId={cibleId} soi={soi} />}
         {onglet === "forme" && (<>
 
-        <section className={carte}>
+        {/* La météo du corps (15/10) : l'athlète, dès qu'un état existe. */}
+        {soi && global && cibleId && <MeteoCorps userId={cibleId} etats={etats} sommeilNuit={Number(derniere?.sommeil_s) || null} />}
+
+        {!(soi && global) && <section className={carte}>
           <h2 className="font-bold text-slate-800">{soi ? "Mon état" : "Son état"}</h2>
           {!global ? (
             <p className="text-sm text-slate-400">{soi ? "On apprend encore à te connaître : il faut quelques semaines de séances. Rien à faire de ton côté." : "Pas encore d'état, ou l'athlète ne le partage pas."}</p>
@@ -200,7 +204,7 @@ function Progres() {
               <p className="text-xs text-slate-400">Au {dayjs(global.jour).format("DD/MM")}.</p>
             </>
           )}
-        </section>
+        </section>}
 
         {points.length >= 3 && (
           <section className={carte}>
@@ -251,7 +255,7 @@ function Progres() {
         {/* Mon moteur (15/10) : VO2max estimée course et vélo + niveau de course (Daniels). */}
         {cibleId && <MonMoteur userId={cibleId} soi={soi} cs={cs?.actuel ?? null} niveau={niveau?.actuel ?? null} />}
 
-        {soi && (nuitsVfc.length > 0 || phraseSommeil) && (
+        {soi && !global && (nuitsVfc.length > 0 || phraseSommeil) && (
           <section className={carte}>
             <h2 className="font-bold text-slate-800">Mes nuits</h2>
             {phraseSommeil && <p className="font-bold text-slate-800">{phraseSommeil}</p>}

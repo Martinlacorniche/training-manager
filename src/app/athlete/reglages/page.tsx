@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { ProfilPhysique } from "../../ProfilPhysique";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { Plus_Jakarta_Sans } from "next/font/google";
@@ -155,6 +156,8 @@ export default function Reglages() {
         </button>
         <h1 className="text-2xl font-extrabold text-slate-800">Réglages</h1>
         {message && <div className="rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-sm p-3">{message}</div>}
+
+        <ProfilPhysique className={carte} />
 
         {zones && (
           <section className={carte}>

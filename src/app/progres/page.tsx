@@ -174,6 +174,8 @@ function Progres() {
         {onglet === "voyage" && cibleId && <Voyage userId={cibleId} soi={soi} />}
         {onglet === "forme" && (<>
 
+        {/* Rangée en trois temps (15/10), comme l'app : aujourd'hui, mon niveau, mes progrès. */}
+        <h3 className="px-1 pt-2 text-xs font-black uppercase tracking-widest text-slate-400">Aujourd&apos;hui</h3>
         {/* La météo du corps (15/10) : l'athlète, dès qu'un état existe. */}
         {soi && global && cibleId && <MeteoCorps userId={cibleId} etats={etats} sommeilNuit={Number(derniere?.sommeil_s) || null} />}
 
@@ -206,6 +208,54 @@ function Progres() {
           )}
         </section>}
 
+        {soi && !global && (nuitsVfc.length > 0 || phraseSommeil) && (
+          <section className={carte}>
+            <h2 className="font-bold text-slate-800">Mes nuits</h2>
+            {phraseSommeil && <p className="font-bold text-slate-800">{phraseSommeil}</p>}
+            {recup && recup.niveau !== "inconnu"
+              ? <p className={phraseSommeil ? "text-sm text-slate-700" : "font-bold text-slate-800"}>{decouper(recup.raison)[0]}</p>
+              : <p className="text-xs text-slate-400">Ta récupération (ton cœur la nuit) : on l&apos;apprend encore, il faut environ 3 semaines de nuits avec ta montre.</p>}
+            {nuitsVfc.length >= 7 && <p className="text-sm text-slate-500">Ta récupération la nuit, mesurée par ta montre. <strong>Plus la courbe monte, mieux tu récupères.</strong> Ton coach ne voit pas ces chiffres.</p>}
+            {nuitsVfc.length >= 7 && <div className="h-32">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={tNuits} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
+                  <CartesianGrid stroke="#f1f5f9" vertical={false} />
+                  <XAxis dataKey="jour" tick={{ fontSize: 11, fill: "#94a3b8" }} minTickGap={40} />
+                  <YAxis hide domain={domaine(tNuits.map((x) => x.v), 20)} />
+                  <Line type="monotone" dataKey="v" stroke="#7c3aed" strokeWidth={2.5} dot={false} connectNulls />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>}
+            {derniere?.sommeil_s ? (
+              <p className="text-sm text-slate-500">Cette nuit : {Math.floor(derniere.sommeil_s / 3600)} h {String(Math.round((derniere.sommeil_s % 3600) / 60)).padStart(2, "0")} de sommeil.</p>
+            ) : null}
+          </section>
+        )}
+
+        {(cs?.actuel || niveau?.actuel) && <h3 className="px-1 pt-2 text-xs font-black uppercase tracking-widest text-slate-400">Mon niveau</h3>}
+        {/* Mon moteur (15/10) : VO2max estimée course et vélo + niveau de course (Daniels). */}
+        {cibleId && <MonMoteur userId={cibleId} soi={soi} cs={cs?.actuel ?? null} niveau={niveau?.actuel ?? null} />}
+
+        {/* L'allure 10 km n'apparaît que VRAIMENT mesurée (une course ou un effort
+            long à fond) : estimée sur l'entraînement, elle bougeait au gré des sorties. */}
+        {cs?.actuel?.statut === "estimee" && cs.actuel.cs != null && (() => {
+          const v = Number(cs.actuel.cs);
+          return (
+            <section className={carte}>
+              <h2 className="font-bold text-slate-800">{soi ? "Mon allure 10 km" : "Son allure 10 km"}</h2>
+              <p className="text-3xl font-extrabold text-slate-800">{allure(v)}<span className="text-base font-bold text-slate-500">/km</span></p>
+              {cs.avant && (
+                <p className={`text-sm font-bold ${v >= Number(cs.avant.cs) ? "text-emerald-700" : "text-orange-600"}`}>
+                  {v >= Number(cs.avant.cs) ? "Plus rapide" : "Moins rapide"} qu&apos;il y a 6 semaines ({allure(cs.avant.cs)}/km)
+                </p>
+              )}
+              <p className="text-sm text-slate-700">Par temps frais, {soi ? "tu peux viser" : "objectif possible"} : 5 km en {temps(v, 5, 1.07)}, 10 km en {temps(v, 10, 1)}, semi en {temps(v, 21.0975, 0.95)}.</p>
+              <p className="text-sm text-slate-500">Pour un footing, {soi ? "cours" : "courir"} plus lentement que {allure(v * 0.82)}/km.</p>
+            </section>
+          );
+        })()}
+
+        <h3 className="px-1 pt-2 text-xs font-black uppercase tracking-widest text-slate-400">Mes progrès</h3>
         {points.length >= 3 && (
           <section className={carte}>
             <h2 className="font-bold text-slate-800">{soi ? "Ma forme" : "Sa forme"}</h2>
@@ -231,53 +281,7 @@ function Progres() {
           </section>
         )}
 
-        {/* L'allure 10 km n'apparaît que VRAIMENT mesurée (une course ou un effort
-            long à fond) : estimée sur l'entraînement, elle bougeait au gré des sorties. */}
-        {cs?.actuel?.statut === "estimee" && cs.actuel.cs != null && (() => {
-          const v = Number(cs.actuel.cs);
-          return (
-            <section className={carte}>
-              <h2 className="font-bold text-slate-800">{soi ? "Mon allure 10 km" : "Son allure 10 km"}</h2>
-              <p className="text-3xl font-extrabold text-slate-800">{allure(v)}<span className="text-base font-bold text-slate-500">/km</span></p>
-              {cs.avant && (
-                <p className={`text-sm font-bold ${v >= Number(cs.avant.cs) ? "text-emerald-700" : "text-orange-600"}`}>
-                  {v >= Number(cs.avant.cs) ? "Plus rapide" : "Moins rapide"} qu&apos;il y a 6 semaines ({allure(cs.avant.cs)}/km)
-                </p>
-              )}
-              <p className="text-sm text-slate-700">Par temps frais, {soi ? "tu peux viser" : "objectif possible"} : 5 km en {temps(v, 5, 1.07)}, 10 km en {temps(v, 10, 1)}, semi en {temps(v, 21.0975, 0.95)}.</p>
-              <p className="text-sm text-slate-500">Pour un footing, {soi ? "cours" : "courir"} plus lentement que {allure(v * 0.82)}/km.</p>
-            </section>
-          );
-        })()}
-
         {cibleId && <Chaleur userId={cibleId} soi={soi} />}
-
-        {/* Mon moteur (15/10) : VO2max estimée course et vélo + niveau de course (Daniels). */}
-        {cibleId && <MonMoteur userId={cibleId} soi={soi} cs={cs?.actuel ?? null} niveau={niveau?.actuel ?? null} />}
-
-        {soi && !global && (nuitsVfc.length > 0 || phraseSommeil) && (
-          <section className={carte}>
-            <h2 className="font-bold text-slate-800">Mes nuits</h2>
-            {phraseSommeil && <p className="font-bold text-slate-800">{phraseSommeil}</p>}
-            {recup && recup.niveau !== "inconnu"
-              ? <p className={phraseSommeil ? "text-sm text-slate-700" : "font-bold text-slate-800"}>{decouper(recup.raison)[0]}</p>
-              : <p className="text-xs text-slate-400">Ta récupération (ton cœur la nuit) : on l&apos;apprend encore, il faut environ 3 semaines de nuits avec ta montre.</p>}
-            {nuitsVfc.length >= 7 && <p className="text-sm text-slate-500">Ta récupération la nuit, mesurée par ta montre. <strong>Plus la courbe monte, mieux tu récupères.</strong> Ton coach ne voit pas ces chiffres.</p>}
-            {nuitsVfc.length >= 7 && <div className="h-32">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={tNuits} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
-                  <CartesianGrid stroke="#f1f5f9" vertical={false} />
-                  <XAxis dataKey="jour" tick={{ fontSize: 11, fill: "#94a3b8" }} minTickGap={40} />
-                  <YAxis hide domain={domaine(tNuits.map((x) => x.v), 20)} />
-                  <Line type="monotone" dataKey="v" stroke="#7c3aed" strokeWidth={2.5} dot={false} connectNulls />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>}
-            {derniere?.sommeil_s ? (
-              <p className="text-sm text-slate-500">Cette nuit : {Math.floor(derniere.sommeil_s / 3600)} h {String(Math.round((derniere.sommeil_s % 3600) / 60)).padStart(2, "0")} de sommeil.</p>
-            ) : null}
-          </section>
-        )}
         </>)}
       </div>
     </main>

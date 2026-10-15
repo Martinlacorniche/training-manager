@@ -24,7 +24,7 @@ import {
   CaretLeft, CaretRight, SignOut, GearSix,
   ChartLineUp as LoadIcon, Bicycle, SwimmingPool, Mountains, PersonSimpleRun, Clock, ChartLineUp,
   Smiley, SmileySad, SmileyMeh, Notebook, WarningCircle, Fire, Question, X,
-  ArrowsClockwise, LinkSimple
+  ArrowsClockwise, LinkSimple, BabyCarriage
 } from "@phosphor-icons/react";
 
 // DnD
@@ -33,6 +33,9 @@ import { AnimatePresence, motion } from "framer-motion";
 import CarteCourse from "../CarteCourse";
 import { meteoDuJour, couleurWbgt, lectureChaleur, type MeteoJour, type ProfilChaleur } from "../meteoJour";
 import { chargeCourse, chargePrevue, chargeSeance } from "../charge";
+import CarteBebe from "../CarteBebe";
+import GrossesseRdv, { IconeGenre } from "../GrossesseRdv";
+import { rdvDuPlanning, maGrossesse, ROSE, ROSE_FOND, heureCourte, type RdvGrossesse } from "../grossesse";
 
 // ---------- HELPERS & STYLES (COHÉRENCE COACH) ----------
 
@@ -885,6 +888,11 @@ export default function AthletePage() {
   const [weeklyReview, setWeeklyReview] = useState<WeeklyReviewType | null>(null);
   // La semaine du binôme (comme dans l'app) : ses séances, à copier dans son plan.
   const [partner, setPartner] = useState<{ nom: string; seances: SessionType[] }>({ nom: "", seances: [] });
+  // Mode grossesse (15/10/2026) : ses rendez-vous (et ceux du duo s'il partage),
+  // à part des séances : ils ne comptent dans aucune statistique.
+  const [rdvs, setRdvs] = useState<RdvGrossesse[]>([]);
+  const [grossesseActive, setGrossesseActive] = useState(false);
+  const [rdvOuvert, setRdvOuvert] = useState<{ rdv: RdvGrossesse | null; lecture: boolean; jour: string } | null>(null);
 
   const [validateOpen, setValidateOpen] = useState(false);
   const [currentSession, setCurrentSession] = useState<SessionType | null>(null);
@@ -964,6 +972,7 @@ export default function AthletePage() {
         ]);
         setPartner({ nom: (pu?.name || "").split(" ")[0], seances: (ps || []) as SessionType[] });
       } else setPartner({ nom: "", seances: [] });
+      setRdvs(await rdvDuPlanning([athlete.id_auth, pid], start, end).catch(() => []));
 
       // Load Weekly Review
       const { data: review } = await supabase.from("weekly_reviews").select("id, rpe_life, comment, fatigue, sommeil, stress, jambes, douleur, douleur_zone").eq("user_id", athlete.id_auth).eq("week_start", start).single();
@@ -971,6 +980,12 @@ export default function AthletePage() {
 
     })();
   }, [athlete?.id_auth, weekStart, refreshTick]);
+
+  // Ma grossesse active ? (pour le bouton d'ajout d'un rendez-vous)
+  useEffect(() => {
+    if (!athlete?.id_auth) return;
+    maGrossesse(athlete.id_auth).then((g) => setGrossesseActive(!!g?.active)).catch(() => {});
+  }, [athlete?.id_auth]);
 
   // Prev load + race
   useEffect(() => {
@@ -1063,6 +1078,12 @@ export default function AthletePage() {
     absences.forEach(a => { if (map[a.date]) map[a.date].push(a); });
     return map;
   }, [absences, weekDays]);
+
+  const rdvsByDay = useMemo(() => {
+    const map: Record<string, RdvGrossesse[]> = {};
+    rdvs.forEach(r => { (map[r.jour] ||= []).push(r); });
+    return map;
+  }, [rdvs]);
 
   const onDragEnd = useCallback(async (result: DropResult) => {
     const { destination, draggableId } = result;
@@ -1220,6 +1241,8 @@ export default function AthletePage() {
 
         {/* Main Grid */}
         <section className="col-span-12 md:col-span-9">
+          {/* Rien tant qu'il n'y a ni grossesse visible ni surprise déclenchée */}
+          <CarteBebe userId={athlete?.id_auth} partnerId={(athlete as UserType & { partner_id?: string | null } | null)?.partner_id} />
           {athlete && (
             <AthleteThematicCalendar
               athleteId={athlete.id_auth}
@@ -1238,6 +1261,7 @@ export default function AthletePage() {
                 const daySessions = sessionsByDay[iso] || [];
                 const dayAbs = absencesByDay[iso] || [];
                 const blocked = dayAbs.length > 0;
+                const dayRdv = rdvsByDay[iso] || [];
                 
                 return (
                   <Droppable droppableId={iso} key={iso}>
@@ -1255,9 +1279,28 @@ export default function AthletePage() {
                             className="text-slate-300 hover:text-emerald-600 hover:bg-emerald-50 rounded p-1 transition" title="Ajouter Off / Compétition">
                             <Plus size={16}/>
                           </button>
+                          {/* Mode grossesse (15/10/2026) : seulement si MA grossesse est active */}
+                          {grossesseActive && (
+                            <button
+                              onClick={() => setRdvOuvert({ rdv: null, lecture: false, jour: iso })}
+                              className="rounded p-1 transition hover:bg-pink-50" style={{ color: ROSE }} title="Suivi grossesse">
+                              <BabyCarriage size={16}/>
+                            </button>
+                          )}
                         </div>
 
                         <div className="space-y-2 flex-1">
+                          {dayRdv.map((r) => {
+                            const mien = r.user_id === athlete?.id_auth;
+                            return (
+                              <button key={r.id} onClick={() => setRdvOuvert({ rdv: r, lecture: !mien, jour: iso })}
+                                className="w-full flex items-center gap-1.5 rounded-lg border border-pink-200 px-2.5 py-1.5 text-left text-xs font-bold text-pink-800 hover:brightness-95"
+                                style={{ background: ROSE_FOND }}>
+                                <span className="shrink-0"><IconeGenre genre={r.genre} size={14} color={ROSE} /></span>
+                                <span className="truncate">{r.titre}{r.heure ? ` · ${heureCourte(r.heure)}` : ""}{!mien && partner.nom ? ` (${partner.nom})` : ""}</span>
+                              </button>
+                            );
+                          })}
                           {dayAbs.map((a) => (
                             <AbsenceCard key={a.id} a={a} onEdit={() => { setAbsenceDate(iso); setEditAbsence(a); setAbsenceOpen(true); }} />
                           ))}
@@ -1280,7 +1323,7 @@ export default function AthletePage() {
                             </Draggable>
                           ))}
                           {provided.placeholder}
-                          {daySessions.length === 0 && dayAbs.length === 0 && !snapshot.isDraggingOver && (
+                          {daySessions.length === 0 && dayAbs.length === 0 && dayRdv.length === 0 && !snapshot.isDraggingOver && (
                               <div className="h-full border-2 border-dashed border-slate-100 rounded-lg flex items-center justify-center opacity-50 mt-2">
                                   <span className="text-[10px] text-slate-300 font-medium">Repos</span>
                               </div>
@@ -1354,6 +1397,16 @@ export default function AthletePage() {
                 initial={editAbsence}
                 athleteId={athlete.id_auth}
                 date={absenceDate}
+            />
+            <GrossesseRdv
+                open={!!rdvOuvert}
+                rdv={rdvOuvert?.rdv ?? null}
+                lectureSeule={rdvOuvert?.lecture}
+                nomAuteur={rdvOuvert?.lecture ? partner.nom : undefined}
+                jourInitial={rdvOuvert?.jour ?? dayjs().format("YYYY-MM-DD")}
+                userId={athlete.id_auth}
+                onClose={() => setRdvOuvert(null)}
+                onSaved={() => setRefreshTick(t => t + 1)}
             />
             <WeeklyReviewModal 
                 open={reviewOpen} 

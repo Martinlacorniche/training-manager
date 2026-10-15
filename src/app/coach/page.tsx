@@ -24,13 +24,14 @@ import {
   PencilSimple, Trash, Plus, Info, ChartLineUp,
   CaretLeft, CaretRight, CheckCircle, XCircle,
   Bicycle, SwimmingPool, Mountains, PersonSimpleRun, Clock, SignOut,
-  WarningCircle, Fire, Smiley, SmileySad, SmileyMeh, Notebook, X, Question, Check
+  WarningCircle, Fire, Smiley, SmileySad, SmileyMeh, Notebook, X, Question, Check, BabyCarriage
 } from "@phosphor-icons/react";
 
 // Animations
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import CarteCourse from "../CarteCourse";
 import { chargeCourse, chargePrevue, chargeSeance } from "../charge";
+import { creneauxCoach, heureCourte, ROSE } from "../grossesse";
 
 // ---------- HELPERS & CONSTANTES ----------
 
@@ -809,6 +810,8 @@ export default function CoachAthleteFocusV13() {
 
   const [sessions, setSessions] = useState<SessionType[]>([]);
   const [absences, setAbsences] = useState<AbsenceType[]>([]);
+  // Mode grossesse (15/10/2026) : des créneaux sans détail, seulement si l'athlète partage.
+  const [creneaux, setCreneaux] = useState<{ id: string; jour: string; heure: string | null }[]>([]);
   
   // Sessions du jour pour TOUS les athlètes
   const [todaySessions, setTodaySessions] = useState<SessionType[]>([]);
@@ -879,6 +882,7 @@ export default function CoachAthleteFocusV13() {
 
       const { data: abs } = await supabase.from("absences_competitions").select("*").eq("user_id", selectedAthleteId).gte("date", start).lte("date", end);
       setAbsences((abs || []) as AbsenceType[]);
+      setCreneaux(await creneauxCoach(selectedAthleteId, start, end).catch(() => []));
 
       const { data: review } = await supabase.from("weekly_reviews").select("rpe_life, comment, fatigue, sommeil, stress, jambes, douleur, douleur_zone").eq("user_id", selectedAthleteId).eq("week_start", start).single();
       setWeeklyReview(review as WeeklyReviewType);
@@ -1191,9 +1195,10 @@ export default function CoachAthleteFocusV13() {
               const isToday = iso === dayjs().format("YYYY-MM-DD");
               const daySessions = sessions.filter((s) => s.date === iso);
               const dayAbs = absences.filter((a) => a.date === iso);
+              const dayCreneaux = creneaux.filter((c) => c.jour === iso);
               
               // UX: On définit si le jour est vide pour le style "Repos"
-              const isEmpty = daySessions.length === 0 && dayAbs.length === 0;
+              const isEmpty = daySessions.length === 0 && dayAbs.length === 0 && dayCreneaux.length === 0;
 
               return (
                 <div key={iso} className={`group/day flex flex-col gap-2 min-h-[200px] p-2 rounded-xl border transition-all duration-300
@@ -1215,6 +1220,12 @@ export default function CoachAthleteFocusV13() {
                   </div>
 
                   <div className="space-y-2 flex-1 flex flex-col relative">
+                    {dayCreneaux.map((c) => (
+                      <div key={c.id} className="flex items-center gap-1.5 px-1 text-xs font-bold" style={{ color: ROSE }}>
+                        <BabyCarriage size={15} />
+                        <span>Suivi grossesse{c.heure ? ` · ${heureCourte(c.heure)}` : ""}</span>
+                      </div>
+                    ))}
                     <AnimatePresence initial={false}>
                       {dayAbs.map((a) => (
                         <AbsenceCard key={a.id} a={a} onDelete={async () => { if (!confirm("Supprimer ?")) return; await supabase.from("absences_competitions").delete().eq("id", a.id); setAbsences((prev) => prev.filter((x) => x.id !== a.id)); }} />

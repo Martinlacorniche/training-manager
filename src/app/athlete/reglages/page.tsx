@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { ProfilPhysique } from "../../ProfilPhysique";
+import { ReglagesGrossesse } from "../../ReglagesGrossesse";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { Plus_Jakarta_Sans } from "next/font/google";
@@ -158,6 +159,9 @@ export default function Reglages() {
         {message && <div className="rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-sm p-3">{message}</div>}
 
         <ProfilPhysique className={carte} />
+
+        {/* MODE GROSSESSE (15/10/2026) : invisible sauf comptes autorisés */}
+        <ReglagesGrossesse className={carte} />
 
         {zones && (
           <section className={carte}>

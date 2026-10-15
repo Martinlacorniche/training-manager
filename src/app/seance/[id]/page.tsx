@@ -10,6 +10,7 @@ import DemandeVsFait from "../../DemandeVsFait";
 import StravaMetrics from "../../StravaMetrics";
 import { ResultatTest } from "../../Tests";
 import SuiviSeance from "../../SuiviSeance";
+import { ROSE, superposerAdaptees } from "../../grossesse";
 
 dayjs.locale("fr");
 const jakarta = Plus_Jakarta_Sans({ subsets: ["latin"], weight: ["500", "600", "700", "800"], display: "swap" });
@@ -30,8 +31,10 @@ export default function Seance() {
       if (!session) { router.push("/login"); return; }
       const { data } = await supabase.from("sessions").select("*").eq("id", id).maybeSingle();
       if (!data) { setIntrouvable(true); return; }
-      setS(data);
-      setCoachView(data.user_id !== session.user.id);
+      // Grossesse (15/10/2026) : SA version, chez elle seulement (jamais en vue coach).
+      const mine = data.user_id === session.user.id;
+      setS(mine ? (await superposerAdaptees([data]).catch(() => [data]))[0] : data);
+      setCoachView(!mine);
     })();
   }, [id]);
 
@@ -51,7 +54,7 @@ export default function Seance() {
             {s.test && <ResultatTest sessionId={s.id} protocole={s.test} texte={s.planned_inter} faite={s.status === "valide"} />}
             {s.planned_inter && !(s.test && s.status !== "valide") && (
               <section className="bg-white rounded-2xl border border-slate-200 p-4">
-                <h3 className="font-bold text-slate-800 mb-1">Consignes</h3>
+                <h3 className="font-bold mb-1" style={{ color: s.adaptee ? ROSE : "#1e293b" }}>{s.adaptee ? "Ta version" : "Consignes"}</h3>
                 <p className="text-sm text-slate-600 whitespace-pre-line">{s.planned_inter}</p>
               </section>
             )}

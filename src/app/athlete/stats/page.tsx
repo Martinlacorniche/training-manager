@@ -12,6 +12,7 @@ import "dayjs/locale/fr";
 import { Trophy, ChartBar, Lightning } from "@phosphor-icons/react";
 import { Plus_Jakarta_Sans } from "next/font/google";
 import { chargeCourse, chargeSeance } from "../../charge";
+import { superposerAdaptees } from "../../grossesse";
 
 // Config DayJS
 dayjs.extend(isoWeek);
@@ -64,7 +65,7 @@ export default function StatsAthlete() {
       // Récupérer UNIQUEMENT les sessions de l'athlète connecté
       const { data: sessions } = await supabase
         .from("sessions")
-        .select("date, planned_hour, sport, rpe, status")
+        .select("id, date, planned_hour, sport, rpe, status")
         .eq("user_id", session.user.id)
         .gte("date", start)
         .lte("date", end);
@@ -77,7 +78,8 @@ export default function StatsAthlete() {
         .gte("date", start)
         .lte("date", end);
 
-      setRawData(sessions || []);
+      // Grossesse (15/10/2026) : SA version (durée prévue) superposée.
+      setRawData(await superposerAdaptees(sessions || []).catch(() => sessions || []));
       setCompetitions(comps || []);
       setLoading(false);
     };

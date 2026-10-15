@@ -24,7 +24,7 @@ import {
   CaretLeft, CaretRight, SignOut, GearSix,
   ChartLineUp as LoadIcon, Bicycle, SwimmingPool, Mountains, PersonSimpleRun, Clock, ChartLineUp,
   Smiley, SmileySad, SmileyMeh, Notebook, WarningCircle, Fire, Question, X,
-  ArrowsClockwise, LinkSimple, BabyCarriage
+  ArrowsClockwise, LinkSimple, BabyCarriage, MagicWand
 } from "@phosphor-icons/react";
 
 // DnD
@@ -35,7 +35,8 @@ import { meteoDuJour, couleurWbgt, lectureChaleur, type MeteoJour, type ProfilCh
 import { chargeCourse, chargePrevue, chargeSeance } from "../charge";
 import CarteBebe from "../CarteBebe";
 import GrossesseRdv, { IconeGenre } from "../GrossesseRdv";
-import { rdvDuPlanning, maGrossesse, ROSE, ROSE_FOND, heureCourte, type RdvGrossesse } from "../grossesse";
+import { rdvDuPlanning, maGrossesse, superposerAdaptees, adapter, ROSE, ROSE_FOND, heureCourte, type RdvGrossesse, type Adaptable } from "../grossesse";
+import AdapterSeance from "../AdapterSeance";
 
 // ---------- HELPERS & STYLES (COHÉRENCE COACH) ----------
 
@@ -85,7 +86,9 @@ type UserType = {
   id_auth: string; name: string; coach_code?: string; coach_id?: string; ordre: number | null; strava_athlete_id?: number | null;
   partage_etat_coach?: boolean | null; partage_informe_le?: string | null;
 };
-type SessionType = { id: string; user_id: string; sport?: string; title?: string; planned_hour?: number; planned_inter?: string; intensity?: string; status?: string; rpe?: number | null; athlete_comment?: string | null; date: string; strava_activity_id?: number | null; strava_imported?: boolean | null; strava_distance?: number | null; strava_elevation?: number | null; strava_avg_hr?: number | null; strava_avg_watts?: number | null; strava_tss?: number | null; strava_trimp?: number | null; strava_hr_drift?: number | null; strava_time_in_zone?: number[] | null; strava_pace_100?: number | null; strava_swolf?: number | null; vu_coach?: boolean; };
+type SessionType = { id: string; user_id: string; sport?: string; title?: string; planned_hour?: number; planned_inter?: string; intensity?: string; status?: string; rpe?: number | null; athlete_comment?: string | null; date: string; strava_activity_id?: number | null; strava_imported?: boolean | null; strava_distance?: number | null; strava_elevation?: number | null; strava_avg_hr?: number | null; strava_avg_watts?: number | null; strava_tss?: number | null; strava_trimp?: number | null; strava_hr_drift?: number | null; strava_time_in_zone?: number[] | null; strava_pace_100?: number | null; strava_swolf?: number | null; vu_coach?: boolean;
+  // Mode grossesse (15/10/2026) : sa version adaptée, superposée à l'affichage (jamais écrite dans sessions).
+  test?: string | null; timer_sequence?: unknown; } & Adaptable;
 type AbsenceType = {
   id: string; user_id: string; date: string; type: string; name?: string | null;
   distance_km?: number | null; elevation_d_plus?: number | null; comment?: string | null; lieu_nom?: string | null; heure_depart?: string | null;
@@ -273,7 +276,10 @@ function WeeklyReviewModal({ open, onClose, weekStart, userId, initial, onSaved 
 }
 
 // 3. MODALE VALIDATION (Avec Aide RPE)
-function ValidateModal({ open, onClose, onSaved, initial, stravaConnected, onSynced }:{ open: boolean; onClose: ()=>void; onSaved: (s: SessionType)=>void; initial: SessionType | null; stravaConnected: boolean; onSynced: ()=>void; }) {
+function ValidateModal({ open, onClose, onSaved, initial, stravaConnected, onSynced, grossesse = false, onAdaptee }:{ open: boolean; onClose: ()=>void; onSaved: (s: SessionType)=>void; initial: SessionType | null; stravaConnected: boolean; onSynced: ()=>void; grossesse?: boolean; onAdaptee?: ()=>void; }) {
+  // Mode grossesse (15/10/2026) : « Adapter » crée SA version (couche privée) ; le coach garde la sienne.
+  const [adapterOuvert, setAdapterOuvert] = useState(false);
+  const [voirOriginal, setVoirOriginal] = useState(false);
   const [status, setStatus] = useState<string>(initial?.status || "");
   const [syncOpen, setSyncOpen] = useState(false);
   const [syncMode, setSyncMode] = useState<"sync" | "merge">("sync");
@@ -293,9 +299,17 @@ function ValidateModal({ open, onClose, onSaved, initial, stravaConnected, onSyn
     setHours(Math.floor(ph));
     setMinutes(Math.round((ph % 1) * 60));
     setShowRpeHelp(false);
+    setVoirOriginal(false);
   }, [open, initial]);
 
   if (!open || !initial) return null;
+  const isDone = initial.status === "valide";
+
+  async function revenir() {
+    if (!initial || !confirm("Revenir à la séance du coach ?")) return;
+    try { await adapter(initial.id, "retirer"); onAdaptee?.(); }
+    catch (e) { alert("Oups : " + (e as Error).message); }
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -305,7 +319,9 @@ function ValidateModal({ open, onClose, onSaved, initial, stravaConnected, onSyn
         status,
         rpe,
         athlete_comment: comment,
-        planned_hour: hours + minutes / 60,
+        // Séance adaptée (grossesse, 15/10/2026) : la durée prévue du coach reste la sienne ;
+        // seule la durée RÉELLE (séance faite) est enregistrée. Jamais title ni planned_inter.
+        ...(!initial!.adaptee || status === "valide" ? { planned_hour: hours + minutes / 60 } : {}),
       };
       const { data, error } = await supabase.from("sessions").update(payload).eq("id", initial!.id).select().single();
       if (error) throw error;
@@ -326,6 +342,47 @@ function ValidateModal({ open, onClose, onSaved, initial, stravaConnected, onSyn
             <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
                 <span className="w-2 h-6 bg-emerald-500 rounded-full"/> Valider la séance
             </h3>
+
+            {/* Grossesse (15/10/2026) : SA version, avec la bascule vers celle du coach */}
+            {initial.adaptee && (() => {
+              const o = voirOriginal ? initial.original : null;
+              const titre = (o ? o.title : initial.title) || initial.sport;
+              const duree = o ? o.planned_hour : initial.planned_hour;
+              return (
+                <div className="flex overflow-hidden rounded-2xl border border-pink-200 bg-white shadow-sm">
+                  <div className="w-1 shrink-0" style={{ background: ROSE }} />
+                  <div className="flex-1 p-3.5">
+                    <div className="mb-1.5 flex items-center gap-1.5">
+                      <MagicWand size={16} weight="bold" color={ROSE} />
+                      <span className="flex-1 text-[11px] font-extrabold uppercase tracking-wide" style={{ color: ROSE }}>{voirOriginal ? "Version du coach" : "Ta version"}</span>
+                      <button type="button" onClick={() => setVoirOriginal((v) => !v)} className="text-[11.5px] font-extrabold text-slate-400 hover:text-slate-600">{voirOriginal ? "La mienne" : "Celle du coach"}</button>
+                    </div>
+                    <div className="text-sm font-bold text-slate-800">{titre}{duree ? ` · ${fmtTime(duree)}` : ""}</div>
+                    {!voirOriginal && !!initial.changements?.length && (
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {initial.changements.map((c, i) => (
+                          <span key={i} className="rounded-full bg-pink-50 px-2.5 py-1 text-[11.5px] font-bold text-pink-800">{c}</span>
+                        ))}
+                      </div>
+                    )}
+                    {(o ? o.planned_inter : initial.planned_inter) && (
+                      <p className="mt-2 whitespace-pre-line text-sm leading-6 text-slate-700">{o ? o.planned_inter : initial.planned_inter}</p>
+                    )}
+                    {!isDone && (
+                      <button type="button" onClick={revenir} className="mt-2.5 text-xs font-extrabold text-slate-400 hover:text-slate-600">Revenir à celle du coach</button>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
+            {grossesse && !isDone && !initial.adaptee && !initial.test && (
+              <div className="flex justify-center">
+                <button type="button" onClick={() => setAdapterOuvert(true)}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-pink-200 bg-pink-50 px-4 py-2 text-[13.5px] font-black hover:bg-pink-100" style={{ color: ROSE }}>
+                  <MagicWand size={16} weight="bold" /> Adapter
+                </button>
+              </div>
+            )}
             
             <div className="grid grid-cols-2 gap-4">
               <label className="text-sm font-bold text-slate-700">Statut
@@ -402,6 +459,7 @@ function ValidateModal({ open, onClose, onSaved, initial, stravaConnected, onSyn
         mode={syncMode}
         onDone={() => { setSyncOpen(false); onSynced(); }}
       />
+      <AdapterSeance open={adapterOuvert} sessionId={initial?.id ?? null} onClose={() => setAdapterOuvert(false)} onFait={() => onAdaptee?.()} />
     </>
   );
 }
@@ -606,6 +664,11 @@ const SessionCard = React.memo(function SessionCard({ s, onEdit, onDelete }:{ s:
         <div className="flex items-center gap-1.5 min-w-0">
            <span className={`${style.icon} shrink-0`}>{sportIcon(s.sport, 16)}</span>
            <span className={`text-[11px] font-bold uppercase tracking-wider truncate ${style.text}`}>{s.sport}</span>
+           {s.adaptee && (
+             <span title="Ta version adaptée" className="inline-flex shrink-0 items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[9px] font-black uppercase" style={{ background: ROSE_FOND, color: ROSE }}>
+               <MagicWand size={10} weight="bold" /> adaptée
+             </span>
+           )}
         </div>
         <div className="flex gap-1 shrink-0">
              {(hasPain || hasBadRpe) && <div className="text-rose-600 animate-pulse"><WarningCircle size={16} weight="fill"/></div>}
@@ -716,12 +779,14 @@ function AthleteThematicCalendar({ athleteId, onWeekClick }:{ athleteId: string;
         Promise.all([
             supabase.from("weekly_thematics").select("week_start, thematic").eq("user_id", athleteId).gte("week_start", monthStart).lte("week_start", monthEnd),
             supabase.from("absences_competitions").select("date, name, type, duration_hour, rpe, status").eq("user_id", athleteId).eq("type", "competition").gte("date", monthStart).lte("date", monthEnd),
-            supabase.from("sessions").select("date, planned_hour, intensity, rpe, status").eq("user_id", athleteId).gte("date", monthStart).lte("date", monthEnd),
-        ]).then(([thematicsRes, racesRes, sessionsRes]) => {
+            supabase.from("sessions").select("id, date, planned_hour, intensity, rpe, status").eq("user_id", athleteId).gte("date", monthStart).lte("date", monthEnd),
+        ]).then(async ([thematicsRes, racesRes, sessionsRes]) => {
             // Filtrage des entrées nulles
             setThematics((thematicsRes.data?.filter(t => t) || []) as WeeklyThematicType[]);
             setRaces((racesRes.data || []) as AbsenceType[]);
-            setSessions((sessionsRes.data || []) as SessionType[]);
+            // Grossesse (15/10/2026) : SA version (durée, intensité) superposée.
+            const ss = (sessionsRes.data || []) as SessionType[];
+            setSessions(await superposerAdaptees(ss).catch(() => ss));
             setLoading(false);
         }).catch(err => {
             console.error("Erreur chargement calendrier thématique:", err);
@@ -959,7 +1024,9 @@ export default function AthletePage() {
       // « Vu par ton coach » : marqué automatiquement quand il ouvre ta fiche.
       const { data: vus } = await supabase.from("vus_coach").select("objet_id").eq("athlete_id", athlete.id_auth).eq("objet", "seance");
       const vuIds = new Set((vus || []).map((v: any) => v.objet_id));
-      setSessions(((sess || []) as SessionType[]).map((x) => ({ ...x, vu_coach: vuIds.has(x.id) })));
+      // Grossesse (15/10/2026) : SA version des séances, superposée (et celle du duo s'il voit).
+      const miennes = await superposerAdaptees((sess || []) as SessionType[]).catch(() => (sess || []) as SessionType[]);
+      setSessions(miennes.map((x) => ({ ...x, vu_coach: vuIds.has(x.id) })));
 
       const { data: abs } = await supabase.from("absences_competitions").select("*").eq("user_id", athlete.id_auth).gte("date", start).lte("date", end);
       setAbsences((abs || []) as AbsenceType[]);
@@ -970,7 +1037,8 @@ export default function AthletePage() {
           supabase.from("sessions").select("id, sport, title, planned_hour, status, date, planned_inter, intensity").eq("user_id", pid).gte("date", start).lte("date", end).order("date"),
           supabase.from("users").select("name").eq("id_auth", pid).maybeSingle(),
         ]);
-        setPartner({ nom: (pu?.name || "").split(" ")[0], seances: (ps || []) as SessionType[] });
+        const duo = await superposerAdaptees((ps || []) as SessionType[]).catch(() => (ps || []) as SessionType[]);
+        setPartner({ nom: (pu?.name || "").split(" ")[0], seances: duo });
       } else setPartner({ nom: "", seances: [] });
       setRdvs(await rdvDuPlanning([athlete.id_auth, pid], start, end).catch(() => []));
 
@@ -1353,12 +1421,15 @@ export default function AthletePage() {
                       <span className="w-9 text-[11px] font-bold uppercase text-slate-400">{dayjs(pe.date).format("ddd")}</span>
                       <span className="w-2 h-2 rounded-full shrink-0" style={{ background: col }} />
                       <span className="truncate flex-1 font-semibold text-slate-600">{pe.title || pe.sport}{pe.planned_hour ? ` · ${fmtTime(pe.planned_hour)}` : ""}</span>
+                      {pe.adaptee && <span title="Sa version adaptée" className="shrink-0" style={{ color: ROSE }}><MagicWand size={12} weight="bold" /></span>}
                       {pe.status === "valide" && <span className="text-emerald-500 text-xs">✓</span>}
                       {deja ? (
                         <span className="w-7 text-center text-xs text-rose-500" title="Aussi dans ton plan">❤</span>
                       ) : (
                         <button title="L'ajouter à ton plan" onClick={async () => {
-                          const { error } = await supabase.from("sessions").insert({ user_id: athlete!.id_auth, date: pe.date, sport: pe.sport || "Vélo", title: pe.title || "", planned_hour: pe.planned_hour ?? null, intensity: pe.intensity || "basse", planned_inter: pe.planned_inter || "", status: "planned" });
+                          // Séance adaptée du duo (grossesse, 15/10/2026) : on copie la version de SON coach, pour ne rien trahir.
+                          const src = pe.original ? { ...pe, ...pe.original } : pe;
+                          const { error } = await supabase.from("sessions").insert({ user_id: athlete!.id_auth, date: src.date, sport: src.sport || "Vélo", title: src.title || "", planned_hour: src.planned_hour ?? null, intensity: src.intensity || "basse", planned_inter: src.planned_inter || "", status: "planned" });
                           if (error) alert(error.message); else setRefreshTick((t) => t + 1);
                         }} className="w-7 h-6 rounded-md bg-slate-200 text-blue-600 font-black text-sm hover:bg-slate-300">+</button>
                       )}
@@ -1379,9 +1450,13 @@ export default function AthletePage() {
         initial={currentSession}
         stravaConnected={!!athlete?.strava_athlete_id}
         onSynced={()=>{ setValidateOpen(false); setRefreshTick(t => t + 1); }}
-        onSaved={(ss)=>{
+        grossesse={grossesseActive && currentSession?.user_id === athlete?.id_auth}
+        onAdaptee={()=>{ setValidateOpen(false); setRefreshTick(t => t + 1); }}
+        onSaved={async (ss)=>{
           setValidateOpen(false);
-          setSessions(prev => prev.map(x => x.id === ss.id ? ss : x));
+          // La ligne relue en base est celle du coach : on y remet SA version (grossesse, 15/10/2026).
+          const [o] = await superposerAdaptees([ss]).catch(() => [ss]);
+          setSessions(prev => prev.map(x => x.id === ss.id ? { ...o, vu_coach: x.vu_coach } : x));
         }}
       />
       {athlete && (

@@ -315,13 +315,18 @@ function ValidateModal({ open, onClose, onSaved, initial, stravaConnected, onSyn
     e.preventDefault();
     setLoading(true);
     try {
+      // Statut et durée : écrits seulement s'ils ont changé (19/10/2026). Une fiche
+      // ouverte avant l'arrivée de la sortie renvoyait « prévue » et la durée prévue
+      // par-dessus la séance que Strava ou la montre venait de valider.
+      const duree = hours + minutes / 60;
+      const dureeChangee = Math.abs(duree - Number(initial!.planned_hour ?? 0)) > 1 / 120;
       const payload: Partial<SessionType> = {
-        status,
+        ...((status || null) !== (initial!.status || null) ? { status } : {}),
         rpe,
         athlete_comment: comment,
         // Séance adaptée (grossesse, 15/10/2026) : la durée prévue du coach reste la sienne ;
         // seule la durée RÉELLE (séance faite) est enregistrée. Jamais title ni planned_inter.
-        ...(!initial!.adaptee || status === "valide" ? { planned_hour: hours + minutes / 60 } : {}),
+        ...(dureeChangee && (!initial!.adaptee || status === "valide") ? { planned_hour: duree } : {}),
       };
       const { data, error } = await supabase.from("sessions").update(payload).eq("id", initial!.id).select().single();
       if (error) throw error;

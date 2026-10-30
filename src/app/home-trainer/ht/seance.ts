@@ -76,8 +76,9 @@ function lireCible(jetons: string[], ftp: number): Lu {
   let cible: Cible = { type: "libre" }, rampe: Lu["rampe"], cadence: number | undefined;
   for (let i = 0; i < jetons.length; i++) {
     const t = jetons[i].toLowerCase();
-    const cad = /^@?(\d{2,3})(?:rpm|tr\/?min)$/.exec(t) ?? /^@(\d{2,3})$/.exec(t);
-    if (cad) { cadence = Number(cad[1]); continue; }
+    // « 90rpm », « @90 », et une plage « 50-60rpm » / « @50-60 » (on vise le milieu)
+    const cad = /^@?(\d{2,3})(?:-(\d{2,3}))?(?:rpm|tr\/?min)$/.exec(t) ?? /^@(\d{2,3})(?:-(\d{2,3}))?$/.exec(t);
+    if (cad) { cadence = Math.round((Number(cad[1]) + Number(cad[2] ?? cad[1])) / 2); continue; }
     const bpm = /^(\d{2,3})(?:bpm)?-(\d{2,3})bpm$/.exec(t) ?? /^(\d{2,3})bpm$/.exec(t);
     if (bpm) { cible = { type: "bpm", min: Number(bpm[1]), max: Number(bpm[2] ?? bpm[1]) }; continue; }
     // Rampe : « ramp 50-75% » (icu), « 100>200w » (court)

@@ -21,53 +21,107 @@ const FILTRES: Record<Source, any> = {
   cardio: { filters: [{ services: [UUID.hr] }] },
 };
 
+// Les appareils déjà choisis sont retenus (dans ce navigateur) : au retour
+// sur la page, ils se reconnectent seuls, sans repasser par la liste de Chrome.
+const CLE = "ht-appareils";
+const retenus = (): Partial<Record<Source, string>> => { try { return JSON.parse(localStorage.getItem(CLE) ?? "{}"); } catch { return {}; } };
+const retenir = (src: Source, id: string | null) => {
+  try { const r = retenus(); if (id) r[src] = id; else delete r[src]; localStorage.setItem(CLE, JSON.stringify(r)); } catch { /* navigation privée */ }
+};
+const delai = <T,>(p: Promise<T>, ms: number) => Promise.race([p, new Promise<never>((_, ko) => setTimeout(() => ko(new Error("trop long")), ms))]);
+
+/** Un seul pilote à la fois : si Zwift, MyWhoosh ou l'app Tacx tient le
+ *  home-trainer, la connexion échoue. On le dit en clair. */
+export const messageConnexion = (e: unknown) => {
+  const m = (e as Error)?.message ?? "";
+  if (/cancel/i.test(m)) return null;
+  return "Connexion impossible. Ferme Zwift, MyWhoosh ou l'app Tacx (le home-trainer n'accepte qu'une app à la fois), puis réessaie.";
+};
+
 export class Capteur {
   device: any = null;
   private cp: any = null;
   private file: Promise<unknown> = Promise.resolve();
   private derniere = "";
   private controle = false;
+  private actif = true;
+  private enCours = false;
   private etatPuissance: { tours?: number; t?: number; cadence?: number } = {};
+  private ecouteurs: { c: any; f: (ev: any) => void }[] = [];
   onEtat: (e: EtatCapteur) => void = () => {};
 
   constructor(readonly src: Source, private ecoute: Ecoute) {}
 
+  /** La liste de Chrome (il faut un clic). */
   async choisir() {
-    this.device = await bt().requestDevice(FILTRES[this.src]);
-    this.device.addEventListener("gattserverdisconnected", () => this.reconnecter());
+    this.adopter(await bt().requestDevice(FILTRES[this.src]));
     await this.connecter();
   }
 
+  /** Sans clic : l'appareil retenu la dernière fois, s'il est autorisé et allumé. */
+  async retrouver(): Promise<boolean> {
+    const id = retenus()[this.src];
+    if (!id || !bt()?.getDevices) return false;
+    const d = (await bt().getDevices()).find((x: any) => x.id === id);
+    if (!d) return false;
+    this.adopter(d);
+    this.onEtat({ nom: d.name ?? "Capteur", connecte: false });
+    try { await this.connecter(); } catch { this.reconnecter(); }
+    return true;
+  }
+
+  private adopter(d: any) {
+    this.device = d;
+    this.actif = true;
+    d.addEventListener("gattserverdisconnected", () => this.reconnecter());
+    retenir(this.src, d.id);
+  }
+
+  private ecouter(c: any, f: (ev: any) => void) {
+    // Après une reconnexion, Chrome peut rendre la même caractéristique : pas de doublon d'écoute.
+    for (const e of this.ecouteurs.filter((x) => x.c === c)) c.removeEventListener("characteristicvaluechanged", e.f);
+    this.ecouteurs = this.ecouteurs.filter((x) => x.c !== c);
+    c.addEventListener("characteristicvaluechanged", f);
+    this.ecouteurs.push({ c, f });
+  }
+
   private async connecter() {
-    const gatt = await this.device.gatt.connect();
+    const gatt = await delai(this.device.gatt.connect(), 10000) as any;
     if (this.src === "ht") {
       const s = await gatt.getPrimaryService(UUID.ftms);
       const data = await s.getCharacteristic(UUID.indoorBikeData);
-      data.addEventListener("characteristicvaluechanged", (ev: any) => this.ecoute("ht", lireIndoorBike(ev.target.value)));
+      this.ecouter(data, (ev: any) => this.ecoute("ht", lireIndoorBike(ev.target.value)));
       await data.startNotifications();
       this.cp = await s.getCharacteristic(UUID.controlPoint);
       await this.cp.startNotifications();      // les réponses arrivent en « indications »
-      this.controle = false; this.derniere = "";
+      this.controle = false; this.derniere = "";   // la consigne repart à la prochaine image
     } else if (this.src === "pedales") {
       const s = await gatt.getPrimaryService(UUID.power);
       const c = await s.getCharacteristic(UUID.powerMeasurement);
-      c.addEventListener("characteristicvaluechanged", (ev: any) => this.ecoute("pedales", lirePuissance(ev.target.value, this.etatPuissance)));
+      this.ecouter(c, (ev: any) => this.ecoute("pedales", lirePuissance(ev.target.value, this.etatPuissance)));
       await c.startNotifications();
     } else {
       const s = await gatt.getPrimaryService(UUID.hr);
       const c = await s.getCharacteristic(UUID.hrMeasurement);
-      c.addEventListener("characteristicvaluechanged", (ev: any) => this.ecoute("cardio", { bpm: lireCardio(ev.target.value) }));
+      this.ecouter(c, (ev: any) => this.ecoute("cardio", { bpm: lireCardio(ev.target.value) }));
       await c.startNotifications();
     }
     this.onEtat({ nom: this.device.name ?? "Capteur", connecte: true });
   }
 
-  private async reconnecter() {
+  /** Coupure : on réessaie sans fin (toutes les 2 à 5 s) tant qu'on ne l'a pas oublié. */
+  async reconnecter() {
+    if (this.enCours || !this.device) return;
+    this.enCours = true;
+    this.cp = null;
     this.onEtat({ nom: this.device?.name ?? "Capteur", connecte: false });
-    for (let k = 0; k < 10 && this.device; k++) {
-      await new Promise((r) => setTimeout(r, 1000 + k * 1000));
-      try { await this.connecter(); return; } catch { /* on réessaie */ }
+    for (let k = 0; this.actif && this.device; k++) {
+      await new Promise((r) => setTimeout(r, Math.min(5000, 2000 + k * 500)));
+      if (!this.actif || !this.device) break;
+      if (this.device.gatt?.connected && this.cp) break;
+      try { await this.connecter(); break; } catch { /* on réessaie */ }
     }
+    this.enCours = false;
   }
 
   private ecrire(octets: Uint8Array) {
@@ -86,8 +140,10 @@ export class Capteur {
     await this.ecrire(c.type === "erg" ? Commande.puissance(c.w) : Commande.pente(c.pct));
   }
 
-  oublier() {
-    const d = this.device; this.device = null; this.cp = null;
+  /** Débrancher sans l'oublier (fin de page) ou en l'oubliant (changer d'appareil). */
+  oublier(definitivement = true) {
+    const d = this.device; this.actif = false; this.device = null; this.cp = null;
+    if (definitivement) retenir(this.src, null);
     try { d?.gatt?.disconnect(); } catch { /* déjà parti */ }
     this.onEtat(null);
   }

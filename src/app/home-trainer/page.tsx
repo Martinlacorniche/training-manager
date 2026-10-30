@@ -24,7 +24,7 @@ import { depuisCourt, depuisIcu, versCourt, versIcu, aplatir, dureeTotale, type 
 import { Moteur, type Etat } from "./ht/moteur";
 import { fichierFit } from "./ht/fit";
 import { ecart, zoneEtape, ZONE_PAUSE } from "./ht/zones";
-import { Capteur, Simulateur, bluetoothDispo, type EtatCapteur, type Source } from "./capteurs";
+import { Capteur, Simulateur, bluetoothDispo, messageConnexion, type EtatCapteur, type Source } from "./capteurs";
 import { Editeur } from "./Editeur";
 import { Bandeau, bandeauDispo, chrono, ouvrirFenetre, type Actions } from "./Bandeau";
 import { Anneau, Bouton, Bulle, Carte, Ciel, Icone, Onglets, Profil, profilDe, Sur, Titre } from "./ui";
@@ -125,17 +125,28 @@ function HomeTrainer() {
     moteur.current?.mesurer(src, m, Date.now());
   }, []);
 
+  const nouveauCapteur = useCallback((src: Source) => {
+    const c = new Capteur(src, ecoute);
+    c.onEtat = (e) => setCapteurs((x) => ({ ...x, [src]: e }));
+    cap.current[src] = c;
+    return c;
+  }, [ecoute]);
+
+  // Au retour sur la page : le matériel de la dernière fois se rebranche seul.
+  useEffect(() => {
+    if (simu || !bluetoothDispo()) return;
+    const ouverts = cap.current;
+    (["ht", "cardio", "pedales"] as Source[]).forEach((src) => { nouveauCapteur(src).retrouver().catch(() => {}); });
+    return () => { Object.values(ouverts).forEach((c) => c?.oublier(false)); };
+  }, [simu, nouveauCapteur]);
+
   const connecter = async (src: Source) => {
     setErreurBt(null);
     try {
       cap.current[src]?.oublier();
-      const c = new Capteur(src, ecoute);
-      c.onEtat = (e) => setCapteurs((x) => ({ ...x, [src]: e }));
-      cap.current[src] = c;
-      await c.choisir();
+      await nouveauCapteur(src).choisir();
     } catch (e) {
-      const msg = (e as Error).message ?? "";
-      if (!/cancel/i.test(msg)) setErreurBt(msg || "Connexion impossible");
+      setErreurBt(messageConnexion(e));
     }
   };
 
@@ -323,10 +334,16 @@ function HomeTrainer() {
             {etapes.length > 0 && <button type="button" onClick={() => moteur.current?.basculerErg()} className="rounded-full bg-white border border-[#eef2f7] px-4 py-2.5 text-sm font-extrabold text-slate-700 hover:bg-slate-50">{etat.erg ? "Passer en résistance" : "Repasser en ERG"}</button>}
             <button type="button" onClick={() => { if (confirm("Terminer la séance ?")) actions.terminer(); }} className="flex items-center gap-1.5 rounded-full bg-rose-50 px-4 py-2.5 text-sm font-black text-rose-600 hover:bg-rose-100"><Icone d={mdiFlagCheckered} taille={16} /> Terminer</button>
           </div>
-          {!simu && !capteurs.ht?.connecte && <p className="text-center text-amber-700 text-sm font-extrabold">Home-trainer déconnecté, je réessaie…</p>}
+          {!simu && (["ht", "cardio", "pedales"] as Source[]).filter((x) => capteurs[x] && !capteurs[x]!.connecte).map((x) => (
+            <div key={x} className="flex items-center gap-3 rounded-2xl bg-amber-100 px-4 py-3 text-amber-900">
+              <span className="w-4 h-4 rounded-full border-2 border-amber-300 border-t-amber-700 animate-spin shrink-0" />
+              <span className="flex-1 font-extrabold text-sm">{x === "ht" ? "Home-trainer perdu : continue de pédaler, je le rebranche tout seul." : x === "cardio" ? "Ceinture cardio perdue, je la rebranche…" : "Pédales perdues, je les rebranche…"}</span>
+              <button type="button" onClick={() => connecter(x)} className="rounded-full bg-white px-3 py-1.5 text-xs font-black text-amber-900">Choisir à nouveau</button>
+            </div>
+          ))}
           <p className="text-center text-xs text-slate-400 hidden md:block">Raccourcis dans le bandeau : espace = pause · ← → = étapes · ↑ ↓ = plus ou moins dur</p>
         </div>
-        {fenetre && <Bandeau fenetre={fenetre} etat={etat} etapes={etapes} ftp={ftp} position={position(etapes, etat)} police={jakarta.style.fontFamily} actions={actions} onFermer={() => { fenetre.close(); window.focus(); }} />}
+        {fenetre && <Bandeau fenetre={fenetre} etat={etat} etapes={etapes} ftp={ftp} position={position(etapes, etat)} police={jakarta.style.fontFamily} perdu={!simu && capteurs.ht && !capteurs.ht.connecte ? "Home-trainer perdu, je le rebranche…" : null} actions={actions} onFermer={() => { fenetre.close(); window.focus(); }} />}
       </main>
     );
   }

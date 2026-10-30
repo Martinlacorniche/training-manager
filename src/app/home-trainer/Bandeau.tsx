@@ -52,8 +52,8 @@ const Valeur = ({ titre, children, icone }: { titre: string; children: React.Rea
   </div>
 );
 
-export function Bandeau({ fenetre, etat, etapes, ftp, position, police, actions, onFermer }: {
-  fenetre: Window; etat: Etat; etapes: Etape[]; ftp: number; position: number; police: string; actions: Actions; onFermer: () => void;
+export function Bandeau({ fenetre, etat, etapes, ftp, position, police, perdu, actions, onFermer }: {
+  fenetre: Window; etat: Etat; etapes: Etape[]; ftp: number; position: number; police: string; perdu: string | null; actions: Actions; onFermer: () => void;
 }) {
   const [surStop, setSurStop] = useState(false);
   useEffect(() => { if (!surStop) return; const h = setTimeout(() => setSurStop(false), 3000); return () => clearTimeout(h); }, [surStop]);
@@ -72,7 +72,7 @@ export function Bandeau({ fenetre, etat, etapes, ftp, position, police, actions,
   const z = etat.pause !== "non" ? ZONE_PAUSE : zoneEtape(etat.etape, ftp);
   const ec = ecart(etat.watts, etat.cible);
   const total = etapes.reduce((a, e) => a + e.s, 0);
-  const message = etat.alerte ?? (etat.pause === "auto" ? "En pause — repédale pour reprendre" : etat.pause === "manuelle" ? "En pause" : null);
+  const message = perdu ?? etat.alerte ?? (etat.pause === "auto" ? "En pause — repédale pour reprendre" : etat.pause === "manuelle" ? "En pause" : null);
 
   return createPortal(
     <div className="h-screen flex flex-col select-none" style={{ ...degrade(z.degrade), fontFamily: police }}>

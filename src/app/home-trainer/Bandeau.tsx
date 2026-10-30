@@ -1,20 +1,21 @@
 "use client";
 // Le bandeau flottant (Document Picture-in-Picture de Chrome) : une fenêtre
-// étroite, toujours au-dessus, que Martin pose à côté de son film. Tout ce
-// qu'il faut pendant l'effort, et rien d'autre.
+// étroite, toujours au-dessus, que Martin pose à côté de son film. Il prend
+// la couleur de la zone, comme la grande carte de l'écran.
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { Pause, Play, SkipBack, SkipForward, Stop, ArrowsOut, Minus, Plus } from "@phosphor-icons/react";
+import { mdiArrowExpand, mdiFlagCheckered, mdiHeart, mdiMinus, mdiPause, mdiPlay, mdiPlus, mdiRotateRight, mdiSkipNext, mdiSkipPrevious } from "@mdi/js";
 import type { Etat } from "./ht/moteur";
 import type { Etape } from "./ht/seance";
-import { Profil } from "./Profil";
+import { ecart, zoneEtape, ZONE_PAUSE } from "./ht/zones";
+import { degrade, Icone } from "./ui";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export const bandeauDispo = () => typeof window !== "undefined" && "documentPictureInPicture" in window;
 
 export async function ouvrirFenetre(): Promise<Window> {
-  const w: Window = await (window as any).documentPictureInPicture.requestWindow({ width: 1180, height: 104 });
-  // Les styles de la page (Tailwind) suivent dans la fenêtre
+  const w: Window = await (window as any).documentPictureInPicture.requestWindow({ width: 1180, height: 96 });
+  // Les styles de la page (Tailwind, polices) suivent dans la fenêtre
   for (const ss of Array.from(document.styleSheets)) {
     try {
       const st = w.document.createElement("style");
@@ -25,7 +26,6 @@ export async function ouvrirFenetre(): Promise<Window> {
     }
   }
   w.document.body.style.margin = "0";
-  w.document.body.style.background = "#0b1220";
   w.document.title = "Home-trainer";
   return w;
 }
@@ -38,19 +38,22 @@ export const chrono = (s: number | null) => {
 
 export type Actions = { pause: () => void; suivante: () => void; precedente: () => void; plus: () => void; moins: () => void; terminer: () => void };
 
-const Bouton = ({ onClick, children, titre, rouge }: { onClick: () => void; children: React.ReactNode; titre: string; rouge?: boolean }) => (
+const Rond = ({ onClick, d, titre, gros }: { onClick: () => void; d: string; titre: string; gros?: boolean }) => (
   <button type="button" title={titre} onClick={onClick}
-    className={`h-11 min-w-11 px-2 rounded-xl flex items-center justify-center ${rouge ? "bg-rose-600 text-white" : "bg-white/10 hover:bg-white/20 text-white"}`}>{children}</button>
+    className={`${gros ? "h-14 w-14 bg-white text-slate-800" : "h-11 w-11 bg-white/20 hover:bg-white/30 text-white"} rounded-full flex items-center justify-center shrink-0`}>
+    <Icone d={d} taille={gros ? 30 : 20} />
+  </button>
 );
-const Case = ({ titre, children, large }: { titre: string; children: React.ReactNode; large?: boolean }) => (
-  <div className={`flex flex-col justify-center ${large ? "min-w-[150px]" : "min-w-[80px]"}`}>
-    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 leading-none">{titre}</span>
-    <span className="text-white font-extrabold tabular-nums leading-tight">{children}</span>
+
+const Valeur = ({ titre, children, icone }: { titre: string; children: React.ReactNode; icone?: string }) => (
+  <div className="flex flex-col justify-center shrink-0">
+    <span className="flex items-center gap-1 text-[10px] font-extrabold uppercase tracking-[0.12em] text-white/80 leading-none">{icone && <Icone d={icone} taille={11} />}{titre}</span>
+    <span className="text-white font-black tabular-nums leading-tight text-[26px]">{children}</span>
   </div>
 );
 
-export function Bandeau({ fenetre, etat, etapes, ftp, position, actions, onFermer }: {
-  fenetre: Window; etat: Etat; etapes: Etape[]; ftp: number; position: number; actions: Actions; onFermer: () => void;
+export function Bandeau({ fenetre, etat, etapes, ftp, position, police, actions, onFermer }: {
+  fenetre: Window; etat: Etat; etapes: Etape[]; ftp: number; position: number; police: string; actions: Actions; onFermer: () => void;
 }) {
   const [surStop, setSurStop] = useState(false);
   useEffect(() => { if (!surStop) return; const h = setTimeout(() => setSurStop(false), 3000); return () => clearTimeout(h); }, [surStop]);
@@ -66,38 +69,45 @@ export function Bandeau({ fenetre, etat, etapes, ftp, position, actions, onFerme
     return () => fenetre.removeEventListener("keydown", k);
   }, [fenetre, actions]);
 
-  const ecart = etat.cible && etat.watts != null ? etat.watts - etat.cible : 0;
-  const coulW = !etat.cible || etat.watts == null ? "text-white" : Math.abs(ecart) <= etat.cible * 0.05 ? "text-emerald-400" : ecart > 0 ? "text-orange-400" : "text-sky-400";
+  const z = etat.pause !== "non" ? ZONE_PAUSE : zoneEtape(etat.etape, ftp);
+  const ec = ecart(etat.watts, etat.cible);
+  const total = etapes.reduce((a, e) => a + e.s, 0);
+  const message = etat.alerte ?? (etat.pause === "auto" ? "En pause — repédale pour reprendre" : etat.pause === "manuelle" ? "En pause" : null);
+
   return createPortal(
-    <div className="h-screen flex flex-col bg-[#0b1220] select-none" style={{ fontFamily: "system-ui, sans-serif" }}>
-      <div className="flex-1 flex items-center gap-4 px-3">
-        <div className="flex items-baseline gap-2 min-w-[170px]">
-          <span className={`text-4xl font-black tabular-nums ${coulW}`}>{etat.watts ?? "—"}</span>
-          <span className="text-slate-400 text-sm font-bold">/ {etat.cible ?? "—"} W</span>
+    <div className="h-screen flex flex-col select-none" style={{ ...degrade(z.degrade), fontFamily: police }}>
+      <div className="flex-1 flex items-center gap-5 px-4 min-w-0">
+        <div className="flex flex-col justify-center shrink-0 min-w-[190px]">
+          <span className="text-[10px] font-extrabold uppercase tracking-[0.12em] text-white/80 leading-none">{message ?? z.mot}{ec && !message ? ` · ${ec.texte}` : ""}</span>
+          <span className="flex items-baseline gap-1.5">
+            <span className="text-[44px] font-black text-white tabular-nums leading-none tracking-tight">{etat.watts ?? "—"}</span>
+            <span className="text-white/85 text-lg font-black">/ {etat.cible ?? "—"} W</span>
+          </span>
         </div>
-        <Case titre="Cadence"><span className="text-2xl">{etat.cadence ?? "—"}</span></Case>
-        <Case titre="Cœur"><span className="text-2xl text-rose-300">{etat.bpm ?? "—"}</span></Case>
-        <Case titre="Étape" large><span className="text-2xl">{etat.attendLap ? "⏭ ?" : chrono(etat.resteEtape)}</span>
-          {etat.suivante && <span className="text-[11px] text-slate-400 font-semibold"> puis {etat.suivante.cible.type === "w" ? `${Math.round((etat.suivante.cible.min + etat.suivante.cible.max) / 2 * etat.ajust)} W` : etat.suivante.cible.type === "bpm" ? `${etat.suivante.cible.min} bpm` : "libre"}</span>}</Case>
-        <Case titre="Total" large><span className="text-xl">{chrono(etat.tTotal)}{etat.dureeTotale ? <span className="text-slate-400 text-sm"> / {chrono(etat.dureeTotale)}</span> : null}</span></Case>
+        <Valeur titre="Cadence" icone={mdiRotateRight}>{etat.cadence ?? "—"}</Valeur>
+        <Valeur titre="Cœur" icone={mdiHeart}>{etat.bpm ?? "—"}</Valeur>
+        <Valeur titre="Étape">{etat.attendLap ? "⏭" : chrono(etat.resteEtape ?? etat.tEtape)}</Valeur>
+        <Valeur titre="Total">{chrono(etat.tTotal)}{etat.dureeTotale ? <span className="text-white/70 text-base"> / {chrono(etat.dureeTotale)}</span> : null}</Valeur>
         <div className="flex items-center gap-1.5 ml-auto">
-          <Bouton titre="Moins dur (flèche bas)" onClick={actions.moins}><Minus size={16} weight="bold" /></Bouton>
-          <span className="text-xs text-slate-300 font-bold w-10 text-center tabular-nums">{etat.erg ? `${Math.round(etat.ajust * 100)}%` : `${etat.pente}%`}</span>
-          <Bouton titre="Plus dur (flèche haut)" onClick={actions.plus}><Plus size={16} weight="bold" /></Bouton>
+          <Rond titre="Moins dur (flèche bas)" d={mdiMinus} onClick={actions.moins} />
+          <span className="w-11 text-center text-xs font-black text-white tabular-nums">{etat.erg ? `${Math.round(etat.ajust * 100)}%` : `${etat.pente}%`}</span>
+          <Rond titre="Plus dur (flèche haut)" d={mdiPlus} onClick={actions.plus} />
           <span className="w-2" />
-          <Bouton titre="Précédent (flèche gauche)" onClick={actions.precedente}><SkipBack size={20} weight="fill" /></Bouton>
-          <Bouton titre="Pause (espace)" onClick={actions.pause}>{etat.pause === "non" ? <Pause size={22} weight="fill" /> : <Play size={22} weight="fill" />}</Bouton>
-          <Bouton titre="Suivant (flèche droite)" onClick={actions.suivante}><SkipForward size={20} weight="fill" /></Bouton>
+          <Rond titre="Précédent (flèche gauche)" d={mdiSkipPrevious} onClick={actions.precedente} />
+          <Rond gros titre="Pause (espace)" d={etat.pause === "non" ? mdiPause : mdiPlay} onClick={actions.pause} />
+          <Rond titre="Suivant (flèche droite)" d={mdiSkipNext} onClick={actions.suivante} />
           <span className="w-2" />
-          <Bouton titre="Terminer et enregistrer" rouge={surStop} onClick={() => (surStop ? actions.terminer() : setSurStop(true))}>
-            {surStop ? <span className="text-xs font-bold px-1">Terminer ?</span> : <Stop size={20} weight="fill" />}
-          </Bouton>
-          <Bouton titre="Revenir à la grande vue" onClick={onFermer}><ArrowsOut size={20} /></Bouton>
+          {surStop
+            ? <button type="button" onClick={actions.terminer} className="h-11 px-4 rounded-full bg-white text-rose-600 font-black text-sm shrink-0">Terminer ?</button>
+            : <Rond titre="Terminer et enregistrer" d={mdiFlagCheckered} onClick={() => setSurStop(true)} />}
+          <Rond titre="Revenir à la grande vue" d={mdiArrowExpand} onClick={onFermer} />
         </div>
       </div>
-      {etat.alerte && <div className="absolute top-1 left-1/2 -translate-x-1/2 px-3 py-0.5 rounded-full bg-amber-400 text-slate-900 text-xs font-bold">{etat.alerte}</div>}
-      {etat.pause !== "non" && !etat.fini && <div className="absolute top-1 left-1/2 -translate-x-1/2 px-3 py-0.5 rounded-full bg-sky-500 text-white text-xs font-bold">{etat.pause === "auto" ? "En pause — repédale pour reprendre" : "En pause"}</div>}
-      {etapes.length > 0 && <Profil etapes={etapes} ftp={ftp} ecoule={position} hauteur={14} sombre />}
+      {total > 0 && (
+        <div className="h-1.5 bg-black/15">
+          <div className="h-full bg-white/90 rounded-r-full" style={{ width: `${Math.min(100, (position / total) * 100)}%`, transition: "width 0.25s linear" }} />
+        </div>
+      )}
     </div>,
     fenetre.document.body,
   );

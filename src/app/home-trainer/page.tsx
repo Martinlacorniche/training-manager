@@ -4,23 +4,30 @@
 // piloter le home-trainer en ERG sur les séances du coach ou faites à la
 // main, un bandeau flottant à poser à côté d'un film, et l'activité sur
 // Strava à la fin. Pas de monde virtuel.
-// Pendant de l'app : App-Coach/app/home-trainer.tsx. La logique (séances,
-// Bluetooth, moteur, .fit) est partagée : ./ht/*.ts.
+// Pendant de l'app : App-Coach/app/home-trainer.tsx, même design (celui de
+// l'app : Météo du corps, Progression). La logique (séances, Bluetooth,
+// moteur, .fit, zones) est partagée : ./ht/*.ts.
 // ─────────────────────────────────────────────────────────────────────────
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import dayjs from "dayjs";
 import "dayjs/locale/fr";
 import { Plus_Jakarta_Sans } from "next/font/google";
-import { ArrowLeft, Bicycle, Heartbeat, Lightning, PictureInPicture, Play, Pause, SkipBack, SkipForward, Stop, Minus, Plus, Star, DownloadSimple, CheckCircle, Warning } from "@phosphor-icons/react";
+import {
+  mdiAlertCircle, mdiBike, mdiBikeFast, mdiCalendarBlankOutline, mdiCalendarMonth, mdiCheckCircle, mdiChevronLeft, mdiCloudUploadOutline,
+  mdiDownload, mdiFlagCheckered, mdiHeart, mdiHeartPulse, mdiLightningBolt, mdiMapMarkerDistance, mdiMinus, mdiPause, mdiPauseCircle,
+  mdiPictureInPictureBottomRight, mdiPlay, mdiPlus, mdiRoadVariant, mdiRotateRight, mdiSkipNext, mdiSkipPrevious, mdiSlopeUphill, mdiStar,
+  mdiStarOutline, mdiTarget, mdiTimerOutline, mdiTrophyOutline, mdiTuneVariant,
+} from "@mdi/js";
 import { supabase } from "@/lib/supabaseClient";
 import { depuisCourt, depuisIcu, versCourt, versIcu, aplatir, dureeTotale, type Bloc, type Etape } from "./ht/seance";
 import { Moteur, type Etat } from "./ht/moteur";
 import { fichierFit } from "./ht/fit";
+import { ecart, zoneEtape, ZONE_PAUSE } from "./ht/zones";
 import { Capteur, Simulateur, bluetoothDispo, type EtatCapteur, type Source } from "./capteurs";
-import { Profil } from "./Profil";
 import { Editeur } from "./Editeur";
 import { Bandeau, bandeauDispo, chrono, ouvrirFenetre, type Actions } from "./Bandeau";
+import { Anneau, Bouton, Bulle, Carte, Ciel, Icone, Onglets, Profil, profilDe, Sur, Titre } from "./ui";
 
 dayjs.locale("fr");
 const jakarta = Plus_Jakarta_Sans({ subsets: ["latin"], weight: ["500", "600", "700", "800"], display: "swap" });
@@ -29,9 +36,12 @@ type Choix = { titre: string; blocs: Bloc[]; sessionId: string | null; texteCour
 type SeanceDb = { id: string; date: string; title: string | null; workout_text: string | null; planned_hour: number | null; status: string | null };
 
 const RPE = ["", "Très facile", "Facile", "Facile", "Moyen", "Moyen", "Dur", "Dur", "Très dur", "Très dur", "À fond"];
+const RPE_COUL = ["", "#10b981", "#10b981", "#34d399", "#a3e635", "#facc15", "#fbbf24", "#fb923c", "#f97316", "#f43f5e", "#be123c"];
+const CIEL_PRET = ["#2563eb", "#0ea5e9", "#38bdf8"], CIEL_ATTENTE = ["#475569", "#64748b", "#94a3b8"];
 
 // Où en est-on dans le dessin de la séance (les étapes « lap » peuvent déborder).
 const position = (etapes: Etape[], e: Etat) => etapes.slice(0, e.i).reduce((a, x) => a + x.s, 0) + Math.min(e.tEtape, e.etape?.s ?? 0);
+const cibleTexte = (e: Etape, ajust = 1) => e.cible.type === "w" ? `${Math.round(((e.cible.min + e.cible.max) / 2) * ajust)} W` : e.cible.type === "bpm" ? `${e.cible.min} bpm` : "libre";
 
 function versBase64(o: Uint8Array) {
   let s = "";
@@ -39,17 +49,22 @@ function versBase64(o: Uint8Array) {
   return btoa(s);
 }
 
-// Hors du composant : recréés à chaque image (4 par seconde), les boutons
-// perdraient des clics.
-const Gros = ({ titre, children, sous, icone }: { titre: string; children: React.ReactNode; sous?: React.ReactNode; icone?: React.ReactNode }) => (
-  <div className="rounded-3xl bg-white/5 p-5 flex flex-col">
-    <span className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">{icone}{titre}</span>
-    <span className="text-5xl md:text-6xl font-black text-white tabular-nums mt-1">{children}</span>
-    {sous && <span className="text-sm text-slate-400 font-semibold mt-1">{sous}</span>}
-  </div>
+// Hors du composant : recréés à chaque image (4 par seconde), les boutons perdraient des clics.
+const Mesure = ({ titre, icone, coul, children, unite }: { titre: string; icone: string; coul?: string; children: React.ReactNode; unite?: string }) => (
+  <Carte>
+    <div className="flex items-center gap-1.5 text-[11px] font-extrabold uppercase tracking-[0.12em] text-slate-400"><Icone d={icone} taille={15} coul={coul ?? "#94a3b8"} />{titre}</div>
+    <div className="flex items-baseline gap-1 mt-0.5"><span className="text-[44px] font-black text-slate-800 tabular-nums leading-tight">{children}</span>{unite && <span className="text-[13px] font-extrabold text-slate-400">{unite}</span>}</div>
+  </Carte>
 );
-const B = ({ onClick, children, titre, grand }: { onClick: () => void; children: React.ReactNode; titre: string; grand?: boolean }) => (
-  <button type="button" title={titre} onClick={onClick} className={`${grand ? "w-20 h-20 bg-emerald-500 hover:bg-emerald-400" : "w-14 h-14 bg-white/10 hover:bg-white/20"} rounded-full flex items-center justify-center text-white`}>{children}</button>
+const Rond = ({ onClick, d, titre, grand, couleurs }: { onClick: () => void; d: string; titre: string; grand?: boolean; couleurs?: readonly string[] }) => (
+  <button type="button" title={titre} onClick={onClick}
+    className={`${grand ? "w-20 h-20 text-white" : "w-14 h-14 bg-white border border-[#eef2f7] text-slate-800 hover:bg-slate-50"} rounded-full flex items-center justify-center transition active:scale-95`}
+    style={grand && couleurs ? { backgroundImage: `linear-gradient(135deg, ${couleurs.join(", ")})`, boxShadow: `0 6px 18px ${couleurs[0]}66` } : { boxShadow: "0 3px 10px rgba(100,116,139,0.12)" }}>
+    <Icone d={d} taille={grand ? 40 : 26} />
+  </button>
+);
+const Vide = ({ icone, children }: { icone: string; children: React.ReactNode }) => (
+  <div className="flex flex-col items-center gap-1.5 py-6 text-center"><Icone d={icone} taille={34} coul="#cbd5e1" /><p className="font-bold text-slate-500">{children}</p></div>
 );
 
 function HomeTrainer() {
@@ -129,7 +144,7 @@ function HomeTrainer() {
     setChoix(c);
     moteur.current = new Moteur(c.blocs, ftp);
     setPhase("rouler");
-    setEnvoi({ etat: "rien" });
+    setEnvoi({ etat: "rien" }); setFavoriOk(false); setFavoriNom("");
     if (simu) { sim.current = new Simulateur(ecoute); sim.current.demarrer(); }
     try { verrou.current = await (navigator as any).wakeLock?.request("screen"); } catch { /* pas grave */ } // eslint-disable-line @typescript-eslint/no-explicit-any
   };
@@ -180,14 +195,13 @@ function HomeTrainer() {
     if (m.points.length < 30) { setEnvoi({ etat: "erreur", texte: "Moins de 30 secondes enregistrées : rien à envoyer." }); return; }
     setEnvoi({ etat: "en_cours", texte: "J'enregistre la séance…" });
     try {
-      const heures = Math.round((m.points.length / 3600) * 100) / 100;
       let sessionId = choix.sessionId;
       if (sessionId) {
         await supabase.from("sessions").update({ status: "valide", rpe }).eq("id", sessionId);
       } else {
         const { data, error } = await supabase.from("sessions").insert({
           user_id: moi, date: dayjs().format("YYYY-MM-DD"), sport: "Vélo", title: choix.titre,
-          planned_hour: Math.round((dureeTotale(choix.blocs) / 3600) * 100) / 100 || heures,
+          planned_hour: Math.round(((dureeTotale(choix.blocs) || m.points.length) / 3600) * 100) / 100,
           workout_text: choix.blocs.length ? versIcu(choix.blocs) : null, workout_target: choix.blocs.length ? "POWER" : null,
           status: "valide", rpe,
         }).select("id").single();
@@ -234,235 +248,267 @@ function HomeTrainer() {
   const etapes = useMemo(() => (choix ? aplatir(choix.blocs) : []), [choix]);
   const lecture = depuisCourt(texte, ftp);
   const pret = simu || !!capteurs.ht?.connecte;
+  const fond = `${jakarta.className} min-h-screen bg-[#F8FAFC] px-4 py-6 md:py-10`;
 
-  // ─────────────────────────── Écrans ───────────────────────────
-
+  // ─────────────────────────── Rouler ───────────────────────────
   if (phase === "rouler" && etat && choix) {
-    const ecart = etat.cible && etat.watts != null ? etat.watts - etat.cible : 0;
-    const coul = !etat.cible || etat.watts == null ? "text-white" : Math.abs(ecart) <= etat.cible * 0.05 ? "text-emerald-400" : ecart > 0 ? "text-orange-400" : "text-sky-400";
+    const z = etat.pause !== "non" ? ZONE_PAUSE : zoneEtape(etat.etape, ftp);
+    const ec = ecart(etat.watts, etat.cible);
+    const partEtape = etat.etape && etat.etape.s ? Math.min(1, etat.tEtape / etat.etape.s) : 0;
+    const km = moteur.current?.points.length ? (moteur.current.points[moteur.current.points.length - 1].m / 1000).toFixed(1) : "0.0";
     return (
-      <main className={`${jakarta.className} min-h-screen bg-[#0b1220] text-white px-4 py-6`}>
-        <div className="max-w-5xl mx-auto">
-          <div className="flex items-center justify-between mb-4">
-            <h1 className="text-xl font-extrabold">{choix.titre}</h1>
-            {bandeauDispo() && !fenetre && (
-              <button type="button" onClick={ouvrirBandeau} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 font-bold text-sm">
-                <PictureInPicture size={18} /> Mode bandeau
-              </button>
-            )}
+      <main className={fond}>
+        <div className="max-w-3xl mx-auto space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <h1 className="text-xl md:text-2xl font-black text-slate-800 truncate">{choix.titre}</h1>
+            <div className="flex items-center gap-3 shrink-0">
+              <span className="font-black text-slate-500 tabular-nums">{chrono(etat.tTotal)}{etat.dureeTotale ? <span className="text-slate-400"> / {chrono(etat.dureeTotale)}</span> : null}</span>
+              {bandeauDispo() && !fenetre && (
+                <button type="button" onClick={ouvrirBandeau} className="hidden md:flex items-center gap-1.5 rounded-full bg-white border border-[#eef2f7] px-4 py-2 text-sm font-extrabold text-slate-700 hover:bg-slate-50 shadow-sm">
+                  <Icone d={mdiPictureInPictureBottomRight} taille={17} /> Mode bandeau
+                </button>
+              )}
+            </div>
           </div>
+
+          <Ciel couleurs={z.degrade} icone={mdiLightningBolt} className="!p-6">
+            <div className="flex items-center gap-2 flex-wrap">
+              <Sur>{z.mot}</Sur>
+              {etat.erg && etat.ajust !== 1 && <Bulle icone={mdiTuneVariant} texte={`${Math.round(etat.ajust * 100)} %`} />}
+              {!etat.erg && <Bulle icone={mdiSlopeUphill} texte={`Pente ${etat.pente} %`} />}
+            </div>
+            <div className="flex items-baseline gap-3 mt-1">
+              <span className="text-[96px] md:text-[120px] font-black tabular-nums leading-none tracking-tight">{etat.watts ?? "—"}</span>
+              <span className="text-2xl md:text-3xl font-black text-white/85">/ {etat.cible ?? "—"} W</span>
+            </div>
+            <div className="flex gap-2 mt-3 flex-wrap min-h-[32px]">
+              {ec && <Bulle icone={ec.bon ? mdiCheckCircle : mdiTarget} texte={ec.texte} fort={ec.bon} />}
+              {etat.etape?.cadence ? <Bulle icone={mdiRotateRight} texte={`Vise ${etat.etape.cadence} tr/min`} /> : null}
+            </div>
+          </Ciel>
+
           {(etat.alerte || etat.pause !== "non") && (
-            <div className={`mb-4 rounded-2xl px-4 py-3 font-bold text-center ${etat.alerte ? "bg-amber-400 text-slate-900" : "bg-sky-500"}`}>
-              {etat.alerte ?? (etat.pause === "auto" ? "En pause — repédale pour reprendre" : "Prêt ? Pédale pour démarrer")}
+            <div className={`flex items-center gap-2 rounded-2xl px-4 py-3 font-extrabold ${etat.alerte ? "bg-amber-100 text-amber-800" : "bg-sky-100 text-sky-800"}`}>
+              <Icone d={etat.alerte ? mdiAlertCircle : mdiPauseCircle} taille={20} />
+              {etat.alerte ?? (etat.pause === "auto" ? "En pause : repédale pour reprendre" : "Prêt ? Pédale pour démarrer")}
             </div>
           )}
+
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <div className="rounded-3xl bg-white/5 p-5 col-span-2 flex flex-col">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5"><Lightning size={14} weight="fill" />Puissance</span>
-              <div className="flex items-baseline gap-3 mt-1">
-                <span className={`text-7xl md:text-8xl font-black tabular-nums ${coul}`}>{etat.watts ?? "—"}</span>
-                <span className="text-2xl text-slate-400 font-bold">/ {etat.cible ?? "—"} W</span>
+            <Mesure titre="Cadence" icone={mdiRotateRight} unite="tr/min">{etat.cadence ?? "—"}</Mesure>
+            <Mesure titre="Cœur" icone={mdiHeart} coul="#f43f5e" unite="bpm">{etat.bpm ?? "—"}</Mesure>
+            <Carte className="col-span-2 flex items-center gap-4">
+              <div className="relative flex items-center justify-center shrink-0">
+                <Anneau part={partEtape} coul={z.plein} />
+                <span className="absolute text-xs font-black text-slate-800">{etapes.length ? `${Math.min(etat.i + 1, etapes.length)}/${etapes.length}` : "∞"}</span>
               </div>
-              <span className="text-sm text-slate-400 font-semibold mt-1">{etat.erg ? `ERG · intensité ${Math.round(etat.ajust * 100)} %` : `Résistance · pente ${etat.pente} %`}</span>
-            </div>
-            <Gros titre="Cadence" icone={<Bicycle size={14} />} sous="tr/min">{etat.cadence ?? "—"}</Gros>
-            <Gros titre="Cœur" icone={<Heartbeat size={14} weight="fill" />} sous="bpm">{etat.bpm ?? "—"}</Gros>
-            <Gros titre="Étape" sous={etat.suivante ? `puis ${etat.suivante.cible.type === "w" ? `${Math.round((etat.suivante.cible.min + etat.suivante.cible.max) / 2 * etat.ajust)} W` : etat.suivante.cible.type === "bpm" ? `${etat.suivante.cible.min} bpm` : "libre"} · ${chrono(etat.suivante.s)}` : etapes.length ? "dernière étape" : "sortie libre"}>
-              {etat.attendLap ? "⏭" : chrono(etat.resteEtape ?? etat.tEtape)}
-            </Gros>
-            <Gros titre="Total" sous={etat.dureeTotale ? `sur ${chrono(etat.dureeTotale)}` : undefined}>{chrono(etat.tTotal)}</Gros>
-            <Gros titre="Étapes" sous="faites">{etapes.length ? `${Math.min(etat.i + 1, etapes.length)}/${etapes.length}` : "—"}</Gros>
-            <Gros titre="Distance" sous="km">{moteur.current?.points.length ? ((moteur.current.points[moteur.current.points.length - 1].m) / 1000).toFixed(1) : "0.0"}</Gros>
+              <div className="min-w-0">
+                <div className="text-[11px] font-extrabold uppercase tracking-[0.12em] text-slate-400">{etat.attendLap ? "Quand tu es prêt" : "Fin de l'étape dans"}</div>
+                <div className="text-[36px] font-black text-slate-800 tabular-nums leading-tight">{etat.attendLap ? "⏭" : chrono(etat.resteEtape ?? etat.tEtape)}</div>
+                <div className="text-[13px] font-bold text-slate-500 truncate">{etat.suivante ? `Ensuite : ${chrono(etat.suivante.s)} à ${cibleTexte(etat.suivante, etat.ajust)}` : etapes.length ? "Dernière étape 💪" : `Sortie libre · ${km} km`}</div>
+              </div>
+            </Carte>
           </div>
-          {etapes.length > 0 && <div className="mt-4 rounded-2xl overflow-hidden bg-white/5 p-2"><Profil etapes={etapes} ftp={ftp} ecoule={position(etapes, etat)} hauteur={90} sombre /></div>}
-          <div className="mt-6 flex items-center justify-center gap-4">
-            <B titre="Moins dur" onClick={actions.moins}><Minus size={22} weight="bold" /></B>
-            <B titre="Précédent" onClick={actions.precedente}><SkipBack size={24} weight="fill" /></B>
-            <B titre="Pause" grand onClick={actions.pause}>{etat.pause === "non" ? <Pause size={34} weight="fill" /> : <Play size={34} weight="fill" />}</B>
-            <B titre="Suivant" onClick={actions.suivante}><SkipForward size={24} weight="fill" /></B>
-            <B titre="Plus dur" onClick={actions.plus}><Plus size={22} weight="bold" /></B>
+
+          {etapes.length > 0 && <Carte className="!p-3"><Profil etapes={etapes} ftp={ftp} ecoule={position(etapes, etat)} hauteur={80} /></Carte>}
+
+          <div className="flex items-center justify-center gap-3 md:gap-4 pt-2">
+            <Rond titre="Moins dur" d={mdiMinus} onClick={actions.moins} />
+            <Rond titre="Précédent" d={mdiSkipPrevious} onClick={actions.precedente} />
+            <Rond grand couleurs={z.degrade} titre="Pause" d={etat.pause === "non" ? mdiPause : mdiPlay} onClick={actions.pause} />
+            <Rond titre="Suivant" d={mdiSkipNext} onClick={actions.suivante} />
+            <Rond titre="Plus dur" d={mdiPlus} onClick={actions.plus} />
           </div>
-          <div className="mt-6 flex items-center justify-center gap-3">
-            {etapes.length > 0 && <button type="button" onClick={() => moteur.current?.basculerErg()} className="px-4 py-2 rounded-xl bg-white/10 text-sm font-bold">{etat.erg ? "Passer en résistance" : "Repasser en ERG"}</button>}
-            <button type="button" onClick={() => { if (confirm("Terminer la séance ?")) actions.terminer(); }} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-sm font-bold"><Stop size={16} weight="fill" /> Terminer</button>
+          <div className="flex items-center justify-center gap-2.5 pt-1">
+            {etapes.length > 0 && <button type="button" onClick={() => moteur.current?.basculerErg()} className="rounded-full bg-white border border-[#eef2f7] px-4 py-2.5 text-sm font-extrabold text-slate-700 hover:bg-slate-50">{etat.erg ? "Passer en résistance" : "Repasser en ERG"}</button>}
+            <button type="button" onClick={() => { if (confirm("Terminer la séance ?")) actions.terminer(); }} className="flex items-center gap-1.5 rounded-full bg-rose-50 px-4 py-2.5 text-sm font-black text-rose-600 hover:bg-rose-100"><Icone d={mdiFlagCheckered} taille={16} /> Terminer</button>
           </div>
-          {!simu && !capteurs.ht?.connecte && <p className="mt-4 text-center text-amber-300 text-sm font-bold">Home-trainer déconnecté, je réessaie…</p>}
+          {!simu && !capteurs.ht?.connecte && <p className="text-center text-amber-700 text-sm font-extrabold">Home-trainer déconnecté, je réessaie…</p>}
+          <p className="text-center text-xs text-slate-400 hidden md:block">Raccourcis dans le bandeau : espace = pause · ← → = étapes · ↑ ↓ = plus ou moins dur</p>
         </div>
-        {fenetre && <Bandeau fenetre={fenetre} etat={etat} etapes={etapes} ftp={ftp} position={position(etapes, etat)} actions={actions} onFermer={() => { fenetre.close(); window.focus(); }} />}
+        {fenetre && <Bandeau fenetre={fenetre} etat={etat} etapes={etapes} ftp={ftp} position={position(etapes, etat)} police={jakarta.style.fontFamily} actions={actions} onFermer={() => { fenetre.close(); window.focus(); }} />}
       </main>
     );
   }
 
+  // ─────────────────────────── Fin ───────────────────────────
   if (phase === "fin" && moteur.current && choix) {
     const pts = moteur.current.points;
-    const moy = (k: "w" | "bpm" | "cad") => { const v = pts.map((p) => p[k]).filter((x): x is number => x != null); return v.length ? Math.round(v.reduce((a, b) => a + b, 0) / v.length) : null; };
+    const moy = (k: "w" | "bpm") => { const v = pts.map((p) => p[k]).filter((x): x is number => x != null); return v.length ? Math.round(v.reduce((a, b) => a + b, 0) / v.length) : "—"; };
+    const km = pts.length ? (pts[pts.length - 1].m / 1000).toFixed(1) : "0";
     return (
-      <main className={`${jakarta.className} min-h-screen bg-gradient-to-br from-emerald-400 via-blue-400 to-blue-600 px-4 py-10`}>
-        <div className="max-w-xl mx-auto bg-white rounded-3xl shadow-2xl p-6 md:p-8 space-y-6">
-          <div>
-            <h1 className="text-2xl font-extrabold text-slate-800">Bien joué 💪</h1>
-            <p className="text-slate-500">{choix.titre}</p>
-          </div>
-          <div className="grid grid-cols-3 gap-3 text-center">
-            {[["Durée", chrono(pts.length)], ["Watts", moy("w") ?? "—"], ["Cœur", moy("bpm") ?? "—"]].map(([t, v]) => (
-              <div key={t} className="rounded-2xl bg-slate-50 py-3"><div className="text-xs font-bold text-slate-400 uppercase">{t}</div><div className="text-2xl font-black text-slate-800">{v}</div></div>
-            ))}
-          </div>
+      <main className={fond}>
+        <div className="max-w-xl mx-auto space-y-3.5">
+          <Ciel couleurs={["#059669", "#10b981", "#34d399"]} icone={mdiTrophyOutline}>
+            <Sur>Séance terminée</Sur>
+            <div className="text-[30px] font-black mt-1">Bien joué 💪</div>
+            <div className="font-bold max-w-[70%] truncate">{choix.titre}</div>
+            <div className="flex flex-wrap gap-2 mt-4">
+              <Bulle icone={mdiTimerOutline} texte={chrono(pts.length)} />
+              <Bulle icone={mdiLightningBolt} texte={`${moy("w")} W`} />
+              <Bulle icone={mdiHeart} texte={`${moy("bpm")} bpm`} />
+              <Bulle icone={mdiMapMarkerDistance} texte={`${km} km`} />
+            </div>
+          </Ciel>
+
           {envoi.etat !== "ok" && (
-            <div>
-              <div className="flex justify-between items-baseline"><span className="font-bold text-slate-700">C&apos;était comment ?</span><span className="text-sm font-bold text-emerald-600">{rpe}/10 · {RPE[rpe]}</span></div>
-              <input type="range" min={1} max={10} value={rpe} onChange={(e) => setRpe(Number(e.target.value))} className="w-full mt-2 accent-emerald-500" />
-            </div>
+            <Carte className="space-y-3">
+              <div className="flex justify-between items-baseline"><span className="font-black text-slate-800 text-base">C&apos;était comment ?</span><span className="font-black" style={{ color: RPE_COUL[rpe] }}>{RPE[rpe]}</span></div>
+              <div className="flex gap-1.5">
+                {Array.from({ length: 10 }, (_, k) => k + 1).map((n) => (
+                  <button key={n} type="button" onClick={() => setRpe(n)} className="flex-1 h-11 rounded-xl font-black transition"
+                    style={{ background: n === rpe ? RPE_COUL[n] : n < rpe ? RPE_COUL[n] + "33" : "#f1f5f9", color: n === rpe ? "#fff" : "#64748b" }}>{n}</button>
+                ))}
+              </div>
+            </Carte>
           )}
+
           {envoi.texte && (
-            <div className={`rounded-2xl px-4 py-3 text-sm font-semibold flex items-start gap-2 ${envoi.etat === "erreur" ? "bg-rose-50 text-rose-700" : envoi.etat === "ok" ? "bg-emerald-50 text-emerald-700" : "bg-slate-50 text-slate-600"}`}>
-              {envoi.etat === "ok" ? <CheckCircle size={18} weight="fill" /> : envoi.etat === "erreur" ? <Warning size={18} weight="fill" /> : null}{envoi.texte}
+            <div className={`flex items-center gap-2 rounded-2xl px-4 py-3.5 font-extrabold ${envoi.etat === "erreur" ? "bg-rose-50 text-rose-700" : envoi.etat === "ok" ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600"}`}>
+              {envoi.etat === "en_cours" ? <span className="w-5 h-5 rounded-full border-2 border-slate-300 border-t-slate-600 animate-spin" /> : <Icone d={envoi.etat === "ok" ? mdiCheckCircle : mdiAlertCircle} taille={20} />}
+              {envoi.texte}
             </div>
           )}
-          <div className="flex flex-col gap-2">
-            {envoi.etat !== "ok" && <button type="button" disabled={envoi.etat === "en_cours"} onClick={enregistrer} className="py-3 rounded-2xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-60 text-white font-extrabold">Enregistrer et envoyer sur Strava</button>}
-            <button type="button" onClick={telecharger} className="py-2.5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold flex items-center justify-center gap-2"><DownloadSimple size={18} /> Télécharger le fichier</button>
-            {envoi.etat === "ok" && <a href="/athlete" className="py-2.5 rounded-2xl bg-slate-800 text-white font-bold text-center">Retour au planning</a>}
-          </div>
+
+          {envoi.etat !== "ok"
+            ? <Bouton large desactive={envoi.etat === "en_cours"} onClick={enregistrer} icone={mdiCloudUploadOutline} couleur="#fc4c02">Enregistrer et envoyer sur Strava</Bouton>
+            : <Bouton large onClick={() => router.push("/athlete")} icone={mdiCalendarMonth}>Retour au planning</Bouton>}
+          <button type="button" onClick={telecharger} className="w-full flex items-center justify-center gap-1.5 py-2 text-sm font-extrabold text-slate-500 hover:text-slate-800"><Icone d={mdiDownload} taille={17} /> Télécharger le fichier</button>
+
           {choix.texteCourt && !favoriOk && (
-            <div className="border-t border-slate-100 pt-4">
-              <p className="text-sm font-bold text-slate-700 mb-2 flex items-center gap-1.5"><Star size={16} weight="fill" className="text-amber-400" /> Garder cette séance pour la refaire</p>
+            <div className="rounded-[20px] bg-amber-50 border border-amber-200 p-4 space-y-2.5">
+              <div className="flex items-center gap-1.5 font-black text-slate-800"><Icone d={mdiStar} taille={18} coul="#f59e0b" /> La garder pour la refaire ?</div>
               <div className="flex gap-2">
-                <input value={favoriNom} onChange={(e) => setFavoriNom(e.target.value)} placeholder="Un nom, ex. 5×4' seuil" className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm" />
-                <button type="button" onClick={garderFavori} className="px-4 rounded-xl bg-amber-400 font-bold text-sm text-slate-900">Garder</button>
+                <input value={favoriNom} onChange={(e) => setFavoriNom(e.target.value)} placeholder="Un nom, ex. 5×4' seuil" className="flex-1 rounded-[14px] bg-white px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-300" />
+                <Bouton petit onClick={garderFavori} couleur="#f59e0b">Garder</Bouton>
               </div>
             </div>
           )}
-          {favoriOk && <p className="text-sm font-bold text-amber-600">⭐ Gardée dans tes favoris</p>}
+          {favoriOk && <p className="text-center font-black text-amber-600">⭐ Gardée dans tes favoris</p>}
         </div>
       </main>
     );
   }
 
-  // ─── Préparer ───
-  const Capt = ({ src, titre, icone, facultatif }: { src: Source; titre: string; icone: React.ReactNode; facultatif?: boolean }) => {
+  // ─────────────────────────── Préparer ───────────────────────────
+  const connectes = (["ht", "cardio", "pedales"] as Source[]).filter((s) => capteurs[s]?.connecte);
+  const puce = (src: Source, nom: string, icone: string) => {
     const c = capteurs[src];
     return (
-      <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3">
-        <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${c?.connecte ? "bg-emerald-100 text-emerald-600" : "bg-slate-100 text-slate-400"}`}>{icone}</div>
-        <div className="flex-1 min-w-0">
-          <div className="font-bold text-slate-800 text-sm">{titre}{facultatif && <span className="text-slate-400 font-medium"> · facultatif</span>}</div>
-          <div className="text-xs text-slate-500 truncate">{c ? `${c.nom} · ${c.connecte ? "connecté" : "reconnexion…"}` : "pas connecté"}</div>
-        </div>
-        <button type="button" onClick={() => connecter(src)} className="px-3 py-1.5 rounded-xl bg-slate-800 text-white text-xs font-bold">{c ? "Changer" : "Connecter"}</button>
-      </div>
+      <button key={src} type="button" onClick={() => connecter(src)}
+        className={`inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-[13px] font-black transition ${c?.connecte ? "bg-white text-slate-800" : "bg-white/20 text-white hover:bg-white/30"}`}>
+        <Icone d={c?.connecte ? mdiCheckCircle : icone} taille={16} coul={c?.connecte ? "#059669" : "#fff"} />
+        {c ? c.nom : nom}
+        {c && !c.connecte && <span className="w-3.5 h-3.5 rounded-full border-2 border-slate-300 border-t-slate-600 animate-spin" />}
+      </button>
     );
   };
 
   return (
-    <main className={`${jakarta.className} min-h-screen bg-gradient-to-br from-emerald-400 via-blue-400 to-blue-600 px-4 py-8`}>
-      <div className="max-w-3xl mx-auto bg-white/95 rounded-3xl shadow-2xl p-5 md:p-8 space-y-6">
-        <div className="flex items-center gap-3">
-          <a href="/athlete" className="text-slate-500 hover:text-slate-800"><ArrowLeft size={22} /></a>
-          <h1 className="text-2xl font-extrabold text-slate-800">Home-trainer</h1>
-          {simu && <span className="text-xs font-bold bg-violet-100 text-violet-700 rounded-full px-2 py-0.5">simulateur</span>}
+    <main className={fond}>
+      <div className="max-w-2xl mx-auto space-y-3.5">
+        <div>
+          <div className="flex items-center gap-1.5">
+            <a href="/athlete" className="-ml-1 p-1 text-slate-800"><Icone d={mdiChevronLeft} taille={28} /></a>
+            <h1 className="text-2xl font-extrabold text-slate-800">Home-trainer</h1>
+            {simu && <span className="ml-1 rounded-full bg-violet-100 px-2 py-0.5 text-xs font-extrabold text-violet-700">simulateur</span>}
+          </div>
+          <p className="text-sm text-slate-500">Tes séances sur ton vélo, sans le superflu</p>
         </div>
 
-        <section className="space-y-2">
-          <h2 className="text-xs font-bold text-slate-500 uppercase tracking-wide">1. Mon matériel</h2>
-          {!bluetoothDispo() && !simu ? (
-            <div className="rounded-2xl bg-amber-50 border border-amber-200 p-4 text-sm text-amber-900 space-y-1">
-              <p className="font-bold">Ce navigateur ne parle pas Bluetooth.</p>
-              <p>Il faut Chrome (ou Edge) sur ordinateur. Sous Linux : ouvre <code className="bg-white px-1 rounded">chrome://flags</code>, active « Experimental Web Platform features », puis relance Chrome.</p>
-            </div>
-          ) : (
-            <>
-              {!simu && Capt({ src: "ht", titre: "Home-trainer", icone: <Bicycle size={22} /> })}
-              {!simu && Capt({ src: "cardio", titre: "Ceinture cardio", icone: <Heartbeat size={22} weight="fill" />, facultatif: true })}
-              {!simu && Capt({ src: "pedales", titre: "Pédales / capteur de puissance", icone: <Lightning size={22} weight="fill" />, facultatif: true })}
-              {simu && <p className="text-sm text-slate-500">Faux home-trainer : il suit la consigne tout seul.</p>}
-              {erreurBt && <p className="text-xs text-rose-600">{erreurBt}</p>}
-            </>
-          )}
-          {!ftpConnue && (
-            <div className="flex items-center gap-2 text-sm text-slate-600 pt-1">
-              Ta FTP n&apos;est pas connue, je prends
-              <input type="number" value={ftp} onChange={(e) => setFtp(Math.max(80, Number(e.target.value) || 200))} className="w-20 rounded-lg border border-slate-200 px-2 py-1" /> W
-            </div>
-          )}
-        </section>
+        {!bluetoothDispo() && !simu ? (
+          <Ciel couleurs={CIEL_ATTENTE} icone={mdiBike}>
+            <Sur>Mon matériel</Sur>
+            <div className="text-[26px] font-black mt-1.5 max-w-[72%]">Il faut Chrome</div>
+            <p className="font-semibold mt-1.5 max-w-[78%] leading-snug">Le Bluetooth marche dans Chrome (ou Edge) sur ordinateur. Sous Linux : ouvre <code className="rounded bg-white/25 px-1">chrome://flags</code>, active « Experimental Web Platform features », puis relance Chrome.</p>
+          </Ciel>
+        ) : (
+          <Ciel couleurs={pret ? CIEL_PRET : CIEL_ATTENTE} icone={mdiBikeFast}>
+            <Sur>Mon matériel</Sur>
+            <div className="text-[28px] font-black mt-1.5 max-w-[72%]">{pret ? "Prêt à rouler" : "On branche le vélo ?"}</div>
+            <p className="font-semibold mt-1 max-w-[75%]">{simu ? "Faux home-trainer : il suit la consigne tout seul." : pret ? `${connectes.length} appareil${connectes.length > 1 ? "s" : ""} connecté${connectes.length > 1 ? "s" : ""}` : "Clique sur « Home-trainer » pour le connecter."}</p>
+            {!simu && (
+              <div className="flex flex-wrap gap-2 mt-4">
+                {puce("ht", "Home-trainer", mdiBike)}
+                {puce("cardio", "Cardio", mdiHeartPulse)}
+                {puce("pedales", "Pédales", mdiLightningBolt)}
+              </div>
+            )}
+            {erreurBt && <p className="mt-2 text-xs font-bold text-white/90">{erreurBt}</p>}
+            {!ftpConnue && (
+              <div className="flex items-center gap-2 mt-3 font-bold">
+                Ta FTP <input type="number" value={ftp} onChange={(e) => setFtp(Math.max(80, Number(e.target.value) || 200))} className="w-20 rounded-lg bg-white px-2 py-1 font-black text-slate-800" /> W
+              </div>
+            )}
+          </Ciel>
+        )}
 
-        <section className="space-y-3">
-          <h2 className="text-xs font-bold text-slate-500 uppercase tracking-wide">2. Ma séance</h2>
-          <div className="flex gap-1 rounded-2xl bg-slate-100 p-1">
-            {([["plan", "Mon planning"], ["main", "À la main"], ["favoris", "Favoris"], ["libre", "Libre"]] as const).map(([k, t]) => (
-              <button key={k} type="button" onClick={() => setOnglet(k)} className={`flex-1 py-2 rounded-xl text-sm font-bold ${onglet === k ? "bg-white text-slate-800 shadow-sm" : "text-slate-500"}`}>{t}</button>
-            ))}
+        <Titre>Ma séance</Titre>
+        <Onglets valeur={onglet} onChange={setOnglet} choix={[["plan", "Planning"], ["main", "À la main"], ["favoris", "Favoris"], ["libre", "Libre"]] as const} />
+
+        {onglet === "plan" && (seances.length === 0 ? <Vide icone={mdiCalendarBlankOutline}>Pas de séance vélo cette semaine.<br />Fais-en une à la main !</Vide> : (
+          <div className="space-y-2.5">
+            {seances.map((s) => {
+              const blocs = s.workout_text ? depuisIcu(s.workout_text, ftp) : [];
+              const auj = s.date === dayjs().format("YYYY-MM-DD");
+              return (
+                <Carte key={s.id} className={`space-y-2.5 ${auj ? "!border-2 !border-blue-200" : ""}`}>
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className={`text-[11px] font-extrabold uppercase tracking-[0.12em] ${auj ? "text-blue-600" : "text-slate-400"}`}>{auj ? "Aujourd'hui" : dayjs(s.date).format("dddd D MMM")}{s.status === "valide" ? " · faite ✓" : ""}</div>
+                      <div className="font-black text-slate-800 text-base truncate mt-0.5">{s.title || "Vélo"}</div>
+                      <div className="text-[13px] font-semibold text-slate-500">{blocs.length ? `${Math.round(dureeTotale(blocs) / 60)} min` : "Pas d'étapes : sortie en résistance"}</div>
+                    </div>
+                    <Bouton petit desactive={!pret} icone={mdiPlay} onClick={() => demarrer({ titre: s.title || "Vélo", blocs, sessionId: s.id, texteCourt: null })}>Go</Bouton>
+                  </div>
+                  {blocs.length > 0 && profilDe(blocs, ftp, 40)}
+                </Carte>
+              );
+            })}
           </div>
+        ))}
 
-          {onglet === "plan" && (
-            seances.length === 0 ? <p className="text-sm text-slate-500 py-4 text-center">Pas de séance vélo cette semaine. Fais-en une à la main !</p> : (
-              <div className="space-y-2">
-                {seances.map((s) => {
-                  const blocs = s.workout_text ? depuisIcu(s.workout_text, ftp) : [];
-                  const aujourdhui = s.date === dayjs().format("YYYY-MM-DD");
-                  return (
-                    <div key={s.id} className={`rounded-2xl border p-3 ${aujourdhui ? "border-emerald-300 bg-emerald-50/50" : "border-slate-200"}`}>
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="min-w-0">
-                          <div className="text-xs font-bold text-slate-400 uppercase">{aujourdhui ? "Aujourd'hui" : dayjs(s.date).format("dddd D MMM")}{s.status === "valide" ? " · faite ✓" : ""}</div>
-                          <div className="font-bold text-slate-800 truncate">{s.title || "Vélo"}</div>
-                          <div className="text-xs text-slate-500">{blocs.length ? `${Math.round(dureeTotale(blocs) / 60)} min` : "Pas d'étapes : sortie en résistance"}</div>
-                        </div>
-                        <button type="button" disabled={!pret} onClick={() => demarrer({ titre: s.title || "Vélo", blocs, sessionId: s.id, texteCourt: null })}
-                          className="px-4 py-2 rounded-xl bg-emerald-500 disabled:bg-slate-300 text-white font-bold text-sm">C&apos;est parti</button>
-                      </div>
-                      {blocs.length > 0 && <div className="mt-2"><Profil etapes={aplatir(blocs)} ftp={ftp} hauteur={40} /></div>}
+        {onglet === "main" && (
+          <div className="space-y-3">
+            <Editeur texte={texte} setTexte={setTexte} ftp={ftp} />
+            {lecture.blocs.length > 0 && <Bouton large desactive={!pret} icone={mdiPlay} onClick={() => demarrer({ titre: "Séance maison", blocs: lecture.blocs, sessionId: null, texteCourt: versCourt(lecture.blocs) })}>C&apos;est parti</Bouton>}
+          </div>
+        )}
+
+        {onglet === "favoris" && (favoris.length === 0 ? <Vide icone={mdiStarOutline}>Pas encore de favori.<br />À la fin d&apos;une séance faite à la main, tu pourras la garder.</Vide> : (
+          <div className="space-y-2.5">
+            {favoris.map((f) => {
+              const b = depuisCourt(f.texte, ftp).blocs;
+              return (
+                <Carte key={f.id} className="space-y-2.5">
+                  <div className="flex items-center gap-3">
+                    <div className="w-[38px] h-[38px] rounded-xl bg-amber-50 flex items-center justify-center shrink-0"><Icone d={mdiStar} taille={20} coul="#f59e0b" /></div>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-black text-slate-800 text-base truncate">{f.nom}</div>
+                      <div className="text-[13px] font-semibold text-slate-500">{b.length ? `${Math.round(dureeTotale(b) / 60)} min` : ""}</div>
                     </div>
-                  );
-                })}
-              </div>
-            )
-          )}
+                    <Bouton petit desactive={!pret || !b.length} icone={mdiPlay} onClick={() => demarrer({ titre: f.nom, blocs: b, sessionId: null, texteCourt: f.texte })}>Go</Bouton>
+                  </div>
+                  {b.length > 0 && profilDe(b, ftp, 36)}
+                  <div className="flex gap-4 text-[13px] font-extrabold">
+                    <button type="button" onClick={() => { setTexte(f.texte); setOnglet("main"); }} className="text-blue-600 hover:underline">Modifier</button>
+                    <button type="button" onClick={() => supprimerFavori(f.id)} className="text-slate-400 hover:text-rose-500">Retirer</button>
+                  </div>
+                </Carte>
+              );
+            })}
+          </div>
+        ))}
 
-          {onglet === "main" && (
-            <div className="space-y-3">
-              <Editeur texte={texte} setTexte={setTexte} ftp={ftp} />
-              <button type="button" disabled={!pret || !lecture.blocs.length} onClick={() => demarrer({ titre: "Séance maison", blocs: lecture.blocs, sessionId: null, texteCourt: versCourt(lecture.blocs) })}
-                className="w-full py-3 rounded-2xl bg-emerald-500 disabled:bg-slate-300 text-white font-extrabold">C&apos;est parti</button>
+        {onglet === "libre" && (
+          <Carte className="space-y-3">
+            <div className="flex items-center gap-3">
+              <div className="w-[38px] h-[38px] rounded-xl bg-teal-100 flex items-center justify-center shrink-0"><Icone d={mdiRoadVariant} taille={20} coul="#0f766e" /></div>
+              <p className="font-bold text-slate-800">Pas de séance : tu roules comme tu veux, les boutons − et + règlent la résistance.</p>
             </div>
-          )}
-
-          {onglet === "favoris" && (
-            favoris.length === 0 ? <p className="text-sm text-slate-500 py-4 text-center">Pas encore de favori : à la fin d&apos;une séance faite à la main, tu peux la garder.</p> : (
-              <div className="space-y-2">
-                {favoris.map((f) => {
-                  const b = depuisCourt(f.texte, ftp).blocs;
-                  return (
-                    <div key={f.id} className="rounded-2xl border border-slate-200 p-3">
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="min-w-0">
-                          <div className="font-bold text-slate-800 truncate">⭐ {f.nom}</div>
-                          <div className="text-xs text-slate-500 font-mono truncate">{f.texte}</div>
-                        </div>
-                        <div className="flex gap-1.5 shrink-0">
-                          <button type="button" onClick={() => { setTexte(f.texte); setOnglet("main"); }} className="px-3 py-2 rounded-xl bg-slate-100 text-slate-700 font-bold text-xs">Modifier</button>
-                          <button type="button" onClick={() => supprimerFavori(f.id)} className="px-3 py-2 rounded-xl bg-slate-100 text-rose-600 font-bold text-xs">Retirer</button>
-                          <button type="button" disabled={!pret || !b.length} onClick={() => demarrer({ titre: f.nom, blocs: b, sessionId: null, texteCourt: f.texte })} className="px-4 py-2 rounded-xl bg-emerald-500 disabled:bg-slate-300 text-white font-bold text-sm">Go</button>
-                        </div>
-                      </div>
-                      {b.length > 0 && <div className="mt-2"><Profil etapes={aplatir(b)} ftp={ftp} hauteur={36} /></div>}
-                    </div>
-                  );
-                })}
-              </div>
-            )
-          )}
-
-          {onglet === "libre" && (
-            <div className="rounded-2xl border border-slate-200 p-4 space-y-3">
-              <p className="text-sm text-slate-600">Pas de séance : tu roules comme tu veux. Les boutons − et + règlent la résistance.</p>
-              <button type="button" disabled={!pret} onClick={() => demarrer({ titre: "Sortie libre", blocs: [], sessionId: null, texteCourt: null })}
-                className="w-full py-3 rounded-2xl bg-emerald-500 disabled:bg-slate-300 text-white font-extrabold">C&apos;est parti</button>
-            </div>
-          )}
-          {!pret && <p className="text-xs text-center text-slate-500">Connecte d&apos;abord ton home-trainer.</p>}
-        </section>
+            <Bouton large desactive={!pret} icone={mdiPlay} couleur="#0f766e" onClick={() => demarrer({ titre: "Sortie libre", blocs: [], sessionId: null, texteCourt: null })}>C&apos;est parti</Bouton>
+          </Carte>
+        )}
       </div>
     </main>
   );

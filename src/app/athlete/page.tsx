@@ -1253,6 +1253,7 @@ export default function AthletePage() {
               </button>
             )}
             <a href="/progres" className="px-2 py-1 rounded-lg text-sm font-bold text-slate-500 hover:text-blue-600 hover:bg-slate-50" title="Mon état et ma forme">Progrès</a>
+            <a href="/home-trainer" className="px-2 py-1 rounded-lg text-sm font-bold text-slate-500 hover:text-blue-600 hover:bg-slate-50" title="Rouler sur le home-trainer">Home-trainer</a>
             <a href="/athlete/reglages" className="p-2 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-slate-50" title="Réglages"><GearSix size={18}/></a>
             <button onClick={logout} className="text-rose-500 hover:bg-rose-50 p-2 rounded-lg"><SignOut size={18}/></button>
           </div>

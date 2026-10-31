@@ -82,6 +82,10 @@ function HomeTrainer() {
   const router = useRouter();
   const params = useSearchParams();
   const simu = params.get("simu") === "1";
+  // Ouvert depuis une séance du planning (bouton « Faire sur le home-trainer »)
+  const seanceChoisie = params.get("seance");
+  // La séance du planning à laquelle rattacher une séance écrite « à la main »
+  const [cible, setCible] = useState<{ id: string; titre: string } | null>(null);
   const [moi, setMoi] = useState<string | null>(null);
   const [ftp, setFtp] = useState<number>(200);
   const [ftpConnue, setFtpConnue] = useState(true);
@@ -268,7 +272,8 @@ function HomeTrainer() {
     try {
       let sessionId = choix.sessionId;
       if (sessionId) {
-        await supabase.from("sessions").update({ status: "valide", rpe }).eq("id", sessionId);
+        // Séance du planning écrite ici « à la main » : on y range aussi ses étapes
+        await supabase.from("sessions").update({ status: "valide", rpe, ...(choix.texteCourt && choix.blocs.length ? { workout_text: versIcu(choix.blocs), workout_target: "POWER" } : {}) }).eq("id", sessionId);
       } else {
         const { data, error } = await supabase.from("sessions").insert({
           user_id: moi, date: dayjs().format("YYYY-MM-DD"), sport: "Vélo", title: choix.titre,
@@ -652,20 +657,25 @@ function HomeTrainer() {
 
         {onglet === "plan" && (seances.length === 0 ? <Vide icone={mdiCalendarBlankOutline}>Pas de séance vélo cette semaine.<br />Fais-en une à la main !</Vide> : (
           <div className="space-y-2.5">
-            {seances.map((s) => {
+            {[...seances].sort((a, b) => (a.id === seanceChoisie ? -1 : b.id === seanceChoisie ? 1 : 0)).map((s) => {
               const blocs = s.workout_text ? depuisIcu(s.workout_text, ftp) : [];
-              const auj = s.date === dayjs().format("YYYY-MM-DD");
+              const auj = s.date === dayjs().format("YYYY-MM-DD") || s.id === seanceChoisie;
               return (
                 <Carte key={s.id} className={`space-y-2.5 ${auj ? "!border-2 !border-blue-200" : ""}`}>
                   <div className="flex items-center gap-3">
                     <div className="flex-1 min-w-0">
                       <div className={`text-[11px] font-extrabold uppercase tracking-[0.12em] ${auj ? "text-blue-600" : "text-slate-400"}`}>{auj ? "Aujourd'hui" : dayjs(s.date).format("dddd D MMM")}{s.status === "valide" ? " · faite ✓" : ""}</div>
                       <div className="font-black text-slate-800 text-base truncate mt-0.5">{s.title || "Vélo"}</div>
-                      <div className="text-[13px] font-semibold text-slate-500">{blocs.length ? `${Math.round(dureeTotale(blocs) / 60)} min` : "Pas d'étapes : sortie en résistance"}</div>
+                      {blocs.length ? <div className="text-[13px] font-semibold text-slate-500">{Math.round(dureeTotale(blocs) / 60)} min</div>
+                        : <div className="text-[13px] font-extrabold text-amber-700">Pas d&apos;étapes : l&apos;app ne peut pas piloter l&apos;ERG</div>}
                     </div>
                     <Bouton petit desactive={!pret} icone={mdiPlay} onClick={() => demarrer({ titre: s.title || "Vélo", blocs, sessionId: s.id, texteCourt: null })}>Go</Bouton>
                   </div>
                   {blocs.length > 0 && profilDe(blocs, ftp, 40)}
+                  {!blocs.length && (
+                    <button type="button" onClick={() => { setCible({ id: s.id, titre: s.title || "Vélo" }); setTexte(""); setOnglet("main"); }}
+                      className="rounded-full bg-amber-100 px-3 py-1.5 text-[13px] font-black text-amber-800 hover:bg-amber-200">✏️ Écrire ses étapes</button>
+                  )}
                 </Carte>
               );
             })}
@@ -674,8 +684,14 @@ function HomeTrainer() {
 
         {onglet === "main" && (
           <div className="space-y-3">
+            {cible && (
+              <div className="flex items-center gap-2 rounded-2xl bg-blue-50 px-4 py-3 text-sm font-extrabold text-slate-800">
+                <span className="flex-1">🔗 Pour ta séance « {cible.titre} » : elle sera validée dans ton planning.</span>
+                <button type="button" onClick={() => setCible(null)} className="text-slate-400 hover:text-slate-700">✕</button>
+              </div>
+            )}
             <Editeur texte={texte} setTexte={setTexte} ftp={ftp} />
-            {lecture.blocs.length > 0 && <Bouton large desactive={!pret} icone={mdiPlay} onClick={() => demarrer({ titre: "Séance maison", blocs: lecture.blocs, sessionId: null, texteCourt: versCourt(lecture.blocs) })}>C&apos;est parti</Bouton>}
+            {lecture.blocs.length > 0 && <Bouton large desactive={!pret} icone={mdiPlay} onClick={() => demarrer({ titre: cible?.titre ?? "Séance maison", blocs: lecture.blocs, sessionId: cible?.id ?? null, texteCourt: versCourt(lecture.blocs) })}>C&apos;est parti</Bouton>}
           </div>
         )}
 

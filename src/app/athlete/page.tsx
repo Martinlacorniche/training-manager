@@ -348,6 +348,11 @@ function ValidateModal({ open, onClose, onSaved, initial, stravaConnected, onSyn
                 <span className="w-2 h-6 bg-emerald-500 rounded-full"/> Valider la séance
             </h3>
 
+            {/* Séance de vélo pas encore faite : la lancer sur le home-trainer (31/10/2026) */}
+            {initial.sport === "Vélo" && initial.status !== "valide" && (
+              <a href={`/home-trainer?seance=${initial.id}`} className="flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-extrabold text-white hover:bg-blue-500">🚴 Faire sur le home-trainer</a>
+            )}
+
             {/* Grossesse (15/10/2026) : SA version, avec la bascule vers celle du coach */}
             {initial.adaptee && (() => {
               const o = voirOriginal ? initial.original : null;

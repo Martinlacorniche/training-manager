@@ -6,8 +6,9 @@
 
 import { Commande, lireCardio, lireIndoorBike, lirePuissance, type Mesure, UUID } from "./ht/ftms";
 import type { Consigne } from "./ht/moteur";
+import { GUIDON, lireBoutons, nouveauxAppuis, type ActionGuidon } from "./ht/guidon";
 
-export type Source = "ht" | "pedales" | "cardio";
+export type Source = "ht" | "pedales" | "cardio" | "guidon";
 export type Ecoute = (src: Source, m: Mesure) => void;
 export type EtatCapteur = { nom: string; connecte: boolean } | null;
 
@@ -19,6 +20,8 @@ const FILTRES: Record<Source, any> = {
   ht: { filters: [{ services: [UUID.ftms] }], optionalServices: [UUID.power, UUID.hr] },
   pedales: { filters: [{ services: [UUID.power] }] },
   cardio: { filters: [{ services: [UUID.hr] }] },
+  // Guidon Zwift Ride : il ne s'annonce pas toujours par son service, on accepte aussi son nom
+  guidon: { filters: [{ services: [GUIDON.service] }, { namePrefix: "Zwift" }], optionalServices: [GUIDON.service, GUIDON.serviceAncien] },
 };
 
 // Les appareils déjà choisis sont retenus (dans ce navigateur) : au retour
@@ -49,6 +52,8 @@ export class Capteur {
   private etatPuissance: { tours?: number; t?: number; cadence?: number } = {};
   private ecouteurs: { c: any; f: (ev: any) => void }[] = [];
   onEtat: (e: EtatCapteur) => void = () => {};
+  surAction: (a: ActionGuidon) => void = () => {};
+  private boutons = 0;
 
   constructor(readonly src: Source, private ecoute: Ecoute) {}
 
@@ -100,6 +105,19 @@ export class Capteur {
       const c = await s.getCharacteristic(UUID.powerMeasurement);
       this.ecouter(c, (ev: any) => this.ecoute("pedales", lirePuissance(ev.target.value, this.etatPuissance)));
       await c.startNotifications();
+    } else if (this.src === "guidon") {
+      let s: any;
+      try { s = await gatt.getPrimaryService(GUIDON.service); } catch { s = await gatt.getPrimaryService(GUIDON.serviceAncien); }
+      const c = await s.getCharacteristic(GUIDON.boutons);
+      this.ecouter(c, (ev: any) => {
+        const m = lireBoutons(ev.target.value);
+        if (m == null) return;
+        nouveauxAppuis(this.boutons, m).forEach((a) => this.surAction(a));
+        this.boutons = m;
+      });
+      await c.startNotifications();
+      try { await (await s.getCharacteristic(GUIDON.reponses)).startNotifications(); } catch { /* pas indispensable */ }
+      await (await s.getCharacteristic(GUIDON.ecrire)).writeValueWithResponse(GUIDON.rideOn);   // « RideOn »
     } else {
       const s = await gatt.getPrimaryService(UUID.hr);
       const c = await s.getCharacteristic(UUID.hrMeasurement);

@@ -18,7 +18,7 @@ import {
   mdiDownload, mdiFlagCheckered, mdiHeart, mdiHeartPulse, mdiLightningBolt, mdiMapMarkerDistance, mdiMinus, mdiPause, mdiPauseCircle,
   mdiPictureInPictureBottomRight, mdiPlay, mdiPlus, mdiRoadVariant, mdiRotateRight, mdiSkipNext, mdiSkipPrevious, mdiSlopeUphill, mdiStar,
   mdiStarOutline, mdiTarget, mdiTimerOutline, mdiTrophyOutline, mdiTuneVariant, mdiFullscreen, mdiFullscreenExit, mdiScaleBathroom,
-  mdiFlagVariantOutline, mdiHistory, mdiBatteryHigh, mdiSigma,
+  mdiFlagVariantOutline, mdiHistory, mdiBatteryHigh, mdiSigma, mdiGamepadVariantOutline,
 } from "@mdi/js";
 import { supabase } from "@/lib/supabaseClient";
 import { depuisCourt, depuisIcu, versCourt, versIcu, aplatir, dureeTotale, type Bloc, type Etape } from "./ht/seance";
@@ -90,7 +90,7 @@ function HomeTrainer() {
   const [onglet, setOnglet] = useState<"plan" | "main" | "favoris" | "libre">("plan");
   const [texte, setTexte] = useState("10' 150W, 5x(4' 300W / 3' 150W), 10' 140W");
   const [choix, setChoix] = useState<Choix | null>(null);
-  const [capteurs, setCapteurs] = useState<Record<Source, EtatCapteur>>({ ht: null, pedales: null, cardio: null });
+  const [capteurs, setCapteurs] = useState<Record<Source, EtatCapteur>>({ ht: null, pedales: null, cardio: null, guidon: null });
   const [erreurBt, setErreurBt] = useState<string | null>(null);
   const [phase, setPhase] = useState<"preparer" | "rouler" | "fin">("preparer");
   const [etat, setEtat] = useState<Etat | null>(null);
@@ -101,7 +101,7 @@ function HomeTrainer() {
   const [favoriOk, setFavoriOk] = useState(false);
 
   const moteur = useRef<Moteur | null>(null);
-  const cap = useRef<Record<Source, Capteur | null>>({ ht: null, pedales: null, cardio: null });
+  const cap = useRef<Record<Source, Capteur | null>>({ ht: null, pedales: null, cardio: null, guidon: null });
   const sim = useRef<Simulateur | null>(null);
   const verrou = useRef<any>(null); // eslint-disable-line @typescript-eslint/no-explicit-any
 
@@ -137,12 +137,18 @@ function HomeTrainer() {
 
   // ─── Capteurs ───
   const ecoute = useCallback((src: Source, m: { watts?: number; cadence?: number; vitesse?: number; bpm?: number }) => {
-    moteur.current?.mesurer(src, m, Date.now());
+    if (src !== "guidon") moteur.current?.mesurer(src, m, Date.now());
   }, []);
 
   const nouveauCapteur = useCallback((src: Source) => {
     const c = new Capteur(src, ecoute);
     c.onEtat = (e) => setCapteurs((x) => ({ ...x, [src]: e }));
+    // Guidon Zwift : palettes = plus/moins dur (vitesses en sortie libre), A = pause, D-pad = étapes
+    if (src === "guidon") c.surAction = (a) => {
+      const m = moteur.current;
+      if (!m) return;
+      if (a === "pause") m.basculerPause(); else m[a]();
+    };
     cap.current[src] = c;
     return c;
   }, [ecoute]);
@@ -151,7 +157,7 @@ function HomeTrainer() {
   useEffect(() => {
     if (simu || !bluetoothDispo()) return;
     const ouverts = cap.current;
-    (["ht", "cardio", "pedales"] as Source[]).forEach((src) => { nouveauCapteur(src).retrouver().catch(() => {}); });
+    (["ht", "cardio", "pedales", "guidon"] as Source[]).forEach((src) => { nouveauCapteur(src).retrouver().catch(() => {}); });
     return () => { Object.values(ouverts).forEach((c) => c?.oublier(false)); };
   }, [simu, nouveauCapteur]);
 
@@ -504,6 +510,7 @@ function HomeTrainer() {
                 {puce("ht", "Home-trainer", mdiBike)}
                 {puce("cardio", "Cardio", mdiHeartPulse)}
                 {puce("pedales", "Pédales", mdiLightningBolt)}
+                {puce("guidon", "Guidon Zwift", mdiGamepadVariantOutline)}
               </div>
             )}
             {erreurBt && <p className="mt-2 text-xs font-bold text-white/90">{erreurBt}</p>}

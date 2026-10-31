@@ -24,12 +24,17 @@ export type Etape = {
 };
 
 // Un bloc répété garde sa structure pour l'affichage et la réécriture.
-export type Bloc = { fois: number; etapes: Etape[] };
+// sansFin : la dernière récup de la dernière série saute (31/10/2026, Martin :
+// après un 30-30, enchaîner sur le retour au calme, pas sur 30 s de récup).
+export type Bloc = { fois: number; etapes: Etape[]; sansFin?: boolean };
 
 export const LIBRE_PCT = 0.55;          // watts d'une étape sans cible, en part de FTP
 const ZONES: Record<string, number> = { z1: 0.5, z2: 0.65, z3: 0.83, z4: 0.98, z5: 1.13, z6: 1.3, z7: 1.6 };
 
-export const aplatir = (blocs: Bloc[]): Etape[] => blocs.flatMap((b) => Array.from({ length: b.fois }, () => b.etapes).flat());
+export const aplatir = (blocs: Bloc[]): Etape[] => blocs.flatMap((b) => {
+  const t = Array.from({ length: b.fois }, () => b.etapes).flat();
+  return b.sansFin && b.etapes.length > 1 ? t.slice(0, -1) : t;
+});
 export const dureeTotale = (blocs: Bloc[]) => aplatir(blocs).reduce((a, e) => a + e.s, 0);
 
 /** Watts visés à `t` secondes du début de l'étape (avant ajustement). */
@@ -141,6 +146,11 @@ const dureeIcu = (s: number) => {
 };
 
 export function versIcu(blocs: Bloc[]): string {
+  // « sans la dernière récup » n'existe pas chez intervals.icu : N-1 séries
+  // complètes, puis la dernière sans sa récup.
+  blocs = blocs.flatMap((b) => (b.sansFin && b.etapes.length > 1
+    ? [...(b.fois > 1 ? [{ fois: b.fois - 1, etapes: b.etapes }] : []), { fois: 1, etapes: b.etapes.slice(0, -1) }]
+    : [b]));
   return blocs.map((b, i) => [
     b.fois > 1 ? `Main Set ${b.fois}x` : (i === 0 ? "Warmup" : i === blocs.length - 1 && blocs.length > 1 ? "Cooldown" : "Main Set"),
     ...b.etapes.map((e) => `- ${e.lap ? "Press lap " : ""}${[dureeIcu(e.s), cibleIcu(e), e.cadence ? `${e.cadence}rpm` : ""].filter(Boolean).join(" ")}`),
@@ -164,7 +174,7 @@ function etapeCourte(e: Etape): string {
 
 export function versCourt(blocs: Bloc[]): string {
   return blocs.map((b) => b.fois > 1
-    ? `${b.fois}x(${b.etapes.map(etapeCourte).join(" / ")})`
+    ? `${b.fois}x(${b.etapes.map(etapeCourte).join(" / ")})${b.sansFin ? "!" : ""}`
     : b.etapes.map(etapeCourte).join(", ")).join(", ");
 }
 
@@ -183,7 +193,7 @@ export function depuisCourt(texte: string, ftp: number): Lecture {
   }
   morceaux.push(cur);
   for (const brut of morceaux.map((x) => x.trim()).filter(Boolean)) {
-    const rep = /^(\d+)\s*[x×]\s*\((.*)\)$/i.exec(brut);
+    const rep = /^(\d+)\s*[x×]\s*\((.*)\)\s*(!)?$/i.exec(brut);   // « ! » : sans la dernière récup
     const fois = rep ? Number(rep[1]) : 1;
     const parties = rep ? rep[2].split(/[/+,]/) : [brut];
     const etapes: Etape[] = [];
@@ -191,7 +201,7 @@ export function depuisCourt(texte: string, ftp: number): Lecture {
       const e = etapeDepuisCourt(p, ftp);
       if (e) etapes.push(e); else erreurs.push(`« ${p} » : il manque une durée (ex. 4' ou 30")`);
     }
-    if (etapes.length && fois >= 1) blocs.push({ fois: Math.min(fois, 50), etapes });
+    if (etapes.length && fois >= 1) blocs.push({ fois: Math.min(fois, 50), etapes, ...(rep?.[3] && fois > 1 && etapes.length > 1 ? { sansFin: true } : {}) });
   }
   return { blocs, erreurs };
 }

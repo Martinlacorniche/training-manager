@@ -6,7 +6,9 @@
 // 100 m ; les pics isolés (erreurs du relief dans les lacets) sont filtrés.
 // Vérifiés contre les chiffres connus (Alpe 13,8 km à 8,1 %, Galibier 18,1 à
 // 6,9, Angliru 12,5 à 10,1…). Le plat avant le pied de la montée est retiré,
-// sauf pour les cols de Toulon : départs donnés par Martin (31/10/2026).
+// sauf pour les cols de Toulon : départs donnés par Martin (31/10/2026). Le
+// Faron s'arrête au haut de la montée, à 510 m, longueur et dénivelé recalés
+// sur la référence (cols-cyclisme.com : 4,1 km, 380 m, 9,3 %, max 11 %).
 // Temps des pros (vérifiés le 31/10/2026, sur 13,8 km pour l'Alpe et 21,5 km
 // pour le Ventoux) : tour-magazin.de, brujulabike.com, domestiquecycling.com,
 // cyclingweekly.com (Sporza donne 54'41 au Ventoux pour Pogačar).
@@ -23,8 +25,8 @@ export type Col = {
 export const PAS_COL = 100;
 
 export const COLS: Col[] = [
-  { id: "faron", nom: "Mont Faron", famille: "local", pays: "Toulon", km: 7.53, depart: 126, sommet: 581, denivele: 455, moyenne: 6.0, max: 9.9,
-    pentes: [7.6,8.5,8.5,8.7,9.2,8.8,9.5,9.5,8.8,8.2,8.2,8.2,8.2,8.4,9.3,9.3,9.3,9.4,9.4,7.7,7.7,7.8,7.8,7.9,9.2,9.2,9.7,9.7,9.2,8.0,8.0,8.0,8.9,9.1,9.1,8.9,8.9,8.9,8.9,9.3,9.3,9.3,6.2,-0.5,-0.5,-0.5,-0.2,0.1,0.1,0.2,0.3,0.6,0.6,0.6,1.5,1.5,0.4,-0.1,1.2,1.2,1.2,3.3,3.8,4.3,4.4,4.4,4.4,1.3,1.3,1.3,8.6,8.6,9.9,9.9,8.6] },
+  { id: "faron", nom: "Mont Faron", famille: "local", pays: "Toulon", km: 4.1, depart: 130, sommet: 510, denivele: 380, moyenne: 9.3, max: 10.4,
+    pentes: [8.1,9.0,9.0,9.3,9.7,9.6,10.2,9.9,9.1,8.7,8.7,8.7,8.8,9.6,10.0,10.0,10.0,10.1,8.4,8.2,8.3,8.3,8.6,9.9,10.0,10.4,10.2,9.4,8.5,8.5,9.0,9.7,9.8,9.6,9.5,9.5,9.5,9.9,10.0,10.0,6.8] },
   { id: "coudon", nom: "Mont Coudon", famille: "local", pays: "Toulon", km: 6.86, depart: 213, sommet: 641, denivele: 428, moyenne: 6.2, max: 10.1,
     pentes: [5.2,5.2,5.0,3.9,3.0,2.0,2.0,1.3,1.0,1.0,1.0,1.0,1.0,3.9,5.2,5.2,5.2,5.2,5.2,8.6,9.3,9.3,9.3,9.3,9.1,9.1,9.1,9.4,9.9,10.1,10.1,10.1,8.9,8.9,8.9,9.4,9.4,9.4,6.6,6.6,6.6,7.5,7.5,7.5,7.0,5.7,5.1,4.7,4.7,4.7,6.3,7.5,7.5,7.6,7.6,7.5,7.1,7.8,7.3,7.1,5.7,4.9,2.8,2.8,2.8,6.0,7.7,7.7] },
   { id: "caume", nom: "Mont Caume (col du Corps de Garde)", famille: "local", pays: "Toulon", km: 10.92, depart: 59, sommet: 795, denivele: 736, moyenne: 6.7, max: 9.5,

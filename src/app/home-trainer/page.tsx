@@ -28,13 +28,15 @@ import { fichierFit } from "./ht/fit";
 import { ecart, zoneEtape, ZONE_PAUSE } from "./ht/zones";
 import { Capteur, Simulateur, bluetoothDispo, messageConnexion, type EtatCapteur, type Source } from "./capteurs";
 import { Editeur } from "./Editeur";
+import { EcranCol, ListeCols, ProfilCol } from "./Cols";
+import type { Col } from "./ht/cols";
 import { Bandeau, bandeauDispo, chrono, ouvrirFenetre, type Actions } from "./Bandeau";
 import { Anneau, Bouton, Bulle, Carte, Ciel, Icone, Onglets, Profil, profilDe, Sur, Titre } from "./ui";
 
 dayjs.locale("fr");
 const jakarta = Plus_Jakarta_Sans({ subsets: ["latin"], weight: ["500", "600", "700", "800"], display: "swap" });
 
-type Choix = { titre: string; blocs: Bloc[]; sessionId: string | null; texteCourt: string | null };
+type Choix = { titre: string; blocs: Bloc[]; sessionId: string | null; texteCourt: string | null; col?: Col | null };
 type SeanceDb = { id: string; date: string; title: string | null; workout_text: string | null; planned_hour: number | null; status: string | null };
 
 const RPE = ["", "Très facile", "Facile", "Facile", "Moyen", "Moyen", "Dur", "Dur", "Très dur", "Très dur", "À fond"];
@@ -87,7 +89,10 @@ function HomeTrainer() {
   const [ecranPlein, setEcranPlein] = useState(false);
   const [seances, setSeances] = useState<SeanceDb[]>([]);
   const [favoris, setFavoris] = useState<{ id: string; nom: string; texte: string }[]>([]);
-  const [onglet, setOnglet] = useState<"plan" | "main" | "favoris" | "libre">("plan");
+  const [onglet, setOnglet] = useState<"plan" | "main" | "favoris" | "cols" | "libre">("plan");
+  const [records, setRecords] = useState<Map<string, number>>(new Map());
+  const [classement, setClassement] = useState<{ rang: number; prenom: string; duree_s: number; wkg: number | null; moi: boolean }[] | null>(null);
+  const [nouveauRecord, setNouveauRecord] = useState(false);
   const [texte, setTexte] = useState("10' 150W, 5x(4' 300W / 3' 150W), 10' 140W");
   const [choix, setChoix] = useState<Choix | null>(null);
   const [capteurs, setCapteurs] = useState<Record<Source, EtatCapteur>>({ ht: null, pedales: null, cardio: null, guidon: null });
@@ -132,6 +137,10 @@ function HomeTrainer() {
       }
       setSeances(liste);
       setFavoris(fav ?? []);
+      const { data: rec } = await supabase.from("ht_cols_temps").select("col_id, duree_s").eq("user_id", id);
+      const r = new Map<string, number>();
+      for (const x of rec ?? []) if (!r.has(x.col_id) || x.duree_s < r.get(x.col_id)!) r.set(x.col_id, x.duree_s);
+      setRecords(r);
     })();
   }, [router]);
 
@@ -174,7 +183,8 @@ function HomeTrainer() {
   // ─── Rouler ───
   const demarrer = async (c: Choix) => {
     setChoix(c);
-    moteur.current = new Moteur(c.blocs, { ftp, ...profil });
+    moteur.current = new Moteur(c.blocs, { ftp, ...profil, col: c.col ?? null });
+    setClassement(null); setNouveauRecord(false);
     setPhase("rouler");
     setEnvoi({ etat: "rien" }); setFavoriOk(false); setFavoriNom("");
     if (simu) { sim.current = new Simulateur(ecoute); sim.current.demarrer(); }
@@ -204,6 +214,23 @@ function HomeTrainer() {
     fenetre?.close();
     verrou.current?.release?.().catch(() => {});
   }, [phase, fenetre]);
+
+  // Col terminé : on garde le temps (record ?) et on charge le classement
+  useEffect(() => {
+    const m = moteur.current, col = choix?.col;
+    if (phase !== "fin" || !m || !col || !moi || classement) return;
+    const fait = (m.points[m.points.length - 1]?.m ?? 0) >= col.km * 1000 - 5;
+    (async () => {
+      if (fait) {
+        const duree = m.points.length, w = Math.round(m.points.reduce((a, p) => a + (p.w ?? 0), 0) / Math.max(1, duree));
+        const ancien = records.get(col.id);
+        await supabase.from("ht_cols_temps").insert({ col_id: col.id, duree_s: duree, watts: w, wkg: profil.poids ? Math.round((w / profil.poids) * 100) / 100 : null });
+        if (!ancien || duree < ancien) { setNouveauRecord(true); setRecords((r) => new Map(r).set(col.id, duree)); }
+      }
+      const { data } = await supabase.rpc("classement_col", { p_col: col.id });
+      setClassement(data ?? []);
+    })();
+  }, [phase, choix, moi, classement, records, profil.poids]);
 
   const actions: Actions = useMemo(() => ({
     pause: () => moteur.current?.basculerPause(),
@@ -252,7 +279,8 @@ function HomeTrainer() {
       }
       setEnvoi({ etat: "en_cours", texte: "J'envoie sur Strava…" });
       const fit = fichierFit(m.points, m.tours, m.rr);
-      const bravo = compliment(m.points, m.tours, m.etapes, ftp, m.bouclee);
+      const colFait = !!choix.col && (m.points[m.points.length - 1]?.m ?? 0) >= choix.col.km * 1000 - 5;
+      const bravo = colFait ? `⛰️ ${choix.col!.nom} : montée en ${chrono(m.points.length)}${nouveauRecord ? ", nouveau record !" : ""}` : compliment(m.points, m.tours, m.etapes, ftp, m.bouclee);
       const { data: r, error } = await supabase.functions.invoke("ht-envoi", { body: { fit: versBase64(fit), session_id: sessionId, compliment: bravo } });
       if (error) throw new Error(error.message);
       if (r?.status === "not_connected") { setEnvoi({ etat: "ok", texte: "Séance enregistrée. Strava n'est pas connecté : tu peux télécharger le fichier." }); return; }
@@ -291,6 +319,40 @@ function HomeTrainer() {
   const lecture = depuisCourt(texte, ftp);
   const pret = simu || !!capteurs.ht?.connecte;
   const fond = `${jakarta.className} min-h-screen bg-[#F8FAFC] px-4 py-6 md:py-10`;
+
+  // ─────────────────────────── Rouler un col ───────────────────────────
+  if (phase === "rouler" && etat && choix?.col && etat.col) {
+    const perdusCol = (["ht", "cardio", "pedales"] as Source[]).filter((x) => !simu && capteurs[x] && !capteurs[x]!.connecte);
+    return (
+      <main className={`${jakarta.className} min-h-screen bg-[#F8FAFC] px-4 lg:px-8 py-4`}>
+        <div className="space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <h1 className="text-xl lg:text-2xl font-black text-slate-800 truncate">⛰️ {choix.col.nom}</h1>
+            <div className="flex items-center gap-2 shrink-0">
+              <button type="button" onClick={pleinEcran} className="hidden md:flex items-center gap-1.5 rounded-full bg-white border border-[#eef2f7] px-3.5 py-2 text-sm font-extrabold text-slate-700 hover:bg-slate-50 shadow-sm">
+                <Icone d={ecranPlein ? mdiFullscreenExit : mdiFullscreen} taille={18} />{ecranPlein ? "Quitter" : "Plein écran"}
+              </button>
+              {bandeauDispo() && !fenetre && (
+                <button type="button" onClick={ouvrirBandeau} className="hidden md:flex items-center gap-1.5 rounded-full bg-white border border-[#eef2f7] px-3.5 py-2 text-sm font-extrabold text-slate-700 hover:bg-slate-50 shadow-sm">
+                  <Icone d={mdiPictureInPictureBottomRight} taille={17} /> Mode bandeau
+                </button>
+              )}
+            </div>
+          </div>
+          {perdusCol.map((x) => (
+            <div key={x} className="flex items-center gap-3 rounded-2xl bg-amber-100 px-4 py-3 text-amber-900 font-extrabold text-sm">
+              <span className="w-4 h-4 rounded-full border-2 border-amber-300 border-t-amber-700 animate-spin shrink-0" />
+              {x === "ht" ? "Home-trainer perdu : continue de pédaler, je le rebranche tout seul." : "Capteur perdu, je le rebranche…"}
+            </div>
+          ))}
+          {etat.pause !== "non" && <div className="flex items-center gap-2 rounded-2xl px-4 py-3 font-extrabold bg-sky-100 text-sky-800"><Icone d={mdiPauseCircle} taille={20} />{etat.pause === "auto" ? "En pause : repédale pour reprendre" : "Prêt ? Pédale pour attaquer la montée"}</div>}
+          <EcranCol etat={etat} col={choix.col} poids={profil.poids ?? null} record={records.get(choix.col.id) ?? null}
+            onPause={actions.pause} onTerminer={() => { if (confirm("Abandonner la montée ?")) actions.terminer(); }} />
+        </div>
+        {fenetre && <Bandeau fenetre={fenetre} etat={etat} etapes={[]} ftp={ftp} position={0} police={jakarta.style.fontFamily} perdu={!simu && capteurs.ht && !capteurs.ht.connecte ? "Home-trainer perdu, je le rebranche…" : null} actions={actions} onFermer={() => { fenetre.close(); window.focus(); }} />}
+      </main>
+    );
+  }
 
   // ─────────────────────────── Rouler ───────────────────────────
   // Tout l'écran (31/10, Martin) : la puissance 3 s en très gros, l'étape,
@@ -417,8 +479,8 @@ function HomeTrainer() {
       <main className={fond}>
         <div className="max-w-xl mx-auto space-y-3.5">
           <Ciel couleurs={["#059669", "#10b981", "#34d399"]} icone={mdiTrophyOutline}>
-            <Sur>Séance terminée</Sur>
-            <div className="text-[30px] font-black mt-1">Bien joué 💪</div>
+            <Sur>{choix.col ? ((pts[pts.length - 1]?.m ?? 0) >= choix.col.km * 1000 - 5 ? "Sommet atteint" : "Montée abandonnée") : "Séance terminée"}</Sur>
+            <div className="text-[30px] font-black mt-1">{choix.col && (pts[pts.length - 1]?.m ?? 0) < choix.col.km * 1000 - 5 ? "Ce sera pour la prochaine 💪" : "Bien joué 💪"}</div>
             <div className="font-bold max-w-[70%] truncate">{choix.titre}</div>
             <div className="flex flex-wrap gap-2 mt-4">
               <Bulle icone={mdiTimerOutline} texte={chrono(pts.length)} />
@@ -428,6 +490,30 @@ function HomeTrainer() {
               <Bulle icone={mdiMapMarkerDistance} texte={`${km} km`} />
             </div>
           </Ciel>
+
+          {choix.col && (
+            <Carte className="space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="font-black text-slate-800 text-base">⛰️ {choix.col.nom}</span>
+                {nouveauRecord && <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-black text-amber-700">🏆 Nouveau record</span>}
+              </div>
+              <ProfilCol col={choix.col} hauteur={70} kmParKm={false} />
+              {(choix.col.pros ?? []).map((x) => (
+                <div key={x.nom} className="flex justify-between text-[14px] font-extrabold"><span className="text-slate-500">{x.nom} ({x.annee})</span><span className="tabular-nums text-slate-800">{chrono(x.s)}</span></div>
+              ))}
+              {classement && classement.length > 0 && (
+                <div className="border-t border-slate-100 pt-2.5 space-y-1">
+                  <div className="text-[11px] font-extrabold uppercase tracking-[0.12em] text-slate-400">Classement</div>
+                  {classement.map((c) => (
+                    <div key={`${c.rang}-${c.prenom}-${c.duree_s}`} className={`flex justify-between rounded-xl px-2.5 py-1.5 text-[14px] font-extrabold ${c.moi ? "bg-blue-50 text-blue-700" : "text-slate-700"}`}>
+                      <span>{c.rang === 1 ? "🥇" : c.rang === 2 ? "🥈" : c.rang === 3 ? "🥉" : `${c.rang}.`} {c.prenom}</span>
+                      <span className="tabular-nums">{chrono(c.duree_s)}{c.wkg ? <span className="text-slate-400 font-bold"> · {String(c.wkg).replace(".", ",")} W/kg</span> : null}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Carte>
+          )}
 
           {envoi.etat !== "ok" && (
             <Carte className="space-y-3">
@@ -559,7 +645,7 @@ function HomeTrainer() {
         </div>
         <div className="space-y-3.5">
         <Titre>Ma séance</Titre>
-        <Onglets valeur={onglet} onChange={setOnglet} choix={[["plan", "Planning"], ["main", "À la main"], ["favoris", "Favoris"], ["libre", "Libre"]] as const} />
+        <Onglets valeur={onglet} onChange={setOnglet} choix={[["plan", "Planning"], ["main", "À la main"], ["favoris", "Favoris"], ["cols", "Les cols"], ["libre", "Libre"]] as const} />
 
         {onglet === "plan" && (seances.length === 0 ? <Vide icone={mdiCalendarBlankOutline}>Pas de séance vélo cette semaine.<br />Fais-en une à la main !</Vide> : (
           <div className="space-y-2.5">
@@ -614,6 +700,8 @@ function HomeTrainer() {
             })}
           </div>
         ))}
+
+        {onglet === "cols" && <ListeCols ftp={ftp} poids={profil.poids ?? null} records={records} pret={pret} onGo={(c) => demarrer({ titre: c.nom, blocs: [], sessionId: null, texteCourt: null, col: c })} />}
 
         {onglet === "libre" && (
           <Carte className="space-y-3">

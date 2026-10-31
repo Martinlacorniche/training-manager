@@ -18,6 +18,7 @@
 // ─────────────────────────────────────────────────────────────────────────
 
 import { aplatir, type Bloc, type Etape, wattsCibles, LIBRE_PCT } from "./seance";
+import { altitudeA, penteA, type Col } from "./cols";
 
 export type Consigne = { type: "erg"; w: number } | { type: "pente"; pct: number };
 // c = watts visés ; x = position dans le dessin de la séance (s), pour y tracer les vrais watts
@@ -25,7 +26,7 @@ export type Point = { ts: number; w: number | null; cad: number | null; bpm: num
 export type Moyennes = { w: number | null; bpm: number | null; cad: number | null; s: number };
 
 /** Le profil du cycliste, tiré de ce que l'app sait déjà (30/10/2026). */
-export type Profil = { ftp: number; poids?: number | null; cp?: number | null; wPrime?: number | null };
+export type Profil = { ftp: number; poids?: number | null; cp?: number | null; wPrime?: number | null; col?: Col | null };
 export type Tour = { debut: number; fin: number; etape: number };   // indices dans `points`
 
 export type Etat = {
@@ -40,6 +41,7 @@ export type Etat = {
   tour: Moyennes;           // le tour (l'étape) en cours
   tourPrec: Moyennes | null;
   seance: { w: number | null; kj: number; km: number };
+  col: { d: number; total: number; pente: number; alt: number; kmh: number } | null;   // « Les grands cols »
 };
 
 const PAS = 1000;
@@ -79,6 +81,9 @@ export class Moteur {
   private cp: number | null;
   private w0: number | null;
   private wBal: number | null;
+  readonly col: Col | null;
+  private dCol = 0;             // mètres montés sur le profil
+  private kmh = 0;
 
   constructor(blocs: Bloc[], profil: Profil) {
     this.etapes = aplatir(blocs);
@@ -92,6 +97,9 @@ export class Moteur {
     this.cp = profil.cp && profil.cp > 50 ? profil.cp : null;
     this.w0 = this.cp && profil.wPrime && profil.wPrime > 1000 ? profil.wPrime : null;
     this.wBal = this.w0;
+    // Un col : pas d'étapes, la pente du profil pilote le home-trainer (mode simulation)
+    this.col = profil.col ?? null;
+    if (this.col) this.erg = false;
     this.wBpm = Math.round(this.ftp * LIBRE_PCT);
     if (!this.etapes.length) this.erg = false;     // sortie libre : résistance
   }
@@ -171,6 +179,18 @@ export class Moteur {
       if (e && this.tEtape >= e.s && !e.lap) this.passer(this.i + 1);
     }
     const et = this.etapes[this.i] ?? null;
+    // Col : on avance sur le profil à la vitesse que donnent tes watts sur cette pente
+    if (this.col && !this.fini) {
+      const total = this.col.km * 1000;
+      const p = penteA(this.col, this.dCol);
+      this.kmh = this.pause === "non" ? vitesseSurPente(w ?? 0, this.masse, p) : 0;
+      if (this.pause === "non" && dt > 0) {
+        const avant = this.dCol;
+        this.dCol = Math.min(total, this.dCol + (this.kmh / 3.6) * dt);
+        if (Math.floor(this.dCol / 1000) > Math.floor(avant / 1000)) this.fermerTour();   // un tour par km
+        if (this.dCol >= total) { this.fermerTour(); this.fini = true; }
+      }
+    }
 
     // Cible et consigne
     let cible: number | null = null;
@@ -211,12 +231,14 @@ export class Moteur {
       }
       if (et.lap && this.tEtape >= et.s) alerte = "Appuie sur ⏭ quand tu es prêt";
     }
+    if (this.col) consigne = { type: "pente", pct: Math.round(penteA(this.col, this.dCol) * 10) / 10 };
     if (this.pause !== "non" && !this.fini) consigne = { type: "pente", pct: 0 };
 
     // Enregistrement : un point par seconde, hors pause
     if (this.pause === "non" && !this.fini && now - this.dernierPoint >= PAS) {
-      const kmh = this.frais(this.ht.t, now) && this.ht.kmh ? this.ht.kmh : vitesseDepuisWatts(w ?? 0, this.masse);
-      this.m += (kmh / 3.6) * (this.dernierPoint ? Math.min(2, (now - this.dernierPoint) / 1000) : 1);
+      const kmh = this.col ? this.kmh : this.frais(this.ht.t, now) && this.ht.kmh ? this.ht.kmh : vitesseDepuisWatts(w ?? 0, this.masse);
+      if (this.col) this.m = this.dCol;
+      else this.m += (kmh / 3.6) * (this.dernierPoint ? Math.min(2, (now - this.dernierPoint) / 1000) : 1);
       const x = this.etapes.slice(0, this.i).reduce((a, e2) => a + e2.s, 0) + Math.min(this.tEtape, et?.s ?? this.tEtape);
       this.points.push({ ts: now, w, cad, bpm, kmh, m: Math.round(this.m), c: cible, x });
       this.dernierPoint = now;
@@ -236,6 +258,7 @@ export class Moteur {
       alerte, attendLap: !!(et?.lap && this.tEtape >= et.s),
       reserve: this.wBal != null && this.w0 ? Math.max(0, Math.min(1, this.wBal / this.w0)) : null,
       w3s,
+      col: this.col ? { d: this.dCol, total: this.col.km * 1000, pente: penteA(this.col, this.dCol), alt: altitudeA(this.col, this.dCol), kmh: this.kmh } : null,
       tour: moyennes(this.points.slice(this.debutTour)),
       tourPrec: this.tours.length ? moyennes(this.points.slice(this.tours[this.tours.length - 1].debut, this.tours[this.tours.length - 1].fin + 1)) : null,
       seance: { w: moyennes(this.points).w, kj: Math.round(this.points.reduce((a, p) => a + (p.w ?? 0), 0) / 1000), km: Math.round(this.m / 100) / 10 },
@@ -257,6 +280,21 @@ function moyennes(pts: Point[]): Moyennes {
     return v.length ? Math.round(v.reduce((a, b) => a + b, 0) / v.length) : null;
   };
   return { w: m("w"), bpm: m("bpm"), cad: m("cad"), s: pts.length };
+}
+
+/** Vitesse en montée (ou descente) pour une puissance : poids + roulement + air
+ *  (CdA 0,32, Crr 0,004, air 1,2). Sur un col, c'est elle qui fait avancer. */
+export function vitesseSurPente(w: number, masse: number, pentePct: number): number {
+  const th = Math.atan(pentePct / 100), g = 9.81;
+  const fixe = masse * g * (0.004 * Math.cos(th) + Math.sin(th));
+  let v = 5;
+  for (let k = 0; k < 30; k++) {
+    const f = fixe * v + 0.5 * 1.2 * 0.32 * v ** 3 - Math.max(0, w);
+    const d = fixe + 1.5 * 1.2 * 0.32 * v ** 2;
+    if (Math.abs(d) < 1e-6) break;
+    v = Math.max(0.3, v - f / d);
+  }
+  return w <= 0 && pentePct >= 0 ? 0 : v * 3.6;
 }
 
 /** Vitesse sur le plat pour une puissance (masse cycliste + vélo, CdA 0,32, Crr 0,004). */

@@ -97,8 +97,16 @@ export function Bandeau({ fenetre, etat, etapes, ftp, position, police, perdu, a
         </div>
         <Valeur titre="Cadence" icone={mdiRotateRight}>{etat.cadence ?? "—"}</Valeur>
         <Valeur titre="Cœur" icone={mdiHeart}>{etat.bpm ?? "—"}</Valeur>
+        {etat.col ? (
+          <>
+            <Valeur titre="Pente">{etat.col.pente.toFixed(1).replace(".", ",")} %</Valeur>
+            <Valeur titre="Reste">{((etat.col.total - etat.col.d) / 1000).toFixed(1).replace(".", ",")} <span className="text-base">km</span></Valeur>
+            <Valeur titre="Vitesse">{etat.col.kmh.toFixed(1).replace(".", ",")}</Valeur>
+          </>
+        ) : <>
         <Valeur titre={`Étape · ${objectif(etat.etape, etat.ajust)}`}>{etat.attendLap ? "⏭" : chrono(etat.resteEtape ?? etat.tEtape)}</Valeur>
         <Valeur titre="Ensuite">{etat.suivante ? <>{chrono(etat.suivante.s)} <span className="text-white/80 text-base">· {objectif(etat.suivante, etat.ajust)}</span></> : <span className="text-base">fin 🏁</span>}</Valeur>
+        </>}
         <Valeur titre="Tour moy.">{etat.tour.w ?? "—"}</Valeur>
         {etat.reserve != null && (
           <div className="flex flex-col justify-center shrink-0 w-[70px]">

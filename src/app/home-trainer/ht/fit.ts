@@ -31,7 +31,7 @@ function resume(pts: Point[]) {
   };
 }
 
-export function fichierFit(points: Point[], tours: Tour[]): Uint8Array {
+export function fichierFit(points: Point[], tours: Tour[], rr: { ts: number; s: number }[] = []): Uint8Array {
   if (!points.length) throw new Error("Rien d'enregistré");
   const enc = new Encoder();
   const debut = new Date(points[0].ts), fin = new Date(points[points.length - 1].ts);
@@ -43,7 +43,12 @@ export function fichierFit(points: Point[], tours: Tour[]): Uint8Array {
   ecrire(N.DEVICE_INFO, { timestamp: debut, manufacturer: "development", product: 0, productName: "App-Coach home-trainer", deviceIndex: "creator" });
   ecrire(N.EVENT, { timestamp: debut, event: "timer", eventType: "start" });
   let prec = points[0].ts;
+  let iRR = 0;
   for (const p of points) {
+    // Les battements arrivés avant ce point, par paquets de 5 (message HRV du .fit)
+    const lot: number[] = [];
+    while (iRR < rr.length && rr[iRR].ts <= p.ts) lot.push(rr[iRR++].s);
+    for (let i = 0; i < lot.length; i += 5) ecrire(N.HRV, { time: lot.slice(i, i + 5) });
     // Un trou de plus de 2 s = une pause : Strava doit le savoir
     if (p.ts - prec > 2500) {
       ecrire(N.EVENT, { timestamp: new Date(prec + 1000), event: "timer", eventType: "stopAll" });

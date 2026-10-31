@@ -48,6 +48,7 @@ export class Moteur {
   readonly etapes: Etape[];
   readonly ftp: number;
   points: Point[] = [];
+  rr: { ts: number; s: number }[] = [];   // battements (ceinture), pour le .fit
   tours: Tour[] = [];
   private i = 0;
   private tEtape = 0;           // secondes chronométrées dans l'étape
@@ -95,10 +96,11 @@ export class Moteur {
     if (!this.etapes.length) this.erg = false;     // sortie libre : résistance
   }
 
-  mesurer(src: "ht" | "pedales" | "cardio", m: { watts?: number; cadence?: number; vitesse?: number; bpm?: number }, t: number) {
+  mesurer(src: "ht" | "pedales" | "cardio", m: { watts?: number; cadence?: number; vitesse?: number; bpm?: number; rr?: number[] }, t: number) {
     if (src === "ht") this.ht = { w: m.watts ?? this.ht.w, cad: m.cadence ?? this.ht.cad, kmh: m.vitesse ?? this.ht.kmh, t };
     if (src === "pedales") this.ped = { w: m.watts ?? this.ped.w, cad: m.cadence ?? this.ped.cad, t };
     if (src === "cardio" || m.bpm) this.cardio = { bpm: m.bpm, t };
+    if (m.rr?.length && this.pause === "non" && !this.fini) for (const s of m.rr) if (s > 0.25 && s < 2.5) this.rr.push({ ts: t, s });
   }
 
   // Une mesure de plus de 3 s est périmée (capteur perdu, pédalier à l'arrêt).

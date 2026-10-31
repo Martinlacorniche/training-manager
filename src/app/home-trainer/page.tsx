@@ -136,7 +136,7 @@ function HomeTrainer() {
   }, [router]);
 
   // ─── Capteurs ───
-  const ecoute = useCallback((src: Source, m: { watts?: number; cadence?: number; vitesse?: number; bpm?: number }) => {
+  const ecoute = useCallback((src: Source, m: { watts?: number; cadence?: number; vitesse?: number; bpm?: number; rr?: number[] }) => {
     if (src !== "guidon") moteur.current?.mesurer(src, m, Date.now());
   }, []);
 
@@ -251,7 +251,7 @@ function HomeTrainer() {
         setChoix({ ...choix, sessionId });
       }
       setEnvoi({ etat: "en_cours", texte: "J'envoie sur Strava…" });
-      const fit = fichierFit(m.points, m.tours);
+      const fit = fichierFit(m.points, m.tours, m.rr);
       const bravo = compliment(m.points, m.tours, m.etapes, ftp, m.bouclee);
       const { data: r, error } = await supabase.functions.invoke("ht-envoi", { body: { fit: versBase64(fit), session_id: sessionId, compliment: bravo } });
       if (error) throw new Error(error.message);
@@ -270,7 +270,7 @@ function HomeTrainer() {
   const telecharger = () => {
     const m = moteur.current;
     if (!m?.points.length) return;
-    const url = URL.createObjectURL(new Blob([fichierFit(m.points, m.tours) as BlobPart], { type: "application/octet-stream" }));
+    const url = URL.createObjectURL(new Blob([fichierFit(m.points, m.tours, m.rr) as BlobPart], { type: "application/octet-stream" }));
     const a = document.createElement("a");
     a.href = url; a.download = `home-trainer-${dayjs().format("YYYY-MM-DD-HHmm")}.fit`; a.click();
     URL.revokeObjectURL(url);
@@ -484,8 +484,8 @@ function HomeTrainer() {
 
   return (
     <main className={fond}>
-      <div className="max-w-2xl mx-auto space-y-3.5">
-        <div>
+      <div className="max-w-[1600px] mx-auto lg:px-4 grid lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] gap-x-8 gap-y-3.5 items-start">
+        <div className="lg:col-span-2">
           <div className="flex items-center gap-1.5">
             <a href="/athlete" className="-ml-1 p-1 text-slate-800"><Icone d={mdiChevronLeft} taille={28} /></a>
             <h1 className="text-2xl font-extrabold text-slate-800">Home-trainer</h1>
@@ -494,6 +494,7 @@ function HomeTrainer() {
           <p className="text-sm text-slate-500">Tes séances sur ton vélo, sans le superflu</p>
         </div>
 
+        <div className="space-y-3.5 lg:sticky lg:top-6">
         {!bluetoothDispo() && !simu ? (
           <Ciel couleurs={CIEL_ATTENTE} icone={mdiBike}>
             <Sur>Mon matériel</Sur>
@@ -522,6 +523,8 @@ function HomeTrainer() {
           </Ciel>
         )}
 
+        </div>
+        <div className="space-y-3.5">
         <Titre>Ma séance</Titre>
         <Onglets valeur={onglet} onChange={setOnglet} choix={[["plan", "Planning"], ["main", "À la main"], ["favoris", "Favoris"], ["libre", "Libre"]] as const} />
 
@@ -588,6 +591,7 @@ function HomeTrainer() {
             <Bouton large desactive={!pret} icone={mdiPlay} couleur="#0f766e" onClick={() => demarrer({ titre: "Sortie libre", blocs: [], sessionId: null, texteCourt: null })}>C&apos;est parti</Bouton>
           </Carte>
         )}
+        </div>
       </div>
     </main>
   );

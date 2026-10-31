@@ -22,7 +22,7 @@ export const UUID = {
   hrMeasurement: uuid(0x2a37),
 };
 
-export type Mesure = { watts?: number; cadence?: number; vitesse?: number; bpm?: number };
+export type Mesure = { watts?: number; cadence?: number; vitesse?: number; bpm?: number; rr?: number[] };   // rr en secondes
 
 /** Indoor Bike Data (0x2AD2). Un home-trainer peut éclater ses champs sur
  *  plusieurs notifications : on ne rend que ceux présents. */
@@ -66,6 +66,19 @@ export function lirePuissance(v: DataView, etat: { tours?: number; t?: number; c
 
 export function lireCardio(v: DataView): number {
   return v.getUint8(0) & 0x1 ? v.getUint16(1, true) : v.getUint8(1);
+}
+
+/** Les battements un par un (intervalles R-R, en s) qu'envoie une ceinture :
+ *  enregistrés dans le .fit, ils disent à l'analyse que le cœur vient d'une
+ *  ceinture (fiable), et servent à la variabilité. Une montre n'en envoie pas. */
+export function lireRR(v: DataView): number[] {
+  const f = v.getUint8(0);
+  if (!(f & 0x10)) return [];
+  let o = f & 0x1 ? 3 : 2;
+  if (f & 0x8) o += 2;                      // énergie dépensée
+  const rr: number[] = [];
+  for (; o + 1 < v.byteLength; o += 2) rr.push(v.getUint16(o, true) / 1024);
+  return rr;
 }
 
 // ─── Commandes FTMS (Control Point 0x2AD9, à écrire avec réponse) ───

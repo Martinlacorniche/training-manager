@@ -4,7 +4,7 @@
 // Mode simulateur (?simu=1) : un faux home-trainer qui tient la consigne,
 // pour essayer l'écran sans vélo.
 
-import { Commande, lireCardio, lireIndoorBike, lirePuissance, type Mesure, UUID } from "./ht/ftms";
+import { Commande, lireCardio, lireIndoorBike, lirePuissance, lireRR, type Mesure, UUID } from "./ht/ftms";
 import type { Consigne } from "./ht/moteur";
 import { GUIDON, lireBoutons, nouveauxAppuis, type ActionGuidon } from "./ht/guidon";
 
@@ -121,7 +121,7 @@ export class Capteur {
     } else {
       const s = await gatt.getPrimaryService(UUID.hr);
       const c = await s.getCharacteristic(UUID.hrMeasurement);
-      this.ecouter(c, (ev: any) => this.ecoute("cardio", { bpm: lireCardio(ev.target.value) }));
+      this.ecouter(c, (ev: any) => this.ecoute("cardio", { bpm: lireCardio(ev.target.value), rr: lireRR(ev.target.value) }));
       await c.startNotifications();
     }
     this.onEtat({ nom: this.device.name ?? "Capteur", connecte: true });

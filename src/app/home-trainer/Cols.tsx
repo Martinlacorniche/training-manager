@@ -41,6 +41,34 @@ export function ProfilCol({ col, d, hauteur = 90, kmParKm = true }: { col: Col; 
   );
 }
 
+/** Le zoom : les 1,5 km qui arrivent, une barre par 100 m avec sa pente
+ *  écrite, et toi dessus. C'est là qu'on lit le prochain mur. */
+export function ZoomCol({ col, d, hauteur = 150 }: { col: Col; d: number; hauteur?: number }) {
+  const i0 = Math.max(0, Math.floor(d / PAS_COL) - 1), n = 16;
+  const barres = Array.from({ length: n }, (_, k) => i0 + k).filter((i) => i < col.pentes.length);
+  const max = Math.max(10, ...barres.map((i) => Math.abs(col.pentes[i])));
+  const larg = 100 / n;
+  const ici = ((d / PAS_COL - i0) / n) * 100;
+  return (
+    <div className="relative" style={{ height: hauteur }}>
+      <div className="absolute inset-0 flex items-end gap-[3px]">
+        {barres.map((i) => {
+          const p = col.pentes[i], passe = (i + 1) * PAS_COL <= d;
+          return (
+            <div key={i} className="flex flex-col items-center justify-end h-full" style={{ width: `${larg}%` }}>
+              <span className="text-[13px] font-black tabular-nums mb-1" style={{ color: passe ? "#cbd5e1" : couleurPente(p) }}>{p.toFixed(0)}</span>
+              <div className="w-full rounded-t-md" style={{ height: `${Math.max(4, (Math.max(0, p) / max) * (hauteur - 40))}px`, background: couleurPente(p), opacity: passe ? 0.3 : 1 }} />
+            </div>
+          );
+        })}
+      </div>
+      <div className="absolute top-0 bottom-0 w-[3px] rounded-full bg-slate-800" style={{ left: `${ici}%` }} />
+      <div className="absolute -bottom-5 text-[11px] font-bold text-slate-400 left-0">ici</div>
+      <div className="absolute -bottom-5 text-[11px] font-bold text-slate-400 right-0">+{((n - 1) * PAS_COL / 1000).toFixed(1).replace(".", ",")} km</div>
+    </div>
+  );
+}
+
 export type Record = { col_id: string; duree_s: number };
 
 export function ListeCols({ ftp, poids, records, pret, onGo }: { ftp: number; poids: number | null; records: Map<string, number>; pret: boolean; onGo: (c: Col) => void }) {
@@ -160,7 +188,16 @@ export function EcranCol({ etat, col, poids, record, onPause, onTerminer }: {
         </Carte>
       </div>
 
-      <Carte className="!p-3"><ProfilCol col={col} d={c.d} hauteur={170} /></Carte>
+      <div className="grid lg:grid-cols-12 gap-3">
+        <Carte className="lg:col-span-5 !pb-7">
+          <div className="text-[11px] font-extrabold uppercase tracking-[0.12em] text-slate-400 mb-2">Ce qui arrive</div>
+          <ZoomCol col={col} d={c.d} hauteur={150} />
+        </Carte>
+        <Carte className="lg:col-span-7 !p-3">
+          <div className="text-[11px] font-extrabold uppercase tracking-[0.12em] text-slate-400 mb-1 px-1">Le col · {kmTexte(c.d)} / {kmTexte(c.total)} km</div>
+          <ProfilCol col={col} d={c.d} hauteur={170} />
+        </Carte>
+      </div>
 
       <div className="flex items-center justify-center gap-3 pt-1">
         <button type="button" title="Pause" onClick={onPause} className="w-20 h-20 rounded-full text-white flex items-center justify-center active:scale-95" style={{ background: couleur, boxShadow: `0 6px 18px ${couleur}66` }}>

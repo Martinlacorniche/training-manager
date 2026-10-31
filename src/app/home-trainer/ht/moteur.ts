@@ -50,6 +50,11 @@ export class Moteur {
   readonly etapes: Etape[];
   readonly ftp: number;
   points: Point[] = [];
+  /** Les vrais watts pour le dessin : un point toutes les 5 s (moyenne), pour rester léger sur 2 h. */
+  trace: { x: number; w: number }[] = [];
+  private sTour = new Somme();
+  private sSeance = new Somme();
+  private tourPrec: Moyennes | null = null;
   rr: { ts: number; s: number }[] = [];   // battements (ceinture), pour le .fit
   tours: Tour[] = [];
   private i = 0;
@@ -145,6 +150,8 @@ export class Moteur {
   private fermerTour() {
     if (this.points.length > this.debutTour) this.tours.push({ debut: this.debutTour, fin: this.points.length - 1, etape: this.i });
     this.debutTour = this.points.length;
+    this.tourPrec = this.sTour.moyennes().s ? this.sTour.moyennes() : this.tourPrec;
+    this.sTour = new Somme();
   }
 
   // ─── Le temps ───
@@ -240,7 +247,13 @@ export class Moteur {
       if (this.col) this.m = this.dCol;
       else this.m += (kmh / 3.6) * (this.dernierPoint ? Math.min(2, (now - this.dernierPoint) / 1000) : 1);
       const x = this.etapes.slice(0, this.i).reduce((a, e2) => a + e2.s, 0) + Math.min(this.tEtape, et?.s ?? this.tEtape);
-      this.points.push({ ts: now, w, cad, bpm, kmh, m: Math.round(this.m), c: cible, x });
+      const pt: Point = { ts: now, w, cad, bpm, kmh, m: Math.round(this.m), c: cible, x };
+      this.points.push(pt);
+      this.sTour.ajouter(pt); this.sSeance.ajouter(pt);
+      if (this.points.length % 5 === 0) {
+        const der = this.points.slice(-5);
+        this.trace.push({ x, w: der.reduce((a, q) => a + (q.w ?? 0), 0) / 5 });
+      }
       this.dernierPoint = now;
       if (w != null && this.frais(this.ped.t, now) && this.frais(this.ht.t, now) && this.ht.w != null && this.ped.w != null) {
         this.match.push({ ht: this.ht.w, ped: this.ped.w });
@@ -259,9 +272,10 @@ export class Moteur {
       reserve: this.wBal != null && this.w0 ? Math.max(0, Math.min(1, this.wBal / this.w0)) : null,
       w3s,
       col: this.col ? { d: this.dCol, total: this.col.km * 1000, pente: penteA(this.col, this.dCol), alt: altitudeA(this.col, this.dCol), kmh: this.kmh } : null,
-      tour: moyennes(this.points.slice(this.debutTour)),
-      tourPrec: this.tours.length ? moyennes(this.points.slice(this.tours[this.tours.length - 1].debut, this.tours[this.tours.length - 1].fin + 1)) : null,
-      seance: { w: moyennes(this.points).w, kj: Math.round(this.points.reduce((a, p) => a + (p.w ?? 0), 0) / 1000), km: Math.round(this.m / 100) / 10 },
+      // Des sommes tenues au fil de l'eau : rien n'est recalculé sur toute la séance à chaque image
+      tour: this.sTour.moyennes(),
+      tourPrec: this.tourPrec,
+      seance: { w: this.sSeance.moyennes().w, kj: Math.round(this.sSeance.joules / 1000), km: Math.round(this.m / 100) / 10 },
     };
   }
 
@@ -274,12 +288,19 @@ export class Moteur {
   }
 }
 
-function moyennes(pts: Point[]): Moyennes {
-  const m = (k: "w" | "bpm" | "cad") => {
-    const v = pts.map((p) => p[k]).filter((x): x is number => x != null);
-    return v.length ? Math.round(v.reduce((a, b) => a + b, 0) / v.length) : null;
-  };
-  return { w: m("w"), bpm: m("bpm"), cad: m("cad"), s: pts.length };
+class Somme {
+  private n = 0; private w = 0; private nw = 0; private b = 0; private nb = 0; private c = 0; private nc = 0;
+  joules = 0;
+  ajouter(p: Point) {
+    this.n++;
+    if (p.w != null) { this.w += p.w; this.nw++; this.joules += p.w; }
+    if (p.bpm != null) { this.b += p.bpm; this.nb++; }
+    if (p.cad != null) { this.c += p.cad; this.nc++; }
+  }
+  moyennes(): Moyennes {
+    const r = (s: number, n: number) => (n ? Math.round(s / n) : null);
+    return { w: r(this.w, this.nw), bpm: r(this.b, this.nb), cad: r(this.c, this.nc), s: this.n };
+  }
 }
 
 /** Vitesse en montée (ou descente) pour une puissance : poids + roulement + air

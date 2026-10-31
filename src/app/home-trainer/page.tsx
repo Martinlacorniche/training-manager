@@ -193,11 +193,14 @@ function HomeTrainer() {
 
   useEffect(() => {
     if (phase !== "rouler") return;
+    // Le home-trainer est piloté 4 fois par seconde ; l'écran ne se redessine
+    // que 2 fois par seconde (assez pour l'œil, deux fois moins de travail).
+    let image = 0;
     const h = setInterval(() => {
       const m = moteur.current;
       if (!m) return;
       const e = m.tic(Date.now());
-      setEtat(e);
+      if (image++ % 2 === 0 || e.fini) setEtat(e);
       if (simu) sim.current?.consigne(e.consigne);
       else cap.current.ht?.consigne(e.consigne);
       if (e.fini) setPhase("fin");
@@ -387,7 +390,7 @@ function HomeTrainer() {
           {perdus.map((x) => (
             <div key={x} className="flex items-center gap-3 rounded-2xl bg-amber-100 px-4 py-3 text-amber-900">
               <span className="w-4 h-4 rounded-full border-2 border-amber-300 border-t-amber-700 animate-spin shrink-0" />
-              <span className="flex-1 font-extrabold text-sm">{x === "ht" ? "Home-trainer perdu : continue de pédaler, je le rebranche tout seul." : x === "cardio" ? "Ceinture cardio perdue, je la rebranche…" : "Pédales perdues, je les rebranche…"}</span>
+              <span className="flex-1 font-extrabold text-sm">{x === "ht" ? "Home-trainer perdu : continue de pédaler, je le rebranche tout seul." : x === "cardio" ? "Ceinture cardio perdue, je la rebranche…" : "Capteur de puissance perdu, je le rebranche…"}</span>
               <button type="button" onClick={() => connecter(x)} className="rounded-full bg-white px-3 py-1.5 text-xs font-black text-amber-900">Choisir à nouveau</button>
             </div>
           ))}
@@ -450,7 +453,7 @@ function HomeTrainer() {
             </Carte>
           </div>
 
-          {etapes.length > 0 && <Carte className="!p-3"><Profil etapes={etapes} ftp={ftp} ecoule={position(etapes, etat)} hauteur={hauteurProfil} trace={moteur.current?.points} /></Carte>}
+          {etapes.length > 0 && <Carte className="!p-3"><Profil etapes={etapes} ftp={ftp} ecoule={position(etapes, etat)} hauteur={hauteurProfil} trace={moteur.current?.trace} /></Carte>}
 
           <div className="flex items-center justify-center gap-3 lg:gap-4 pt-1">
             <Rond titre="Moins dur" d={mdiMinus} onClick={actions.moins} />
@@ -597,7 +600,7 @@ function HomeTrainer() {
               <div className="flex flex-wrap gap-2 mt-4">
                 {puce("ht", "Home-trainer", mdiBike)}
                 {puce("cardio", "Cardio", mdiHeartPulse)}
-                {puce("pedales", "Pédales", mdiLightningBolt)}
+                {puce("pedales", "Capteur de puissance", mdiLightningBolt)}
                 {puce("guidon", "Guidon Zwift", mdiGamepadVariantOutline)}
               </div>
             )}

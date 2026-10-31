@@ -99,6 +99,29 @@ export const Commande = {
   pente: (pct: number) => octets(0x11, 0, 0, ...i16(Math.max(-10, Math.min(20, pct)) * 100), 40, 51),
 };
 
+/** Étalonnage (« spin down », norme FTMS) : on le demande, le home-trainer
+ *  répond par la plage de vitesse à atteindre ; on accélère au-dessus, on
+ *  arrête de pédaler, il mesure sa propre roue libre. */
+export const Etalonnage = {
+  demarrer: () => octets(0x13, 0x01),
+  annuler: () => octets(0x13, 0x02),
+};
+
+/** Réponse à la demande d'étalonnage : null si autre chose ; ok = accepté,
+ *  avec la vitesse visée (km/h) ; non supporté = le home-trainer ne le permet pas d'une autre app. */
+export function reponseEtalonnage(v: DataView): { ok: boolean; nonSupporte: boolean; basse?: number; haute?: number } | null {
+  if (v.byteLength < 3 || v.getUint8(0) !== 0x80 || v.getUint8(1) !== 0x13) return null;
+  const r = v.getUint8(2);
+  return { ok: r === 0x01, nonSupporte: r === 0x02, ...(r === 0x01 && v.byteLength >= 7 ? { basse: v.getUint16(3, true) / 100, haute: v.getUint16(5, true) / 100 } : {}) };
+}
+
+/** Fitness Machine Status (0x2ADA), événement 0x14 = état de l'étalonnage. */
+export type EtatEtalonnage = "demande" | "reussi" | "erreur" | "arrete-de-pedaler";
+export function lireStatutEtalonnage(v: DataView): EtatEtalonnage | null {
+  if (v.byteLength < 2 || v.getUint8(0) !== 0x14) return null;
+  return ({ 1: "demande", 2: "reussi", 3: "erreur", 4: "arrete-de-pedaler" } as Record<number, EtatEtalonnage>)[v.getUint8(1)] ?? null;
+}
+
 /** Réponse du Control Point : [0x80, opcode, résultat] ; 1 = succès. */
 export function reponseOk(v: DataView): { opcode: number; ok: boolean } | null {
   if (v.byteLength < 3 || v.getUint8(0) !== 0x80) return null;

@@ -4,7 +4,7 @@
 // Mode simulateur (?simu=1) : un faux home-trainer qui tient la consigne,
 // pour essayer l'écran sans vélo.
 
-import { Commande, lireCardio, lireIndoorBike, lirePuissance, lireRR, type Mesure, UUID } from "./ht/ftms";
+import { Commande, Etalonnage, lireCardio, lireIndoorBike, lirePuissance, lireRR, lireStatutEtalonnage, reponseEtalonnage, type EtatEtalonnage, type Mesure, UUID } from "./ht/ftms";
 import type { Consigne } from "./ht/moteur";
 import { GUIDON, lireBoutons, nouveauxAppuis, type ActionGuidon } from "./ht/guidon";
 
@@ -38,7 +38,7 @@ const delai = <T,>(p: Promise<T>, ms: number) => Promise.race([p, new Promise<ne
 export const messageConnexion = (e: unknown) => {
   const m = (e as Error)?.message ?? "";
   if (/cancel/i.test(m)) return null;
-  return "Connexion impossible. Ferme Zwift, MyWhoosh ou l'app Tacx (le home-trainer n'accepte qu'une app à la fois), puis réessaie.";
+  return `Connexion impossible. Ferme Zwift, MyWhoosh, l'app Tacx ou l'app sur ton téléphone : le home-trainer n'accepte qu'une app à la fois. Puis réessaie.${m ? ` (${m})` : ""}`;
 };
 
 export class Capteur {
@@ -53,6 +53,8 @@ export class Capteur {
   private ecouteurs: { c: any; f: (ev: any) => void }[] = [];
   onEtat: (e: EtatCapteur) => void = () => {};
   surAction: (a: ActionGuidon) => void = () => {};
+  /** Étalonnage : la réponse du home-trainer, puis son déroulé. */
+  surEtalonnage: (e: { ok: boolean; nonSupporte: boolean; basse?: number; haute?: number } | EtatEtalonnage) => void = () => {};
   private boutons = 0;
 
   constructor(readonly src: Source, private ecoute: Ecoute) {}
@@ -98,7 +100,13 @@ export class Capteur {
       this.ecouter(data, (ev: any) => this.ecoute("ht", lireIndoorBike(ev.target.value)));
       await data.startNotifications();
       this.cp = await s.getCharacteristic(UUID.controlPoint);
+      this.ecouter(this.cp, (ev: any) => { const r = reponseEtalonnage(ev.target.value); if (r) this.surEtalonnage(r); });
       await this.cp.startNotifications();      // les réponses arrivent en « indications »
+      try {
+        const st = await s.getCharacteristic(UUID.ftmsStatus);
+        this.ecouter(st, (ev: any) => { const e = lireStatutEtalonnage(ev.target.value); if (e) this.surEtalonnage(e); });
+        await st.startNotifications();
+      } catch { /* pas de statut : l'étalonnage dira seulement oui / non */ }
       this.controle = false; this.derniere = "";   // la consigne repart à la prochaine image
     } else if (this.src === "pedales") {
       const s = await gatt.getPrimaryService(UUID.power);
@@ -146,6 +154,14 @@ export class Capteur {
     // Une seule opération Bluetooth à la fois : on les enfile.
     this.file = this.file.then(() => this.cp?.writeValueWithResponse(octets)).catch(() => {});
     return this.file;
+  }
+
+  /** Lance (ou annule) l'étalonnage ; le résultat arrive par surEtalonnage. */
+  async etalonner(annuler = false) {
+    if (!this.cp) throw new Error("Home-trainer pas connecté");
+    if (!this.controle) { await this.ecrire(Commande.prendreLaMain()); this.controle = true; }
+    this.derniere = "";
+    await this.ecrire(annuler ? Etalonnage.annuler() : Etalonnage.demarrer());
   }
 
   /** N'envoie que ce qui change : le home-trainer n'aime pas être bombardé. */

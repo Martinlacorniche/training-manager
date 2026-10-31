@@ -18,7 +18,7 @@ import {
   mdiDownload, mdiFlagCheckered, mdiHeart, mdiHeartPulse, mdiLightningBolt, mdiMapMarkerDistance, mdiMinus, mdiPause, mdiPauseCircle,
   mdiPictureInPictureBottomRight, mdiPlay, mdiPlus, mdiRoadVariant, mdiRotateRight, mdiSkipNext, mdiSkipPrevious, mdiSlopeUphill, mdiStar,
   mdiStarOutline, mdiTarget, mdiTimerOutline, mdiTrophyOutline, mdiTuneVariant, mdiFullscreen, mdiFullscreenExit, mdiScaleBathroom,
-  mdiFlagVariantOutline, mdiHistory, mdiBatteryHigh, mdiSigma, mdiGamepadVariantOutline, mdiAccountOutline, mdiKeyboardOutline,
+  mdiFlagVariantOutline, mdiHistory, mdiBatteryHigh, mdiSigma, mdiGamepadVariantOutline, mdiAccountOutline, mdiKeyboardOutline, mdiTuneVertical,
 } from "@mdi/js";
 import { supabase } from "@/lib/supabaseClient";
 import { depuisCourt, depuisIcu, versCourt, versIcu, aplatir, dureeTotale, type Bloc, type Etape } from "./ht/seance";
@@ -91,6 +91,10 @@ function HomeTrainer() {
   const [ftpConnue, setFtpConnue] = useState(true);
   const [profil, setProfil] = useState<Omit<ProfilCycliste, "ftp">>({});
   const [ecranPlein, setEcranPlein] = useState(false);
+  // Étalonnage du home-trainer (spin down FTMS)
+  const [etal, setEtal] = useState<null | { etape: "intro" | "attente" | "vitesse" | "stop" | "ok" | "erreur" | "non"; haute?: number }>(null);
+  const [vitesseEtal, setVitesseEtal] = useState<number | null>(null);
+  const derniereVitesse = useRef<number | null>(null);
   const [seances, setSeances] = useState<SeanceDb[]>([]);
   const [favoris, setFavoris] = useState<{ id: string; nom: string; texte: string }[]>([]);
   const [onglet, setOnglet] = useState<"plan" | "main" | "favoris" | "cols" | "libre">("plan");
@@ -150,6 +154,7 @@ function HomeTrainer() {
 
   // ─── Capteurs ───
   const ecoute = useCallback((src: Source, m: { watts?: number; cadence?: number; vitesse?: number; bpm?: number; rr?: number[] }) => {
+    if (src === "ht" && m.vitesse != null) derniereVitesse.current = m.vitesse;
     if (src !== "guidon") moteur.current?.mesurer(src, m, Date.now());
   }, []);
 
@@ -162,9 +167,28 @@ function HomeTrainer() {
       if (!m) return;
       if (a === "pause") m.basculerPause(); else m[a]();
     };
+    if (src === "ht") c.surEtalonnage = (x) => {
+      if (typeof x === "object") setEtal(x.ok ? { etape: "vitesse", haute: x.haute } : x.nonSupporte ? { etape: "non" } : { etape: "erreur" });
+      else if (x === "arrete-de-pedaler") setEtal((e) => ({ ...e, etape: "stop" }));
+      else if (x === "reussi") setEtal({ etape: "ok" });
+      else if (x === "erreur") setEtal({ etape: "erreur" });
+    };
     cap.current[src] = c;
     return c;
   }, [ecoute]);
+
+  // Pendant l'étalonnage, la vitesse de la roue s'affiche en direct
+  useEffect(() => {
+    if (!etal || !["vitesse", "stop"].includes(etal.etape)) return;
+    const h = setInterval(() => setVitesseEtal(derniereVitesse.current), 500);
+    return () => clearInterval(h);
+  }, [etal]);
+  const lancerEtalonnage = async () => {
+    setEtal({ etape: "attente" });
+    try { await cap.current.ht?.etalonner(); } catch { setEtal({ etape: "erreur" }); }
+    // Sans réponse en 6 s : il ne sait pas le faire depuis une autre app
+    setTimeout(() => setEtal((e) => (e?.etape === "attente" ? { etape: "non" } : e)), 6000);
+  };
 
   // Au retour sur la page : le matériel de la dernière fois se rebranche seul.
   useEffect(() => {
@@ -609,6 +633,11 @@ function HomeTrainer() {
                 {puce("guidon", "Guidon Zwift", mdiGamepadVariantOutline)}
               </div>
             )}
+            {!simu && capteurs.ht?.connecte && (
+              <button type="button" onClick={() => setEtal({ etape: "intro" })} className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-white/20 px-3.5 py-2 text-[13px] font-black text-white hover:bg-white/30">
+                <Icone d={mdiTuneVertical} taille={16} /> Étalonner le home-trainer
+              </button>
+            )}
             {erreurBt && <p className="mt-2 text-xs font-bold text-white/90">{erreurBt}</p>}
             {!ftpConnue && (
               <div className="flex items-center gap-2 mt-3 font-bold">
@@ -733,6 +762,35 @@ function HomeTrainer() {
         )}
         </div>
       </div>
+      {etal && (
+        <div className="fixed inset-0 z-50 grid place-items-center p-4">
+          <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setEtal(null)} />
+          <div className="relative w-full max-w-md rounded-[26px] bg-white p-6 space-y-4 shadow-2xl">
+            <div className="text-xl font-black text-slate-800">Étalonner le home-trainer</div>
+            {etal.etape === "intro" && (<>
+              <div className="text-[15px] leading-relaxed text-slate-600 space-y-1.5">
+                <p>Pour des watts justes. À faire une fois, puis quand tu déplaces le home-trainer.</p>
+                <p>1. Pédale <b className="text-slate-800">10 minutes</b> avant : le frein doit être chaud.</p>
+                <p>2. Clique « C&apos;est parti », accélère jusqu&apos;à la vitesse demandée.</p>
+                <p>3. Arrête de pédaler et laisse la roue s&apos;arrêter toute seule.</p>
+              </div>
+              <Bouton large icone={mdiPlay} onClick={lancerEtalonnage}>C&apos;est parti</Bouton>
+            </>)}
+            {etal.etape === "attente" && <p className="text-center text-slate-500 py-4">Je demande au home-trainer…</p>}
+            {etal.etape === "vitesse" && (<>
+              <p className="text-[15px] text-slate-600">Accélère au-dessus de <b className="text-slate-800">{etal.haute ? `${Math.ceil(etal.haute)} km/h` : "la vitesse demandée"}</b>, puis attends le signal.</p>
+              <p className={`text-center text-6xl font-black tabular-nums ${vitesseEtal != null && etal.haute && vitesseEtal >= etal.haute ? "text-emerald-600" : "text-slate-800"}`}>{vitesseEtal != null ? vitesseEtal.toFixed(1).replace(".", ",") : "—"} <span className="text-xl text-slate-400">km/h</span></p>
+            </>)}
+            {etal.etape === "stop" && <p className="text-center text-2xl font-black text-amber-700 py-3">Arrête de pédaler ✋<br /><span className="text-[15px] font-bold text-slate-500">Laisse la roue s&apos;arrêter toute seule.</span></p>}
+            {etal.etape === "ok" && <p className="text-center text-2xl font-black text-emerald-600 py-3">Étalonné ✓<br /><span className="text-[15px] font-bold text-slate-500">Tes watts sont justes.</span></p>}
+            {etal.etape === "erreur" && <p className="text-[15px] font-bold text-rose-700">L&apos;étalonnage n&apos;a pas abouti. Réessaie en accélérant un peu plus avant d&apos;arrêter de pédaler.</p>}
+            {etal.etape === "non" && <p className="text-[15px] font-semibold text-slate-600 leading-relaxed">Ton home-trainer ne se laisse pas étalonner par une autre app. Fais-le dans l&apos;app <b className="text-slate-800">Tacx Training</b> (après 10 min d&apos;échauffement), puis ferme-la complètement et reviens ici.</p>}
+            <button type="button" onClick={() => { if (["vitesse", "stop"].includes(etal.etape)) cap.current.ht?.etalonner(true).catch(() => {}); setEtal(null); }} className="w-full py-2 text-sm font-extrabold text-slate-500 hover:text-slate-800">
+              {["ok", "erreur", "non"].includes(etal.etape) ? "Fermer" : "Annuler"}
+            </button>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

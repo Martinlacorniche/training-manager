@@ -37,6 +37,16 @@ export const chrono = (s: number | null) => {
   return h ? `${h}:${String(m).padStart(2, "0")}:${String(r).padStart(2, "0")}` : `${m}:${String(r).padStart(2, "0")}`;
 };
 
+/** L'objectif d'une étape en clair : « 300 W », « 302-342 W », « 100 → 200 W », « 140 bpm », « libre ». */
+const objectif = (e: Etape | null, ajust = 1) => {
+  if (!e) return "libre";
+  const r = (w: number) => Math.round(w * ajust);
+  if (e.rampe) return `${r(e.rampe.de)} → ${r(e.rampe.a)} W`;
+  if (e.cible.type === "w") return e.cible.min === e.cible.max ? `${r(e.cible.min)} W` : `${r(e.cible.min)}-${r(e.cible.max)} W`;
+  if (e.cible.type === "bpm") return e.cible.min === e.cible.max ? `${e.cible.min} bpm` : `${e.cible.min}-${e.cible.max} bpm`;
+  return "libre";
+};
+
 export type Actions = { pause: () => void; suivante: () => void; precedente: () => void; plus: () => void; moins: () => void; terminer: () => void };
 
 const Rond = ({ onClick, d, titre, gros }: { onClick: () => void; d: string; titre: string; gros?: boolean }) => (
@@ -87,7 +97,8 @@ export function Bandeau({ fenetre, etat, etapes, ftp, position, police, perdu, a
         </div>
         <Valeur titre="Cadence" icone={mdiRotateRight}>{etat.cadence ?? "—"}</Valeur>
         <Valeur titre="Cœur" icone={mdiHeart}>{etat.bpm ?? "—"}</Valeur>
-        <Valeur titre="Étape">{etat.attendLap ? "⏭" : chrono(etat.resteEtape ?? etat.tEtape)}</Valeur>
+        <Valeur titre={`Étape · ${objectif(etat.etape, etat.ajust)}`}>{etat.attendLap ? "⏭" : chrono(etat.resteEtape ?? etat.tEtape)}</Valeur>
+        <Valeur titre="Ensuite">{etat.suivante ? <>{chrono(etat.suivante.s)} <span className="text-white/80 text-base">· {objectif(etat.suivante, etat.ajust)}</span></> : <span className="text-base">fin 🏁</span>}</Valeur>
         <Valeur titre="Tour moy.">{etat.tour.w ?? "—"}</Valeur>
         {etat.reserve != null && (
           <div className="flex flex-col justify-center shrink-0 w-[70px]">

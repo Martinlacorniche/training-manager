@@ -18,7 +18,7 @@ import {
   mdiDownload, mdiFlagCheckered, mdiHeart, mdiHeartPulse, mdiLightningBolt, mdiMapMarkerDistance, mdiMinus, mdiPause, mdiPauseCircle,
   mdiPictureInPictureBottomRight, mdiPlay, mdiPlus, mdiRoadVariant, mdiRotateRight, mdiSkipNext, mdiSkipPrevious, mdiSlopeUphill, mdiStar,
   mdiStarOutline, mdiTarget, mdiTimerOutline, mdiTrophyOutline, mdiTuneVariant, mdiFullscreen, mdiFullscreenExit, mdiScaleBathroom,
-  mdiFlagVariantOutline, mdiHistory, mdiBatteryHigh, mdiSigma, mdiGamepadVariantOutline,
+  mdiFlagVariantOutline, mdiHistory, mdiBatteryHigh, mdiSigma, mdiGamepadVariantOutline, mdiAccountOutline, mdiKeyboardOutline,
 } from "@mdi/js";
 import { supabase } from "@/lib/supabaseClient";
 import { depuisCourt, depuisIcu, versCourt, versIcu, aplatir, dureeTotale, type Bloc, type Etape } from "./ht/seance";
@@ -495,6 +495,7 @@ function HomeTrainer() {
         </div>
 
         <div className="space-y-3.5 lg:sticky lg:top-6">
+        <Titre>Mon vélo</Titre>
         {!bluetoothDispo() && !simu ? (
           <Ciel couleurs={CIEL_ATTENTE} icone={mdiBike}>
             <Sur>Mon matériel</Sur>
@@ -523,6 +524,38 @@ function HomeTrainer() {
           </Ciel>
         )}
 
+        {/* Mon profil : ce que l'écran utilise, pour que rien ne soit une boîte noire */}
+        <Carte className="space-y-3">
+          <div className="flex items-center gap-1.5 text-[11px] font-extrabold uppercase tracking-[0.12em] text-slate-400"><Icone d={mdiAccountOutline} taille={15} coul="#94a3b8" />Mon profil</div>
+          <div className="grid grid-cols-3 gap-2">
+            {[
+              ["FTP", `${ftp} W`, profil.poids ? `${(ftp / profil.poids).toFixed(1).replace(".", ",")} W/kg` : ""],
+              ["Poids", profil.poids ? `${profil.poids} kg` : "—", ""],
+              ["Réserve", profil.cp ? `${Math.round(profil.cp)} W` : "—", profil.wPrime ? `+ ${Math.round(profil.wPrime / 1000)} kJ` : "à mesurer"],
+            ].map(([t, v, sous]) => (
+              <div key={t} className="rounded-2xl bg-slate-50 px-3 py-2.5">
+                <div className="text-[11px] font-extrabold uppercase tracking-[0.1em] text-slate-400">{t}</div>
+                <div className="text-[22px] font-black text-slate-800 tabular-nums leading-tight">{v}</div>
+                {sous && <div className="text-[12px] font-bold text-slate-500">{sous}</div>}
+              </div>
+            ))}
+          </div>
+        </Carte>
+
+        <Carte className="space-y-2.5 hidden lg:block">
+          <div className="flex items-center gap-1.5 text-[11px] font-extrabold uppercase tracking-[0.12em] text-slate-400"><Icone d={mdiKeyboardOutline} taille={15} coul="#94a3b8" />Pendant la séance</div>
+          {[
+            [mdiPictureInPictureBottomRight, "Mode bandeau", "une fenêtre étroite, toujours au-dessus, à poser à côté de ton film"],
+            [mdiKeyboardOutline, "Clavier", "espace = pause · ← → = étapes · ↑ ↓ = plus ou moins dur"],
+            [mdiGamepadVariantOutline, "Guidon Zwift", "palettes = plus ou moins dur · A = pause · croix = étapes"],
+            [mdiCloudUploadOutline, "À la fin", "ressenti, puis ta séance part sur Strava et intervals.icu"],
+          ].map(([d, t, x]) => (
+            <div key={t} className="flex items-start gap-3">
+              <div className="w-9 h-9 rounded-xl bg-blue-50 flex items-center justify-center shrink-0"><Icone d={d} taille={18} coul="#2563eb" /></div>
+              <div className="min-w-0"><div className="font-black text-slate-800 text-sm">{t}</div><div className="text-[13px] font-semibold text-slate-500">{x}</div></div>
+            </div>
+          ))}
+        </Carte>
         </div>
         <div className="space-y-3.5">
         <Titre>Ma séance</Titre>

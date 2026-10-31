@@ -64,7 +64,8 @@ export function Onglets<K extends string>({ valeur, choix, onChange }: { valeur:
   );
 }
 
-export function Profil({ etapes, ftp, ecoule, hauteur = 64 }: { etapes: Etape[]; ftp: number; ecoule?: number; hauteur?: number }) {
+/** La séance en blocs ; pendant l'effort, les vrais watts (moyenne 5 s) par-dessus. */
+export function Profil({ etapes, ftp, ecoule, hauteur = 64, trace }: { etapes: Etape[]; ftp: number; ecoule?: number; hauteur?: number; trace?: { x: number; w: number | null }[] }) {
   const total = etapes.reduce((a, e) => a + e.s, 0) || 1;
   const wMax = Math.max(ftp * 1.3, ...etapes.map((e) => (e.cible.type === "w" ? e.cible.max : ftp * LIBRE_PCT)));
   const h = (w: number) => Math.max(4, (w / wMax) * (hauteur - 2));
@@ -77,12 +78,21 @@ export function Profil({ etapes, ftp, ecoule, hauteur = 64 }: { etapes: Etape[];
         x += larg;
         const de = e.rampe ? e.rampe.de : e.cible.type === "w" ? (e.cible.min + e.cible.max) / 2 : ftp * LIBRE_PCT;
         const a = e.rampe ? e.rampe.a : de;
-        const passe = curseur != null && x0 + larg <= curseur;
+        const passe = curseur != null && x0 + larg <= curseur && !trace;
         const coul = zoneEtape(e, ftp).plein, g = larg > 6 ? 2 : 0;
         return e.rampe
           ? <path key={k} d={`M${x0 + g / 2},${hauteur} L${x0 + g / 2},${hauteur - h(de)} L${x0 + larg - g / 2},${hauteur - h(a)} L${x0 + larg - g / 2},${hauteur} Z`} fill={coul} opacity={passe ? 0.35 : 1} />
           : <rect key={k} x={x0 + g / 2} y={hauteur - h(de)} width={Math.max(1, larg - g)} height={h(de)} rx={larg > 12 ? 5 : 1} fill={coul} opacity={passe ? 0.35 : 1} />;
       })}
+      {trace && trace.length > 5 && (() => {
+        const pts: string[] = [];
+        for (let i = 0; i < trace.length; i += 1) {
+          const f = trace.slice(Math.max(0, i - 4), i + 1).map((p) => p.w ?? 0);
+          const w = f.reduce((a, b) => a + b, 0) / f.length;
+          pts.push(`${((trace[i].x / total) * 1000).toFixed(1)},${(hauteur - Math.min(hauteur - 1, h(w))).toFixed(1)}`);
+        }
+        return <polyline points={pts.join(" ")} fill="none" stroke={C.text} strokeWidth={2} strokeLinejoin="round" vectorEffect="non-scaling-stroke" opacity={0.85} />;
+      })()}
       {curseur != null && <rect x={Math.min(996, curseur) - 2} y={0} width={4} height={hauteur} rx={2} fill={C.text} />}
     </svg>
   );

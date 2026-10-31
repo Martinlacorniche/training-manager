@@ -19,7 +19,8 @@ export async function ouvrirFenetre(): Promise<Window> {
   for (const ss of Array.from(document.styleSheets)) {
     try {
       const st = w.document.createElement("style");
-      st.textContent = Array.from(ss.cssRules).map((r) => r.cssText).join("\n");
+      // Les polices pointent vers « /_next/… » : dans la fenêtre (about:blank) il faut l'adresse complète
+      st.textContent = Array.from(ss.cssRules).map((r) => r.cssText).join("\n").replace(/url\((["']?)\//g, `url($1${location.origin}/`);
       w.document.head.appendChild(st);
     } catch {
       if (ss.href) { const l = w.document.createElement("link"); l.rel = "stylesheet"; l.href = ss.href; w.document.head.appendChild(l); }
@@ -70,23 +71,30 @@ export function Bandeau({ fenetre, etat, etapes, ftp, position, police, perdu, a
   }, [fenetre, actions]);
 
   const z = etat.pause !== "non" ? ZONE_PAUSE : zoneEtape(etat.etape, ftp);
-  const ec = ecart(etat.watts, etat.cible);
+  const ec = ecart(etat.w3s, etat.cible);
   const total = etapes.reduce((a, e) => a + e.s, 0);
   const message = perdu ?? etat.alerte ?? (etat.pause === "auto" ? "En pause — repédale pour reprendre" : etat.pause === "manuelle" ? "En pause" : null);
 
   return createPortal(
-    <div className="h-screen flex flex-col select-none" style={{ ...degrade(z.degrade), fontFamily: police }}>
+    <div className="h-screen flex flex-col select-none" style={{ ...degrade(z.degrade), fontFamily: `${police}, system-ui, sans-serif` }}>
       <div className="flex-1 flex items-center gap-5 px-4 min-w-0">
         <div className="flex flex-col justify-center shrink-0 min-w-[190px]">
           <span className="text-[10px] font-extrabold uppercase tracking-[0.12em] text-white/80 leading-none">{message ?? z.mot}{ec && !message ? ` · ${ec.texte}` : ""}</span>
           <span className="flex items-baseline gap-1.5">
-            <span className="text-[44px] font-black text-white tabular-nums leading-none tracking-tight">{etat.watts ?? "—"}</span>
+            <span className="text-[44px] font-black text-white tabular-nums leading-none tracking-tight">{etat.w3s ?? "—"}</span>
             <span className="text-white/85 text-lg font-black">/ {etat.cible ?? "—"} W</span>
           </span>
         </div>
         <Valeur titre="Cadence" icone={mdiRotateRight}>{etat.cadence ?? "—"}</Valeur>
         <Valeur titre="Cœur" icone={mdiHeart}>{etat.bpm ?? "—"}</Valeur>
         <Valeur titre="Étape">{etat.attendLap ? "⏭" : chrono(etat.resteEtape ?? etat.tEtape)}</Valeur>
+        <Valeur titre="Tour moy.">{etat.tour.w ?? "—"}</Valeur>
+        {etat.reserve != null && (
+          <div className="flex flex-col justify-center shrink-0 w-[70px]">
+            <span className="text-[10px] font-extrabold uppercase tracking-[0.12em] text-white/80 leading-none">Réserve</span>
+            <div className="h-2.5 rounded-full bg-black/20 overflow-hidden mt-2"><div className="h-full rounded-full bg-white" style={{ width: `${etat.reserve * 100}%` }} /></div>
+          </div>
+        )}
         <Valeur titre="Total">{chrono(etat.tTotal)}{etat.dureeTotale ? <span className="text-white/70 text-base"> / {chrono(etat.dureeTotale)}</span> : null}</Valeur>
         <div className="flex items-center gap-1.5 ml-auto">
           <Rond titre="Moins dur (flèche bas)" d={mdiMinus} onClick={actions.moins} />

@@ -17,11 +17,13 @@ import {
   mdiAlertCircle, mdiBike, mdiBikeFast, mdiCalendarBlankOutline, mdiCalendarMonth, mdiCheckCircle, mdiChevronLeft, mdiCloudUploadOutline,
   mdiDownload, mdiFlagCheckered, mdiHeart, mdiHeartPulse, mdiLightningBolt, mdiMapMarkerDistance, mdiMinus, mdiPause, mdiPauseCircle,
   mdiPictureInPictureBottomRight, mdiPlay, mdiPlus, mdiRoadVariant, mdiRotateRight, mdiSkipNext, mdiSkipPrevious, mdiSlopeUphill, mdiStar,
-  mdiStarOutline, mdiTarget, mdiTimerOutline, mdiTrophyOutline, mdiTuneVariant,
+  mdiStarOutline, mdiTarget, mdiTimerOutline, mdiTrophyOutline, mdiTuneVariant, mdiFullscreen, mdiFullscreenExit, mdiScaleBathroom,
+  mdiFlagVariantOutline, mdiHistory, mdiBatteryHigh, mdiSigma,
 } from "@mdi/js";
 import { supabase } from "@/lib/supabaseClient";
 import { depuisCourt, depuisIcu, versCourt, versIcu, aplatir, dureeTotale, type Bloc, type Etape } from "./ht/seance";
-import { Moteur, type Etat } from "./ht/moteur";
+import { Moteur, type Etat, type Moyennes as MoyennesT, type Profil as ProfilCycliste } from "./ht/moteur";
+import { compliment } from "./ht/compliment";
 import { fichierFit } from "./ht/fit";
 import { ecart, zoneEtape, ZONE_PAUSE } from "./ht/zones";
 import { Capteur, Simulateur, bluetoothDispo, messageConnexion, type EtatCapteur, type Source } from "./capteurs";
@@ -50,8 +52,8 @@ function versBase64(o: Uint8Array) {
 }
 
 // Hors du composant : recréés à chaque image (4 par seconde), les boutons perdraient des clics.
-const Mesure = ({ titre, icone, coul, children, unite }: { titre: string; icone: string; coul?: string; children: React.ReactNode; unite?: string }) => (
-  <Carte>
+const Mesure = ({ titre, icone, coul, children, unite, classe = "" }: { titre: string; icone: string; coul?: string; children: React.ReactNode; unite?: string; classe?: string }) => (
+  <Carte className={classe}>
     <div className="flex items-center gap-1.5 text-[11px] font-extrabold uppercase tracking-[0.12em] text-slate-400"><Icone d={icone} taille={15} coul={coul ?? "#94a3b8"} />{titre}</div>
     <div className="flex items-baseline gap-1 mt-0.5"><span className="text-[44px] font-black text-slate-800 tabular-nums leading-tight">{children}</span>{unite && <span className="text-[13px] font-extrabold text-slate-400">{unite}</span>}</div>
   </Carte>
@@ -62,6 +64,13 @@ const Rond = ({ onClick, d, titre, grand, couleurs }: { onClick: () => void; d: 
     style={grand && couleurs ? { backgroundImage: `linear-gradient(135deg, ${couleurs.join(", ")})`, boxShadow: `0 6px 18px ${couleurs[0]}66` } : { boxShadow: "0 3px 10px rgba(100,116,139,0.12)" }}>
     <Icone d={d} taille={grand ? 40 : 26} />
   </button>
+);
+const Moyennes = ({ titre, icone, m, classe = "" }: { titre: string; icone: string; m: MoyennesT | null; classe?: string }) => (
+  <Carte className={classe}>
+    <div className="flex items-center gap-1.5 text-[11px] font-extrabold uppercase tracking-[0.12em] text-slate-400"><Icone d={icone} taille={15} coul="#94a3b8" />{titre}{m?.s ? <span className="normal-case tracking-normal font-bold"> · {chrono(m.s)}</span> : null}</div>
+    <div className="text-[34px] font-black text-slate-800 tabular-nums leading-tight">{m?.w ?? "—"} <span className="text-[14px] text-slate-400">W moy.</span></div>
+    <div className="text-[13px] font-extrabold text-slate-500 tabular-nums">{m?.bpm ?? "—"} bpm · {m?.cad ?? "—"} tr/min</div>
+  </Carte>
 );
 const Vide = ({ icone, children }: { icone: string; children: React.ReactNode }) => (
   <div className="flex flex-col items-center gap-1.5 py-6 text-center"><Icone d={icone} taille={34} coul="#cbd5e1" /><p className="font-bold text-slate-500">{children}</p></div>
@@ -74,6 +83,8 @@ function HomeTrainer() {
   const [moi, setMoi] = useState<string | null>(null);
   const [ftp, setFtp] = useState<number>(200);
   const [ftpConnue, setFtpConnue] = useState(true);
+  const [profil, setProfil] = useState<Omit<ProfilCycliste, "ftp">>({});
+  const [ecranPlein, setEcranPlein] = useState(false);
   const [seances, setSeances] = useState<SeanceDb[]>([]);
   const [favoris, setFavoris] = useState<{ id: string; nom: string; texte: string }[]>([]);
   const [onglet, setOnglet] = useState<"plan" | "main" | "favoris" | "libre">("plan");
@@ -101,13 +112,17 @@ function HomeTrainer() {
       if (!session) { router.push("/login"); return; }
       const id = session.user.id;
       setMoi(id);
-      const [{ data: am }, { data: ss }, { data: fav }] = await Promise.all([
+      const [{ data: am }, { data: ss }, { data: fav }, { data: pp }, { data: cp }] = await Promise.all([
         supabase.from("athlete_metrics").select("ftp_w").eq("user_id", id).maybeSingle(),
         supabase.from("sessions").select("id, date, title, workout_text, planned_hour, status").eq("user_id", id).eq("sport", "Vélo")
           .gte("date", dayjs().subtract(1, "day").format("YYYY-MM-DD")).lte("date", dayjs().add(6, "day").format("YYYY-MM-DD")).order("date"),
         supabase.from("ht_favoris").select("id, nom, texte").order("cree_le", { ascending: false }),
+        // Le profil du cycliste : poids (W/kg) et puissance critique + réserve (jauge)
+        supabase.from("profil_physique").select("poids_kg").eq("user_id", id).maybeSingle(),
+        supabase.from("vitesse_critique").select("cs, d_prime").eq("user_id", id).eq("sport", "velo").order("jour", { ascending: false }).limit(1).maybeSingle(),
       ]);
       if (am?.ftp_w) setFtp(Number(am.ftp_w)); else setFtpConnue(false);
+      setProfil({ poids: pp?.poids_kg ? Number(pp.poids_kg) : null, cp: cp?.cs ? Number(cp.cs) : null, wPrime: cp?.d_prime ? Number(cp.d_prime) : null });
       let liste = (ss ?? []) as SeanceDb[];
       // Une version adaptée (grossesse) remplace la séance du coach, pour elle seule.
       if (liste.length) {
@@ -153,7 +168,7 @@ function HomeTrainer() {
   // ─── Rouler ───
   const demarrer = async (c: Choix) => {
     setChoix(c);
-    moteur.current = new Moteur(c.blocs, ftp);
+    moteur.current = new Moteur(c.blocs, { ftp, ...profil });
     setPhase("rouler");
     setEnvoi({ etat: "rien" }); setFavoriOk(false); setFavoriNom("");
     if (simu) { sim.current = new Simulateur(ecoute); sim.current.demarrer(); }
@@ -193,6 +208,15 @@ function HomeTrainer() {
     terminer: () => moteur.current?.terminer(),
   }), []);
 
+  const pleinEcran = async () => {
+    try { if (document.fullscreenElement) await document.exitFullscreen(); else await document.documentElement.requestFullscreen(); } catch { /* refusé */ }
+  };
+  useEffect(() => {
+    const f = () => setEcranPlein(!!document.fullscreenElement);
+    document.addEventListener("fullscreenchange", f);
+    return () => document.removeEventListener("fullscreenchange", f);
+  }, []);
+
   const ouvrirBandeau = async () => {
     const w = await ouvrirFenetre();
     w.addEventListener("pagehide", () => setFenetre(null));
@@ -222,7 +246,8 @@ function HomeTrainer() {
       }
       setEnvoi({ etat: "en_cours", texte: "J'envoie sur Strava…" });
       const fit = fichierFit(m.points, m.tours);
-      const { data: r, error } = await supabase.functions.invoke("ht-envoi", { body: { fit: versBase64(fit), session_id: sessionId } });
+      const bravo = compliment(m.points, m.tours, m.etapes, ftp, m.bouclee);
+      const { data: r, error } = await supabase.functions.invoke("ht-envoi", { body: { fit: versBase64(fit), session_id: sessionId, compliment: bravo } });
       if (error) throw new Error(error.message);
       if (r?.status === "not_connected") { setEnvoi({ etat: "ok", texte: "Séance enregistrée. Strava n'est pas connecté : tu peux télécharger le fichier." }); return; }
       if (r?.error) throw new Error(r.error);
@@ -262,42 +287,42 @@ function HomeTrainer() {
   const fond = `${jakarta.className} min-h-screen bg-[#F8FAFC] px-4 py-6 md:py-10`;
 
   // ─────────────────────────── Rouler ───────────────────────────
+  // Tout l'écran (31/10, Martin) : la puissance 3 s en très gros, l'étape,
+  // le cœur et la cadence, puis les moyennes du tour, du tour d'avant et de
+  // la séance, la réserve, et la séance dessinée avec les vrais watts.
   if (phase === "rouler" && etat && choix) {
     const z = etat.pause !== "non" ? ZONE_PAUSE : zoneEtape(etat.etape, ftp);
-    const ec = ecart(etat.watts, etat.cible);
+    const ec = ecart(etat.w3s, etat.cible);
     const partEtape = etat.etape && etat.etape.s ? Math.min(1, etat.tEtape / etat.etape.s) : 0;
-    const km = moteur.current?.points.length ? (moteur.current.points[moteur.current.points.length - 1].m / 1000).toFixed(1) : "0.0";
+    const wkg = profil.poids && etat.w3s != null ? (etat.w3s / profil.poids).toFixed(1).replace(".", ",") : null;
+    // Le dessin prend la hauteur qui reste sur un grand écran
+    const hauteurProfil = typeof window !== "undefined" ? Math.max(120, Math.min(300, window.innerHeight - 830)) : 130;
+    const perdus = (["ht", "cardio", "pedales"] as Source[]).filter((x) => !simu && capteurs[x] && !capteurs[x]!.connecte);
     return (
-      <main className={fond}>
-        <div className="max-w-3xl mx-auto space-y-3">
+      <main className={`${jakarta.className} min-h-screen bg-[#F8FAFC] px-4 lg:px-8 py-4`}>
+        <div className="space-y-3">
           <div className="flex items-center justify-between gap-3">
-            <h1 className="text-xl md:text-2xl font-black text-slate-800 truncate">{choix.titre}</h1>
-            <div className="flex items-center gap-3 shrink-0">
-              <span className="font-black text-slate-500 tabular-nums">{chrono(etat.tTotal)}{etat.dureeTotale ? <span className="text-slate-400"> / {chrono(etat.dureeTotale)}</span> : null}</span>
+            <h1 className="text-xl lg:text-2xl font-black text-slate-800 truncate">{choix.titre}</h1>
+            <div className="flex items-center gap-2 shrink-0">
+              <span className="font-black text-slate-500 tabular-nums mr-1">{chrono(etat.tTotal)}{etat.dureeTotale ? <span className="text-slate-400"> / {chrono(etat.dureeTotale)}</span> : null}</span>
+              <button type="button" onClick={pleinEcran} title="Plein écran" className="hidden md:flex items-center gap-1.5 rounded-full bg-white border border-[#eef2f7] px-3.5 py-2 text-sm font-extrabold text-slate-700 hover:bg-slate-50 shadow-sm">
+                <Icone d={ecranPlein ? mdiFullscreenExit : mdiFullscreen} taille={18} />{ecranPlein ? "Quitter" : "Plein écran"}
+              </button>
               {bandeauDispo() && !fenetre && (
-                <button type="button" onClick={ouvrirBandeau} className="hidden md:flex items-center gap-1.5 rounded-full bg-white border border-[#eef2f7] px-4 py-2 text-sm font-extrabold text-slate-700 hover:bg-slate-50 shadow-sm">
+                <button type="button" onClick={ouvrirBandeau} className="hidden md:flex items-center gap-1.5 rounded-full bg-white border border-[#eef2f7] px-3.5 py-2 text-sm font-extrabold text-slate-700 hover:bg-slate-50 shadow-sm">
                   <Icone d={mdiPictureInPictureBottomRight} taille={17} /> Mode bandeau
                 </button>
               )}
             </div>
           </div>
 
-          <Ciel couleurs={z.degrade} icone={mdiLightningBolt} className="!p-6">
-            <div className="flex items-center gap-2 flex-wrap">
-              <Sur>{z.mot}</Sur>
-              {etat.erg && etat.ajust !== 1 && <Bulle icone={mdiTuneVariant} texte={`${Math.round(etat.ajust * 100)} %`} />}
-              {!etat.erg && <Bulle icone={mdiSlopeUphill} texte={`Pente ${etat.pente} %`} />}
+          {perdus.map((x) => (
+            <div key={x} className="flex items-center gap-3 rounded-2xl bg-amber-100 px-4 py-3 text-amber-900">
+              <span className="w-4 h-4 rounded-full border-2 border-amber-300 border-t-amber-700 animate-spin shrink-0" />
+              <span className="flex-1 font-extrabold text-sm">{x === "ht" ? "Home-trainer perdu : continue de pédaler, je le rebranche tout seul." : x === "cardio" ? "Ceinture cardio perdue, je la rebranche…" : "Pédales perdues, je les rebranche…"}</span>
+              <button type="button" onClick={() => connecter(x)} className="rounded-full bg-white px-3 py-1.5 text-xs font-black text-amber-900">Choisir à nouveau</button>
             </div>
-            <div className="flex items-baseline gap-3 mt-1">
-              <span className="text-[96px] md:text-[120px] font-black tabular-nums leading-none tracking-tight">{etat.watts ?? "—"}</span>
-              <span className="text-2xl md:text-3xl font-black text-white/85">/ {etat.cible ?? "—"} W</span>
-            </div>
-            <div className="flex gap-2 mt-3 flex-wrap min-h-[32px]">
-              {ec && <Bulle icone={ec.bon ? mdiCheckCircle : mdiTarget} texte={ec.texte} fort={ec.bon} />}
-              {etat.etape?.cadence ? <Bulle icone={mdiRotateRight} texte={`Vise ${etat.etape.cadence} tr/min`} /> : null}
-            </div>
-          </Ciel>
-
+          ))}
           {(etat.alerte || etat.pause !== "non") && (
             <div className={`flex items-center gap-2 rounded-2xl px-4 py-3 font-extrabold ${etat.alerte ? "bg-amber-100 text-amber-800" : "bg-sky-100 text-sky-800"}`}>
               <Icone d={etat.alerte ? mdiAlertCircle : mdiPauseCircle} taille={20} />
@@ -305,43 +330,72 @@ function HomeTrainer() {
             </div>
           )}
 
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <Mesure titre="Cadence" icone={mdiRotateRight} unite="tr/min">{etat.cadence ?? "—"}</Mesure>
-            <Mesure titre="Cœur" icone={mdiHeart} coul="#f43f5e" unite="bpm">{etat.bpm ?? "—"}</Mesure>
-            <Carte className="col-span-2 flex items-center gap-4">
+          <div className="grid grid-cols-2 lg:grid-cols-12 gap-3">
+            <Ciel couleurs={z.degrade} icone={mdiLightningBolt} className="col-span-2 lg:col-span-6 lg:row-span-2 !p-6 flex flex-col justify-center">
+              <div className="flex items-center gap-2 flex-wrap">
+                <Sur>{z.mot} · 3 s</Sur>
+                {etat.erg && etat.ajust !== 1 && <Bulle icone={mdiTuneVariant} texte={`${Math.round(etat.ajust * 100)} %`} />}
+                {!etat.erg && <Bulle icone={mdiSlopeUphill} texte={`Pente ${etat.pente} %`} />}
+              </div>
+              <div className="flex items-baseline gap-3 mt-1">
+                <span className="text-[96px] lg:text-[150px] font-black tabular-nums leading-none tracking-tight">{etat.w3s ?? "—"}</span>
+                <span className="text-2xl lg:text-4xl font-black text-white/85">/ {etat.cible ?? "—"} W</span>
+              </div>
+              <div className="flex gap-2 mt-3 flex-wrap min-h-[32px]">
+                {ec && <Bulle icone={ec.bon ? mdiCheckCircle : mdiTarget} texte={ec.texte} fort={ec.bon} />}
+                {wkg && <Bulle icone={mdiScaleBathroom} texte={`${wkg} W/kg`} />}
+                {etat.etape?.cadence ? <Bulle icone={mdiRotateRight} texte={`Vise ${etat.etape.cadence} tr/min`} /> : null}
+              </div>
+            </Ciel>
+            <Mesure titre="Cadence" icone={mdiRotateRight} unite="tr/min" classe="lg:col-span-3">{etat.cadence ?? "—"}</Mesure>
+            <Mesure titre="Cœur" icone={mdiHeart} coul="#f43f5e" unite="bpm" classe="lg:col-span-3">{etat.bpm ?? "—"}</Mesure>
+            <Carte className="col-span-2 lg:col-span-6 flex items-center gap-4">
               <div className="relative flex items-center justify-center shrink-0">
-                <Anneau part={partEtape} coul={z.plein} />
+                <Anneau part={partEtape} coul={z.plein} taille={76} />
                 <span className="absolute text-xs font-black text-slate-800">{etapes.length ? `${Math.min(etat.i + 1, etapes.length)}/${etapes.length}` : "∞"}</span>
               </div>
               <div className="min-w-0">
-                <div className="text-[11px] font-extrabold uppercase tracking-[0.12em] text-slate-400">{etat.attendLap ? "Quand tu es prêt" : "Fin de l'étape dans"}</div>
-                <div className="text-[36px] font-black text-slate-800 tabular-nums leading-tight">{etat.attendLap ? "⏭" : chrono(etat.resteEtape ?? etat.tEtape)}</div>
-                <div className="text-[13px] font-bold text-slate-500 truncate">{etat.suivante ? `Ensuite : ${chrono(etat.suivante.s)} à ${cibleTexte(etat.suivante, etat.ajust)}` : etapes.length ? "Dernière étape 💪" : `Sortie libre · ${km} km`}</div>
+                <div className="text-[11px] font-extrabold uppercase tracking-[0.12em] text-slate-400">{etat.attendLap ? "Quand tu es prêt" : etapes.length ? "Fin de l'étape dans" : "Sortie libre"}</div>
+                <div className="text-[44px] font-black text-slate-800 tabular-nums leading-tight">{etat.attendLap ? "⏭" : chrono(etat.resteEtape ?? etat.tEtape)}</div>
+                <div className="text-[14px] font-bold text-slate-500 truncate">{etat.suivante ? `Ensuite : ${chrono(etat.suivante.s)} à ${cibleTexte(etat.suivante, etat.ajust)}` : etapes.length ? "Dernière étape 💪" : `${etat.seance.km.toFixed(1)} km`}</div>
               </div>
+            </Carte>
+
+            <Moyennes titre="Ce tour" icone={mdiFlagVariantOutline} m={etat.tour} classe="lg:col-span-3" />
+            <Moyennes titre="Tour d'avant" icone={mdiHistory} m={etat.tourPrec} classe="lg:col-span-3" />
+            <Carte className="lg:col-span-3">
+              <div className="flex items-center gap-1.5 text-[11px] font-extrabold uppercase tracking-[0.12em] text-slate-400"><Icone d={mdiBatteryHigh} taille={15} coul="#94a3b8" />Ma réserve</div>
+              {etat.reserve != null ? (
+                <>
+                  <div className="text-[34px] font-black text-slate-800 tabular-nums leading-tight">{Math.round(etat.reserve * 100)} %</div>
+                  <div className="h-3 rounded-full bg-slate-100 overflow-hidden mt-1">
+                    <div className="h-full rounded-full transition-all duration-300" style={{ width: `${etat.reserve * 100}%`, background: etat.reserve > 0.5 ? "#10b981" : etat.reserve > 0.2 ? "#f59e0b" : "#f43f5e" }} />
+                  </div>
+                  <div className="text-[12px] font-bold text-slate-400 mt-1">Au-dessus de {Math.round(profil.cp ?? 0)} W, elle se vide</div>
+                </>
+              ) : <div className="text-[13px] font-bold text-slate-400 mt-2">Il faut quelques efforts à fond pour la connaître.</div>}
+            </Carte>
+            <Carte className="lg:col-span-3">
+              <div className="flex items-center gap-1.5 text-[11px] font-extrabold uppercase tracking-[0.12em] text-slate-400"><Icone d={mdiSigma} taille={15} coul="#94a3b8" />La séance</div>
+              <div className="text-[34px] font-black text-slate-800 tabular-nums leading-tight">{etat.seance.w ?? "—"} <span className="text-[14px] text-slate-400">W moy.</span></div>
+              <div className="text-[13px] font-extrabold text-slate-500 tabular-nums">{etat.seance.kj} kJ · {etat.seance.km.toFixed(1)} km</div>
             </Carte>
           </div>
 
-          {etapes.length > 0 && <Carte className="!p-3"><Profil etapes={etapes} ftp={ftp} ecoule={position(etapes, etat)} hauteur={80} /></Carte>}
+          {etapes.length > 0 && <Carte className="!p-3"><Profil etapes={etapes} ftp={ftp} ecoule={position(etapes, etat)} hauteur={hauteurProfil} trace={moteur.current?.points} /></Carte>}
 
-          <div className="flex items-center justify-center gap-3 md:gap-4 pt-2">
+          <div className="flex items-center justify-center gap-3 lg:gap-4 pt-1">
             <Rond titre="Moins dur" d={mdiMinus} onClick={actions.moins} />
             <Rond titre="Précédent" d={mdiSkipPrevious} onClick={actions.precedente} />
             <Rond grand couleurs={z.degrade} titre="Pause" d={etat.pause === "non" ? mdiPause : mdiPlay} onClick={actions.pause} />
             <Rond titre="Suivant" d={mdiSkipNext} onClick={actions.suivante} />
             <Rond titre="Plus dur" d={mdiPlus} onClick={actions.plus} />
           </div>
-          <div className="flex items-center justify-center gap-2.5 pt-1">
+          <div className="flex items-center justify-center gap-2.5">
             {etapes.length > 0 && <button type="button" onClick={() => moteur.current?.basculerErg()} className="rounded-full bg-white border border-[#eef2f7] px-4 py-2.5 text-sm font-extrabold text-slate-700 hover:bg-slate-50">{etat.erg ? "Passer en résistance" : "Repasser en ERG"}</button>}
             <button type="button" onClick={() => { if (confirm("Terminer la séance ?")) actions.terminer(); }} className="flex items-center gap-1.5 rounded-full bg-rose-50 px-4 py-2.5 text-sm font-black text-rose-600 hover:bg-rose-100"><Icone d={mdiFlagCheckered} taille={16} /> Terminer</button>
           </div>
-          {!simu && (["ht", "cardio", "pedales"] as Source[]).filter((x) => capteurs[x] && !capteurs[x]!.connecte).map((x) => (
-            <div key={x} className="flex items-center gap-3 rounded-2xl bg-amber-100 px-4 py-3 text-amber-900">
-              <span className="w-4 h-4 rounded-full border-2 border-amber-300 border-t-amber-700 animate-spin shrink-0" />
-              <span className="flex-1 font-extrabold text-sm">{x === "ht" ? "Home-trainer perdu : continue de pédaler, je le rebranche tout seul." : x === "cardio" ? "Ceinture cardio perdue, je la rebranche…" : "Pédales perdues, je les rebranche…"}</span>
-              <button type="button" onClick={() => connecter(x)} className="rounded-full bg-white px-3 py-1.5 text-xs font-black text-amber-900">Choisir à nouveau</button>
-            </div>
-          ))}
-          <p className="text-center text-xs text-slate-400 hidden md:block">Raccourcis dans le bandeau : espace = pause · ← → = étapes · ↑ ↓ = plus ou moins dur</p>
+          <p className="text-center text-xs text-slate-400 hidden md:block">Clavier : espace = pause · ← → = étapes · ↑ ↓ = plus ou moins dur</p>
         </div>
         {fenetre && <Bandeau fenetre={fenetre} etat={etat} etapes={etapes} ftp={ftp} position={position(etapes, etat)} police={jakarta.style.fontFamily} perdu={!simu && capteurs.ht && !capteurs.ht.connecte ? "Home-trainer perdu, je le rebranche…" : null} actions={actions} onFermer={() => { fenetre.close(); window.focus(); }} />}
       </main>
@@ -363,6 +417,7 @@ function HomeTrainer() {
             <div className="flex flex-wrap gap-2 mt-4">
               <Bulle icone={mdiTimerOutline} texte={chrono(pts.length)} />
               <Bulle icone={mdiLightningBolt} texte={`${moy("w")} W`} />
+              {profil.poids && typeof moy("w") === "number" ? <Bulle icone={mdiScaleBathroom} texte={`${((moy("w") as number) / profil.poids).toFixed(1).replace(".", ",")} W/kg`} /> : null}
               <Bulle icone={mdiHeart} texte={`${moy("bpm")} bpm`} />
               <Bulle icone={mdiMapMarkerDistance} texte={`${km} km`} />
             </div>

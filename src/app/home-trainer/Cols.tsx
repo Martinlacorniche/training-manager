@@ -127,8 +127,8 @@ export function ecartFantome(t: number, d: number, total: number, tempsRef: numb
   return dRef - d;   // > 0 : il est devant de tant de mètres
 }
 
-export function EcranCol({ etat, col, poids, record, onPause, onTerminer }: {
-  etat: Etat; col: Col; poids: number | null; record: number | null; onPause: () => void; onTerminer: () => void;
+export function EcranCol({ etat, col, poids, zoneFc, record, onPause, onTerminer }: {
+  etat: Etat; col: Col; poids: number | null; zoneFc?: string | null; record: number | null; onPause: () => void; onTerminer: () => void;
 }) {
   const c = etat.col!;
   const p = c.pente, couleur = couleurPente(p);
@@ -168,7 +168,7 @@ export function EcranCol({ etat, col, poids, record, onPause, onTerminer }: {
 
       <div className="grid grid-cols-2 lg:grid-cols-12 gap-3">
         <Carte className="lg:col-span-2"><div className="flex items-center gap-1.5 text-[11px] font-extrabold uppercase tracking-[0.12em] text-slate-400"><Icone d={mdiRotateRight} taille={14} coul="#94a3b8" />Cadence</div><div className="text-[38px] font-black text-slate-800 tabular-nums">{etat.cadence ?? "—"}</div></Carte>
-        <Carte className="lg:col-span-2"><div className="flex items-center gap-1.5 text-[11px] font-extrabold uppercase tracking-[0.12em] text-slate-400"><Icone d={mdiHeart} taille={14} coul="#f43f5e" />Cœur</div><div className="text-[38px] font-black text-slate-800 tabular-nums">{etat.bpm ?? "—"}</div></Carte>
+        <Carte className="lg:col-span-2"><div className="flex items-center gap-1.5 text-[11px] font-extrabold uppercase tracking-[0.12em] text-slate-400"><Icone d={mdiHeart} taille={14} coul="#f43f5e" />Cœur</div><div className="text-[38px] font-black text-slate-800 tabular-nums">{etat.bpm ?? "—"}{zoneFc && <span className="text-[13px] font-extrabold text-slate-400"> {zoneFc}</span>}</div></Carte>
         <Carte className="col-span-2 lg:col-span-5">
           <div className="text-[11px] font-extrabold uppercase tracking-[0.12em] text-slate-400 mb-1.5">Les fantômes</div>
           {fantomes.length ? fantomes.map((f) => {

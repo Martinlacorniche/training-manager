@@ -32,3 +32,14 @@ export function ecart(w: number | null, cible: number | null): { texte: string; 
   if (Math.abs(d) <= Math.max(5, cible * 0.04)) return { texte: "Dans le mille", bon: true };
   return { texte: `${d > 0 ? "+" : "−"}${Math.abs(d)} W`, bon: false };
 }
+
+/** La zone cardiaque du moment (« Zone 2 »), d'après les zones de l'athlète
+ *  (bornes basses, ex : [0, 120, 140, 150, 162], réglées dans l'app). */
+const COUL_COEUR = ["#94a3b8", "#3b82f6", "#10b981", "#f59e0b", "#f97316", "#f43f5e"];
+export function zoneCoeur(bpm: number | null, bornes: number[] | null | undefined): { n: number; texte: string; coul: string } | null {
+  if (bpm == null || !bornes?.length) return null;
+  let i = 0;
+  bornes.forEach((b, j) => { if (bpm >= b) i = j; });
+  const coul = COUL_COEUR[Math.round((i / Math.max(1, bornes.length - 1)) * (COUL_COEUR.length - 1))];
+  return { n: i + 1, texte: `Zone ${i + 1}`, coul };
+}

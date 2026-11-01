@@ -25,7 +25,7 @@ import { depuisCourt, depuisIcu, versCourt, versIcu, aplatir, dureeTotale, type 
 import { Moteur, type Etat, type Moyennes as MoyennesT, type Profil as ProfilCycliste } from "./ht/moteur";
 import { compliment } from "./ht/compliment";
 import { fichierFit } from "./ht/fit";
-import { ecart, zoneEtape, ZONE_PAUSE } from "./ht/zones";
+import { ecart, zoneCoeur, zoneEtape, ZONE_PAUSE } from "./ht/zones";
 import { Capteur, Simulateur, bluetoothDispo, messageConnexion, type EtatCapteur, type Source } from "./capteurs";
 import { Editeur } from "./Editeur";
 import { EcranCol, ListeCols, ProfilCol } from "./Cols";
@@ -88,6 +88,7 @@ function HomeTrainer() {
   const [cible, setCible] = useState<{ id: string; titre: string } | null>(null);
   const [moi, setMoi] = useState<string | null>(null);
   const [ftp, setFtp] = useState<number>(200);
+  const [zonesFc, setZonesFc] = useState<number[] | null>(null);
   const [ftpConnue, setFtpConnue] = useState(true);
   const [profil, setProfil] = useState<Omit<ProfilCycliste, "ftp">>({});
   const [ecranPlein, setEcranPlein] = useState(false);
@@ -126,7 +127,7 @@ function HomeTrainer() {
       const id = session.user.id;
       setMoi(id);
       const [{ data: am }, { data: ss }, { data: fav }, { data: pp }, { data: cp }] = await Promise.all([
-        supabase.from("athlete_metrics").select("ftp_w").eq("user_id", id).maybeSingle(),
+        supabase.from("athlete_metrics").select("ftp_w, hr_zones").eq("user_id", id).maybeSingle(),
         supabase.from("sessions").select("id, date, title, workout_text, planned_hour, status").eq("user_id", id).eq("sport", "Vélo")
           .gte("date", dayjs().subtract(1, "day").format("YYYY-MM-DD")).lte("date", dayjs().add(6, "day").format("YYYY-MM-DD")).order("date"),
         supabase.from("ht_favoris").select("id, nom, texte").order("cree_le", { ascending: false }),
@@ -135,6 +136,7 @@ function HomeTrainer() {
         supabase.from("vitesse_critique").select("cs, d_prime").eq("user_id", id).eq("sport", "velo").order("jour", { ascending: false }).limit(1).maybeSingle(),
       ]);
       if (am?.ftp_w) setFtp(Number(am.ftp_w)); else setFtpConnue(false);
+      if (Array.isArray(am?.hr_zones) && am.hr_zones.length) setZonesFc(am.hr_zones.map(Number));
       setProfil({ poids: pp?.poids_kg ? Number(pp.poids_kg) : null, cp: cp?.cs ? Number(cp.cs) : null, wPrime: cp?.d_prime ? Number(cp.d_prime) : null });
       let liste = (ss ?? []) as SeanceDb[];
       // Une version adaptée (grossesse) remplace la séance du coach, pour elle seule.
@@ -378,10 +380,10 @@ function HomeTrainer() {
             </div>
           ))}
           {etat.pause !== "non" && <div className="flex items-center gap-2 rounded-2xl px-4 py-3 font-extrabold bg-sky-100 text-sky-800"><Icone d={mdiPauseCircle} taille={20} />{etat.pause === "auto" ? "En pause : repédale pour reprendre" : "Prêt ? Pédale pour attaquer la montée"}</div>}
-          <EcranCol etat={etat} col={choix.col} poids={profil.poids ?? null} record={records.get(choix.col.id) ?? null}
+          <EcranCol etat={etat} col={choix.col} poids={profil.poids ?? null} zoneFc={zoneCoeur(etat.bpm, zonesFc)?.texte ?? null} record={records.get(choix.col.id) ?? null}
             onPause={actions.pause} onTerminer={() => { if (confirm("Abandonner la montée ?")) actions.terminer(); }} />
         </div>
-        {fenetre && <Bandeau fenetre={fenetre} etat={etat} etapes={[]} ftp={ftp} position={0} police={jakarta.style.fontFamily} perdu={!simu && capteurs.ht && !capteurs.ht.connecte ? "Home-trainer perdu, je le rebranche…" : null} actions={actions} onFermer={() => { fenetre.close(); window.focus(); }} />}
+        {fenetre && <Bandeau fenetre={fenetre} zoneFc={zoneCoeur(etat.bpm, zonesFc)?.n ?? null} etat={etat} etapes={[]} ftp={ftp} position={0} police={jakarta.style.fontFamily} perdu={!simu && capteurs.ht && !capteurs.ht.connecte ? "Home-trainer perdu, je le rebranche…" : null} actions={actions} onFermer={() => { fenetre.close(); window.focus(); }} />}
       </main>
     );
   }
@@ -448,7 +450,7 @@ function HomeTrainer() {
               </div>
             </Ciel>
             <Mesure titre="Cadence" icone={mdiRotateRight} unite="tr/min" classe="lg:col-span-3">{etat.cadence ?? "—"}</Mesure>
-            <Mesure titre="Cœur" icone={mdiHeart} coul="#f43f5e" unite="bpm" classe="lg:col-span-3">{etat.bpm ?? "—"}</Mesure>
+            <Mesure titre="Cœur" icone={mdiHeart} coul="#f43f5e" unite={zoneCoeur(etat.bpm, zonesFc) ? `bpm · ${zoneCoeur(etat.bpm, zonesFc)!.texte}` : "bpm"} classe="lg:col-span-3">{etat.bpm ?? "—"}</Mesure>
             <Carte className="col-span-2 lg:col-span-6 flex items-center gap-4">
               <div className="relative flex items-center justify-center shrink-0">
                 <Anneau part={partEtape} coul={z.plein} taille={76} />
@@ -497,7 +499,7 @@ function HomeTrainer() {
           </div>
           <p className="text-center text-xs text-slate-400 hidden md:block">Clavier : espace = pause · ← → = étapes · ↑ ↓ = plus ou moins dur</p>
         </div>
-        {fenetre && <Bandeau fenetre={fenetre} etat={etat} etapes={etapes} ftp={ftp} position={position(etapes, etat)} police={jakarta.style.fontFamily} perdu={!simu && capteurs.ht && !capteurs.ht.connecte ? "Home-trainer perdu, je le rebranche…" : null} actions={actions} onFermer={() => { fenetre.close(); window.focus(); }} />}
+        {fenetre && <Bandeau fenetre={fenetre} zoneFc={zoneCoeur(etat.bpm, zonesFc)?.n ?? null} etat={etat} etapes={etapes} ftp={ftp} position={position(etapes, etat)} police={jakarta.style.fontFamily} perdu={!simu && capteurs.ht && !capteurs.ht.connecte ? "Home-trainer perdu, je le rebranche…" : null} actions={actions} onFermer={() => { fenetre.close(); window.focus(); }} />}
       </main>
     );
   }

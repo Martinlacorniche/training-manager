@@ -63,8 +63,8 @@ const Valeur = ({ titre, children, icone }: { titre: string; children: React.Rea
   </div>
 );
 
-export function Bandeau({ fenetre, etat, etapes, ftp, position, police, perdu, actions, onFermer }: {
-  fenetre: Window; etat: Etat; etapes: Etape[]; ftp: number; position: number; police: string; perdu: string | null; actions: Actions; onFermer: () => void;
+export function Bandeau({ fenetre, zoneFc, etat, etapes, ftp, position, police, perdu, actions, onFermer }: {
+  fenetre: Window; zoneFc?: number | null; etat: Etat; etapes: Etape[]; ftp: number; position: number; police: string; perdu: string | null; actions: Actions; onFermer: () => void;
 }) {
   const [surStop, setSurStop] = useState(false);
   useEffect(() => { if (!surStop) return; const h = setTimeout(() => setSurStop(false), 3000); return () => clearTimeout(h); }, [surStop]);
@@ -96,7 +96,7 @@ export function Bandeau({ fenetre, etat, etapes, ftp, position, police, perdu, a
           </span>
         </div>
         <Valeur titre="Cadence" icone={mdiRotateRight}>{etat.cadence ?? "—"}</Valeur>
-        <Valeur titre="Cœur" icone={mdiHeart}>{etat.bpm ?? "—"}</Valeur>
+        <Valeur titre="Cœur" icone={mdiHeart}>{etat.bpm ?? "—"}{zoneFc ? <span className="text-xs text-slate-400"> Z{zoneFc}</span> : null}</Valeur>
         {etat.col ? (
           <>
             <Valeur titre="Pente">{etat.col.pente.toFixed(1).replace(".", ",")} %</Valeur>

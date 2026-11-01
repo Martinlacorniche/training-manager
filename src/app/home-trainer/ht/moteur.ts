@@ -5,10 +5,10 @@
 // enregistre une mesure par seconde pour le fichier .fit.
 //
 // Sécurités, choisies avec Martin le 30/10/2026 :
-//   - cadence qui s'effondre en ERG (< 55 tr/min pendant 5 s) : la consigne
-//     tombe à 60 % jusqu'à ce que la cadence repasse 70, pour ne pas rester
-//     planté sous le frein (la « spirale de la mort » de l'ERG). Une étape
-//     de force à cadence basse (« @50 », 30/10) abaisse le seuil à cadence − 15 ;
+//   - cadence qui s'effondre en ERG (< 25 tr/min pendant 5 s, 55 jugé trop
+//     haut par Martin le 01/11) : la consigne tombe à 60 % jusqu'à ce que la
+//     cadence repasse 40, pour ne pas rester planté sous le frein (la
+//     « spirale de la mort » de l'ERG) ;
 //   - arrêt de pédalage 3 s : pause automatique, reprise dès qu'on repédale ;
 //   - sprint (> 150 % FTP sur 30 s ou moins) : résistance plutôt qu'ERG,
 //     l'ERG ne suit pas un sprint ;
@@ -217,9 +217,7 @@ export class Moteur {
       const sprint = cible > this.ftp * 1.5 && et.s <= 30;
       if (this.erg && !sprint) {
         // Cadence qui s'effondre
-        // Exercice de force à cadence basse (« @50 ») : on ne relâche que si
-        // la cadence tombe bien en dessous de celle demandée (calage, pas effort).
-        const seuil = et.cadence ? Math.min(55, et.cadence - 15) : 55;
+        const seuil = 25;
         if (cad != null && cad < seuil && this.pause === "non") { this.bas ||= now; if (now - this.bas > 5000) this.soulagement = true; }
         else this.bas = 0;
         if (this.soulagement && cad != null && cad >= seuil + 15) this.soulagement = false;

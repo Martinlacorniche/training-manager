@@ -74,7 +74,7 @@ export default function SuiviSeance({ sessionId, sport, rpe, date }: { sessionId
   const recente = !!date && (Date.now() - new Date(date + "T00:00:00").getTime()) / 86400000 <= 4 && new Date(date + "T00:00:00").getTime() <= Date.now();
   const boutonChercher = !act && recente ? (
     <div className="bg-white rounded-2xl border border-slate-200 p-4 text-center space-y-2">
-      <p className="text-sm text-slate-600">{cherche === "rien" ? "Toujours rien : ta montre n'a peut-être pas encore synchronisé. Ouvre Garmin Connect, puis réessaie." : "Ta sortie n'est pas encore arrivée de ta montre."}</p>
+      <p className="text-sm text-slate-600">{cherche === "rien" ? "Toujours rien : ta montre n'a peut-être pas encore synchronisé. Ouvre Garmin Connect, puis réessaie." : "Ta sortie n'est pas encore arrivée : ça prend en général quelques minutes."}</p>
       <button onClick={chercher} disabled={cherche === "en_cours"} className="px-4 py-2 rounded-xl bg-blue-600 text-white font-bold text-sm disabled:opacity-60">
         {cherche === "en_cours" ? "Je cherche…" : "Chercher ma sortie maintenant"}
       </button>

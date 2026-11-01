@@ -135,3 +135,23 @@ export function Pas({ moins, plus, children }: { moins: () => void; plus: () => 
     </div>
   );
 }
+
+/** Où l'on est par rapport aux watts visés, d'un coup d'œil (Chloé, 01/11) :
+ *  la bande claire = la plage visée, le repère = la puissance 3 s. */
+export function Jauge({ w, cible }: { w: number | null; cible: number | null }) {
+  if (!cible) return null;
+  const tol = Math.max(5, cible * 0.04), bas = cible * 0.7, haut = cible * 1.3;
+  const x = (v: number) => ((Math.min(haut, Math.max(bas, v)) - bas) / (haut - bas)) * 100;
+  const dedans = w != null && Math.abs(w - cible) <= tol;
+  return (
+    <div className="relative h-7 mt-3 mx-3 flex items-center">
+      <div className="absolute inset-x-0 h-3.5 rounded-full bg-white/20" />
+      <div className="absolute h-3.5 rounded-full bg-white/60" style={{ left: `${x(cible - tol)}%`, width: `${x(cible + tol) - x(cible - tol)}%` }} />
+      {w != null && (
+        <div className={`absolute w-7 h-7 -ml-3.5 rounded-full border-[3px] border-white flex items-center justify-center text-white text-sm font-black transition-[left] duration-500 ${dedans ? "bg-white" : "bg-slate-900"}`} style={{ left: `${x(w)}%` }}>
+          {!dedans && (w < cible ? "▲" : "▼")}
+        </div>
+      )}
+    </div>
+  );
+}

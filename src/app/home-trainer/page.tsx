@@ -14,10 +14,10 @@ import dayjs from "dayjs";
 import "dayjs/locale/fr";
 import { Plus_Jakarta_Sans } from "next/font/google";
 import {
-  mdiAlertCircle, mdiBike, mdiBikeFast, mdiCalendarBlankOutline, mdiCalendarMonth, mdiCheckCircle, mdiChevronLeft, mdiCloudUploadOutline,
+  mdiAlertCircle, mdiArrowDownBold, mdiArrowUpBold, mdiBike, mdiBikeFast, mdiCalendarBlankOutline, mdiCalendarMonth, mdiCheckCircle, mdiChevronLeft, mdiCloudUploadOutline,
   mdiDownload, mdiFlagCheckered, mdiHeart, mdiHeartPulse, mdiLightningBolt, mdiMapMarkerDistance, mdiMinus, mdiPause, mdiPauseCircle,
   mdiPictureInPictureBottomRight, mdiPlay, mdiPlus, mdiRoadVariant, mdiRotateRight, mdiSkipNext, mdiSkipPrevious, mdiSlopeUphill, mdiStar,
-  mdiStarOutline, mdiTarget, mdiTimerOutline, mdiTrophyOutline, mdiTuneVariant, mdiFullscreen, mdiFullscreenExit, mdiScaleBathroom,
+  mdiStarOutline, mdiTimerOutline, mdiTrophyOutline, mdiTuneVariant, mdiFullscreen, mdiFullscreenExit, mdiScaleBathroom,
   mdiFlagVariantOutline, mdiHistory, mdiBatteryHigh, mdiSigma, mdiGamepadVariantOutline, mdiAccountOutline, mdiKeyboardOutline, mdiTuneVertical,
 } from "@mdi/js";
 import { supabase } from "@/lib/supabaseClient";
@@ -31,7 +31,7 @@ import { Editeur } from "./Editeur";
 import { EcranCol, ListeCols, ProfilCol } from "./Cols";
 import type { Col } from "./ht/cols";
 import { Bandeau, bandeauDispo, chrono, ouvrirFenetre, type Actions } from "./Bandeau";
-import { Anneau, Bouton, Bulle, Carte, Ciel, Icone, Onglets, Profil, profilDe, Sur, Titre } from "./ui";
+import { Anneau, Bouton, Bulle, Carte, Ciel, Icone, Jauge, Onglets, Profil, profilDe, Sur, Titre } from "./ui";
 
 dayjs.locale("fr");
 const jakarta = Plus_Jakarta_Sans({ subsets: ["latin"], weight: ["500", "600", "700", "800"], display: "swap" });
@@ -39,7 +39,9 @@ const jakarta = Plus_Jakarta_Sans({ subsets: ["latin"], weight: ["500", "600", "
 type Choix = { titre: string; blocs: Bloc[]; sessionId: string | null; texteCourt: string | null; col?: Col | null };
 type SeanceDb = { id: string; date: string; title: string | null; workout_text: string | null; planned_hour: number | null; status: string | null };
 
-const RPE = ["", "Très facile", "Facile", "Facile", "Moyen", "Moyen", "Dur", "Dur", "Très dur", "Très dur", "À fond"];
+const RPE = ["", "Récup", "Très facile", "Facile", "Moyen", "Un peu dur", "Dur", "Très dur", "Extrême", "Agonie", "Maximal"];
+// Même échelle que la validation d'une séance (RpeModal), avec son repère.
+const RPE_REPERE = ["", "Marche, effort nul", "Respiration par le nez", "Conversation facile", "On raconte l'essentiel", "Conversation hachée", "Quelques mots", "Un mot à la fois", "Impossible de parler", "Tenable quelques secondes", "Sprint final, nausée"];
 const RPE_COUL = ["", "#10b981", "#10b981", "#34d399", "#a3e635", "#facc15", "#fbbf24", "#fb923c", "#f97316", "#f43f5e", "#be123c"];
 const CIEL_PRET = ["#2563eb", "#0ea5e9", "#38bdf8"], CIEL_ATTENTE = ["#475569", "#64748b", "#94a3b8"];
 
@@ -110,6 +112,7 @@ function HomeTrainer() {
   const [etat, setEtat] = useState<Etat | null>(null);
   const [fenetre, setFenetre] = useState<Window | null>(null);
   const [rpe, setRpe] = useState(5);
+  const [aideRpe, setAideRpe] = useState(false);
   const [envoi, setEnvoi] = useState<{ etat: "rien" | "en_cours" | "ok" | "erreur"; texte?: string }>({ etat: "rien" });
   const [favoriNom, setFavoriNom] = useState("");
   const [favoriOk, setFavoriOk] = useState(false);
@@ -443,8 +446,9 @@ function HomeTrainer() {
                 <span className="text-[96px] lg:text-[150px] font-black tabular-nums leading-none tracking-tight">{etat.w3s ?? "—"}</span>
                 <span className="text-2xl lg:text-4xl font-black text-white/85">/ {etat.cible ?? "—"} W</span>
               </div>
+              {etat.pause === "non" && <Jauge w={etat.w3s} cible={etat.cible} />}
               <div className="flex gap-2 mt-3 flex-wrap min-h-[32px]">
-                {ec && <Bulle icone={ec.bon ? mdiCheckCircle : mdiTarget} texte={ec.texte} fort={ec.bon} />}
+                {ec && <Bulle icone={ec.bon ? mdiCheckCircle : (etat.w3s ?? 0) < (etat.cible ?? 0) ? mdiArrowUpBold : mdiArrowDownBold} texte={ec.texte} fort={ec.bon} />}
                 {wkg && <Bulle icone={mdiScaleBathroom} texte={`${wkg} W/kg`} />}
                 {etat.etape?.cadence ? <Bulle icone={mdiRotateRight} texte={`Vise ${etat.etape.cadence} tr/min`} /> : null}
               </div>
@@ -551,13 +555,32 @@ function HomeTrainer() {
 
           {envoi.etat !== "ok" && (
             <Carte className="space-y-3">
-              <div className="flex justify-between items-baseline"><span className="font-black text-slate-800 text-base">C&apos;était comment ?</span><span className="font-black" style={{ color: RPE_COUL[rpe] }}>{RPE[rpe]}</span></div>
+              <div className="flex justify-between items-baseline">
+                <span className="flex items-baseline gap-2">
+                  <span className="font-black text-slate-800 text-base">C&apos;était comment ?</span>
+                  {/* L'échelle détaillée, comme quand on valide une séance (Martin, 01/11) */}
+                  <button type="button" onClick={() => setAideRpe(!aideRpe)} className="text-xs font-extrabold text-blue-600 hover:underline">{aideRpe ? "Fermer l'aide" : "Aide"}</button>
+                </span>
+                <span className="font-black" style={{ color: RPE_COUL[rpe] }}>{RPE[rpe]}</span>
+              </div>
+              {aideRpe && (
+                <div className="rounded-xl border border-slate-100 overflow-hidden">
+                  {RPE.map((mot, n) => n > 0 && (
+                    <button key={n} type="button" onClick={() => { setRpe(n); setAideRpe(false); }} className="w-full flex items-center gap-3 px-3 py-1.5 text-left text-sm border-b last:border-0 border-slate-50 hover:bg-slate-50">
+                      <span className="w-7 h-7 rounded-lg flex items-center justify-center font-black text-white" style={{ background: RPE_COUL[n] }}>{n}</span>
+                      <span className="font-extrabold text-slate-800">{mot}</span>
+                      <span className="text-slate-500 text-xs">{RPE_REPERE[n]}</span>
+                    </button>
+                  )).reverse()}
+                </div>
+              )}
               <div className="flex gap-1.5">
                 {Array.from({ length: 10 }, (_, k) => k + 1).map((n) => (
                   <button key={n} type="button" onClick={() => setRpe(n)} className="flex-1 h-11 rounded-xl font-black transition"
                     style={{ background: n === rpe ? RPE_COUL[n] : n < rpe ? RPE_COUL[n] + "33" : "#f1f5f9", color: n === rpe ? "#fff" : "#64748b" }}>{n}</button>
                 ))}
               </div>
+              <p className="text-center text-sm font-bold text-slate-500">{RPE_REPERE[rpe]}</p>
             </Carte>
           )}
 

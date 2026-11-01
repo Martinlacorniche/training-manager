@@ -156,7 +156,11 @@ export class Moteur {
 
   // ─── Le temps ───
   tic(now: number): Etat {
-    const dt = this.dernierTic ? Math.min(2, (now - this.dernierTic) / 1000) : 0;
+    // Le vrai temps écoulé, même si le téléphone a sauté des tics (appli
+    // figée ~30 s pendant la Gimenez du 01/11 : le bloc avait duré 4'27).
+    // Au-delà d'une minute sans nouvelles, on considère une pause.
+    const ecoule = this.dernierTic ? (now - this.dernierTic) / 1000 : 0;
+    const dt = ecoule <= 60 ? ecoule : 0;
     this.dernierTic = now;
     const w = this.wattsMesures(now), cad = this.cadenceMesuree(now), bpm = this.bpmMesure(now);
     if (w != null) this.recents.push({ t: now, w });
@@ -239,18 +243,23 @@ export class Moteur {
     if (this.col) consigne = { type: "pente", pct: Math.round(penteA(this.col, this.dCol) * 10) / 10 };
     if (this.pause !== "non" && !this.fini) consigne = { type: "pente", pct: 0 };
 
-    // Enregistrement : un point par seconde, hors pause
+    // Enregistrement : un point par seconde, hors pause. Des tics sautés
+    // (moins d'une minute) se rattrapent : une seconde = un point, toujours.
     if (this.pause === "non" && !this.fini && now - this.dernierPoint >= PAS) {
+      const manque = this.dernierPoint && now - this.dernierPoint <= 60_000 ? Math.floor((now - this.dernierPoint) / PAS) : 1;
       const kmh = this.col ? this.kmh : this.frais(this.ht.t, now) && this.ht.kmh ? this.ht.kmh : vitesseDepuisWatts(w ?? 0, this.masse);
-      if (this.col) this.m = this.dCol;
-      else this.m += (kmh / 3.6) * (this.dernierPoint ? Math.min(2, (now - this.dernierPoint) / 1000) : 1);
-      const x = this.etapes.slice(0, this.i).reduce((a, e2) => a + e2.s, 0) + Math.min(this.tEtape, et?.s ?? this.tEtape);
-      const pt: Point = { ts: now, w, cad, bpm, kmh, m: Math.round(this.m), c: cible, x };
-      this.points.push(pt);
-      this.sTour.ajouter(pt); this.sSeance.ajouter(pt);
-      if (this.points.length % 5 === 0) {
-        const der = this.points.slice(-5);
-        this.trace.push({ x, w: der.reduce((a, q) => a + (q.w ?? 0), 0) / 5 });
+      for (let n = manque; n >= 1; n--) {
+        const ts = n === 1 ? now : now - (n - 1) * PAS;
+        if (this.col) this.m = this.dCol;
+        else this.m += kmh / 3.6;
+        const x = this.etapes.slice(0, this.i).reduce((a, e2) => a + e2.s, 0) + Math.min(this.tEtape, et?.s ?? this.tEtape);
+        const pt: Point = { ts, w, cad, bpm, kmh, m: Math.round(this.m), c: cible, x };
+        this.points.push(pt);
+        this.sTour.ajouter(pt); this.sSeance.ajouter(pt);
+        if (this.points.length % 5 === 0) {
+          const der = this.points.slice(-5);
+          this.trace.push({ x, w: der.reduce((a, q) => a + (q.w ?? 0), 0) / 5 });
+        }
       }
       this.dernierPoint = now;
       if (w != null && this.frais(this.ped.t, now) && this.frais(this.ht.t, now) && this.ht.w != null && this.ped.w != null) {

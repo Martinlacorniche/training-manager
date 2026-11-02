@@ -226,8 +226,14 @@ const DECOUVERTE: Gabarit[] = [
     motif: [[120, "65% @80"], [120, "65% @90"], [120, "65% @100"], [120, "65% @110"], [120, "60% @85"]], parSerie: [1, 1], entre: [60, "62%"], maxSeries: 6, plafond: 6, complement: COMPLEMENTS.pont },
 ];
 
-/** Les 6 sorties de la borne de l'hôtel (le Mont Faron est ajouté par l'écran, c'est un col). */
-export const BORNE = ["balade", "relances", "jambes", "montee", "echappee"] as const;
+/** Les sorties de la borne de l'hôtel, selon le profil choisi à l'accueil (Martin,
+ *  02/11 : « balade » et « ça pique » proposaient presque les mêmes). Le Mont
+ *  Faron est ajouté par l'écran (c'est un col). */
+export const BORNE: string[][] = [
+  ["balade", "relances", "jambes", "escaliercadence", "sprintfinal"],      // Je roule pour me balader
+  ["relances", "montee", "echappee", "clm", "attaques", "sprintfinal"],     // Je roule souvent
+  ["attaques", "echappee", "3015", "sommet", "vagues", "40-20"],            // J'aime quand ça pique
+];
 
 // ─── Le CATALOGUE des habitués ───
 
@@ -374,8 +380,9 @@ export function seancesDe(famille: Famille, D: number, opts: { f?: number; nivea
 }
 
 /** Les sorties de la borne, dans l'ordre. */
-export function seancesBorne(D: number, f = 1, graine = 1): SeanceCatalogue[] {
-  return BORNE.map((id) => construire(GABARITS.find((g) => g.id === id)!, D, f, graine)).filter((x): x is SeanceCatalogue => !!x);
+export function seancesBorne(D: number, profil: number, f = 1, graine = 1): SeanceCatalogue[] {
+  return (BORNE[profil] ?? BORNE[1]).map((id) => GABARITS.find((g) => g.id === id)).filter((g): g is Gabarit => !!g)
+    .map((g) => construire(g, D, f, graine)).filter((x): x is SeanceCatalogue => !!x).slice(0, 5);
 }
 
 /** « Surprends-moi » : une séance au hasard parmi celles proposées. */

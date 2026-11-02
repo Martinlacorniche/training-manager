@@ -13,7 +13,12 @@
 //   - sprint (> 150 % FTP sur 30 s ou moins) : résistance plutôt qu'ERG,
 //     l'ERG ne suit pas un sprint ;
 //   - cible cardio : les watts montent ou descendent doucement (±5 W toutes
-//     les 15 s) pour rester dans la plage.
+//     les 15 s) pour rester dans la plage ;
+//   - étape « 0 W » (l'arrêt du check-up vélo, 02/11/2026) : on ne pédale
+//     pas, le chrono tourne quand même (pas de pause automatique) ;
+//   - rampe (calibrage vélo, 02/11/2026) : quand on ne suit plus (cadence
+//     sous 40 pendant 5 s, ou watts sous 85 % de la cible pendant 10 s), ou
+//     sur ⏭, on passe directement au retour au calme (la dernière étape).
 // Copie de App-Coach/lib/ht/moteur.ts — garder les deux identiques.
 // ─────────────────────────────────────────────────────────────────────────
 
@@ -26,7 +31,7 @@ export type Point = { ts: number; w: number | null; cad: number | null; bpm: num
 export type Moyennes = { w: number | null; bpm: number | null; cad: number | null; s: number };
 
 /** Le profil du cycliste, tiré de ce que l'app sait déjà (30/10/2026). */
-export type Profil = { ftp: number; poids?: number | null; cp?: number | null; wPrime?: number | null; col?: Col | null };
+export type Profil = { ftp: number; poids?: number | null; cp?: number | null; wPrime?: number | null; col?: Col | null; rampe?: boolean };
 export type Tour = { debut: number; fin: number; etape: number };   // indices dans `points`
 
 export type Etat = {
@@ -73,6 +78,8 @@ export class Moteur {
   private bas = 0;              // depuis quand la cadence est basse (ms), 0 = non
   private soulagement = false;
   private arret = 0;
+  private readonly rampe: boolean;
+  private lache = 0;            // rampe : depuis quand on ne suit plus (ms)
   private debutTour = 0;
   private m = 0;                // distance (m)
   private recents: { t: number; w: number }[] = [];   // pour la puissance 3 s
@@ -107,7 +114,10 @@ export class Moteur {
     if (this.col) this.erg = false;
     this.wBpm = Math.round(this.ftp * LIBRE_PCT);
     if (!this.etapes.length) this.erg = false;     // sortie libre : résistance
+    this.rampe = !!profil.rampe && this.etapes.length > 2;
   }
+  /** L'étape où l'on ne pédale pas (« 0 W ») : pas de pause automatique. */
+  private sansPedaler = (e: Etape | null | undefined) => !!e && e.cible.type === "w" && e.cible.max === 0 && !e.rampe;
 
   mesurer(src: "ht" | "pedales" | "cardio", m: { watts?: number; cadence?: number; vitesse?: number; bpm?: number; rr?: number[] }, t: number) {
     if (src === "ht") this.ht = { w: m.watts ?? this.ht.w, cad: m.cadence ?? this.ht.cad, kmh: m.vitesse ?? this.ht.kmh, t };
@@ -130,7 +140,11 @@ export class Moteur {
 
   // ─── Commandes ───
   basculerPause() { this.pause = this.pause === "non" ? "manuelle" : "non"; this.demarre = true; }
-  suivante() { if (this.i < this.etapes.length) this.passer(this.i + 1); }
+  suivante() {
+    // Rampe : ⏭ pendant la montée = « j'arrête », direct au retour au calme.
+    if (this.rampe && this.i > 0 && this.i < this.etapes.length - 1) { this.passer(this.etapes.length - 1); return; }
+    if (this.i < this.etapes.length) this.passer(this.i + 1);
+  }
   precedente() {
     // Au début d'une étape, revient à la précédente ; sinon recommence l'étape.
     this.passer(this.tEtape < 5 ? Math.max(0, this.i - 1) : this.i);
@@ -170,7 +184,7 @@ export class Moteur {
 
     // Pause automatique et reprise
     if (!this.fini) {
-      if (this.pause === "non" && !pedale) {
+      if (this.pause === "non" && !pedale && !this.sansPedaler(this.etapes[this.i])) {
         this.arret ||= now;
         if (now - this.arret > 3000) this.pause = "auto";
       } else this.arret = 0;
@@ -242,6 +256,13 @@ export class Moteur {
     }
     if (this.col) consigne = { type: "pente", pct: Math.round(penteA(this.col, this.dCol) * 10) / 10 };
     if (this.pause !== "non" && !this.fini) consigne = { type: "pente", pct: 0 };
+    if (this.sansPedaler(et) && !this.fini) { consigne = { type: "pente", pct: 0 }; alerte = "Arrête de pédaler, reste assis sans bouger"; }
+    // Rampe : quand on ne suit plus, c'est fini — retour au calme.
+    if (this.rampe && et && !this.fini && this.pause === "non" && this.i > 0 && this.i < this.etapes.length - 1 && cible) {
+      const lache = (cad != null && cad < 40) || (w3s != null && w3s < 0.85 * cible);
+      if (lache) { this.lache ||= now; if (now - this.lache > ((cad ?? 99) < 40 ? 5000 : 10000)) { this.lache = 0; this.passer(this.etapes.length - 1); alerte = "Bravo, c'est fini ! Retour au calme"; } }
+      else this.lache = 0;
+    }
 
     // Enregistrement : un point par seconde, hors pause. Des tics sautés
     // (moins d'une minute) se rattrapent : une seconde = un point, toujours.

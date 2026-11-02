@@ -36,6 +36,8 @@ export default function Reglages() {
   // Zones cardiaques (même carte que l'app, App-Coach app/SettingsModal.tsx).
   const [zones, setZones] = useState<number[] | null>(null);
   const [zonesSource, setZonesSource] = useState<{ source: string | null; le: string | null }>({ source: null, le: null });
+  // Zones vélo : affichées seulement quand la rampe a mesuré la FC max vélo (02/11/2026).
+  const [zonesVelo, setZonesVelo] = useState<{ zones: number[]; le: string | null } | null>(null);
   // Nos propres fenêtres plutôt que confirm() du navigateur, comme dans l'app.
   const [dialogue, setDialogue] = useState<Dialogue | null>(null);
   const demander = (d: Omit<Dialogue, "resolve">) => new Promise<string | null>((resolve) => setDialogue({ ...d, resolve }));
@@ -55,6 +57,8 @@ export default function Reglages() {
     const { data: am } = await supabase.from("athlete_metrics").select("hr_zones, zones_source, zones_le").eq("user_id", session.user.id).maybeSingle();
     setZones(Array.isArray(am?.hr_zones) && am.hr_zones.length === 5 ? am.hr_zones : null);
     setZonesSource({ source: am?.zones_source ?? null, le: am?.zones_le ?? null });
+    const { data: zv } = await supabase.rpc("zones_fc_velo", { p_user: session.user.id });
+    setZonesVelo(zv?.mesuree && Array.isArray(zv.zones) ? { zones: zv.zones.map(Number), le: zv.le ?? null } : null);
     setIcu(!!secret);
     setMcp(Array.isArray(m) ? m[0] ?? null : m ?? null);
   }
@@ -177,6 +181,12 @@ export default function Reglages() {
                 <span className="text-sm text-slate-400">{i < 4 ? `– ${zones[i + 1] - 1} bpm` : "et +"}</span>
               </div>
             ))}
+            {zonesVelo && (
+              <div className="rounded-lg bg-slate-50 p-2.5">
+                <p className="text-sm font-extrabold text-slate-700">🚴 À vélo : {zonesVelo.zones.slice(1).map((z, i) => `Z${i + 2} ${z}`).join(" · ")}</p>
+                <p className="text-xs text-slate-400 mt-0.5">Calculées depuis ton cœur max à vélo{zonesVelo.le ? ` (rampe du ${zonesVelo.le.slice(8, 10)}/${zonesVelo.le.slice(5, 7)})` : ""}. Elles suivent tes zones ci-dessus.</p>
+              </div>
+            )}
             <p className="text-xs text-slate-400">Envoyées à intervals.icu pour tes séances. Pour les écrans de ta montre, recopie-les une fois dans Garmin Connect (ou l&apos;app de ta montre).</p>
             <button onClick={enregistrerZones} className="w-full rounded-xl bg-blue-600 py-2.5 font-bold text-white">Enregistrer mes zones</button>
           </section>

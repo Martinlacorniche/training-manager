@@ -16,7 +16,7 @@ import { Plus_Jakarta_Sans } from "next/font/google";
 import {
   mdiAlertCircle, mdiArrowDownBold, mdiArrowUpBold, mdiBike, mdiBikeFast, mdiCalendarBlankOutline, mdiCalendarMonth, mdiCheckCircle, mdiChevronLeft, mdiCloudUploadOutline,
   mdiDownload, mdiFlagCheckered, mdiHeart, mdiHeartPulse, mdiLightningBolt, mdiMapMarkerDistance, mdiMinus, mdiPause, mdiPauseCircle,
-  mdiPictureInPictureBottomRight, mdiPlay, mdiPlus, mdiRoadVariant, mdiRotateRight, mdiSkipNext, mdiSkipPrevious, mdiSlopeUphill, mdiStar,
+  mdiPictureInPictureBottomRight, mdiPlay, mdiPlus, mdiRotateRight, mdiSkipNext, mdiSkipPrevious, mdiSlopeUphill, mdiStar,
   mdiStarOutline, mdiTimerOutline, mdiTrophyOutline, mdiTuneVariant, mdiFullscreen, mdiFullscreenExit, mdiScaleBathroom,
   mdiFlagVariantOutline, mdiHistory, mdiBatteryHigh, mdiSigma, mdiGamepadVariantOutline, mdiAccountOutline, mdiKeyboardOutline, mdiTuneVertical,
 } from "@mdi/js";
@@ -30,14 +30,15 @@ import { Capteur, Simulateur, bluetoothDispo, messageConnexion, type EtatCapteur
 import { Editeur } from "./Editeur";
 import { EcranCol, ListeCols, ProfilCol } from "./Cols";
 import type { Col } from "./ht/cols";
+import { DUREES, FAMILLES, resultatRampe, seancesDe, type Famille, type SeanceCatalogue } from "./ht/catalogue";
 import { Bandeau, bandeauDispo, chrono, ouvrirFenetre, type Actions } from "./Bandeau";
 import { Anneau, Bouton, Bulle, Carte, Ciel, Icone, Jauge, Onglets, Profil, profilDe, Sur, Titre } from "./ui";
 
 dayjs.locale("fr");
 const jakarta = Plus_Jakarta_Sans({ subsets: ["latin"], weight: ["500", "600", "700", "800"], display: "swap" });
 
-type Choix = { titre: string; blocs: Bloc[]; sessionId: string | null; texteCourt: string | null; col?: Col | null };
-type SeanceDb = { id: string; date: string; title: string | null; workout_text: string | null; planned_hour: number | null; status: string | null };
+type Choix = { titre: string; blocs: Bloc[]; sessionId: string | null; texteCourt: string | null; col?: Col | null; test?: "rampe" | "lsct" | null };
+type SeanceDb = { id: string; date: string; title: string | null; workout_text: string | null; planned_hour: number | null; status: string | null; test?: string | null };
 
 const RPE = ["", "Récup", "Très facile", "Facile", "Moyen", "Un peu dur", "Dur", "Très dur", "Extrême", "Agonie", "Maximal"];
 // Même échelle que la validation d'une séance (RpeModal), avec son repère.
@@ -80,6 +81,92 @@ const Vide = ({ icone, children }: { icone: string; children: React.ReactNode })
   <div className="flex flex-col items-center gap-1.5 py-6 text-center"><Icone d={icone} taille={34} coul="#cbd5e1" /><p className="font-bold text-slate-500">{children}</p></div>
 );
 
+// Fin d'une rampe : FTP et FC max tout de suite (le résultat officiel suit dans « Mes tests »).
+function CarteRampe({ points }: { points: { w: number | null; bpm: number | null }[] }) {
+  const r = resultatRampe(points);
+  if (!r) return null;
+  return (
+    <Carte className="space-y-2.5">
+      <div className="font-black text-slate-800 text-base">📏 Ton calibrage</div>
+      <div className="grid grid-cols-3 gap-2">
+        {[["FTP", `${r.ftp} W`], ["Meilleure minute", `${r.pma} W`], ["Cœur max", r.fcMax ? `${r.fcMax}` : "—"]].map(([t, v]) => (
+          <div key={t} className="rounded-2xl bg-slate-50 px-2 py-2.5 text-center">
+            <div className="text-[11px] font-extrabold uppercase tracking-[0.1em] text-slate-400">{t}</div>
+            <div className="text-[22px] font-black text-slate-800 tabular-nums leading-tight">{v}</div>
+          </div>
+        ))}
+      </div>
+      <p className="text-[13px] font-semibold text-slate-500">Enregistre la séance : le résultat arrive dans « Mes tests », avec un bouton pour mettre à jour ta FTP et tes zones vélo.</p>
+    </Carte>
+  );
+}
+
+// Le catalogue (02/11/2026) : combien de temps, envie de quoi, et c'est parti.
+const CONSIGNES_TEST: Record<"rampe" | "lsct", string> = {
+  rampe: "Reposé, avec ta ceinture cardio, en mode ERG. Va vraiment jusqu'au bout : l'app passe toute seule au retour au calme.",
+  lsct: "Reposé, avec ta ceinture cardio. Le home-trainer règle les watts pour garder ton cœur sur la cible.",
+};
+function Catalogue({ duree, setDuree, famille, setFamille, ftp, pret, occupe, onGo, onTest }: {
+  duree: number; setDuree: (d: number) => void; famille: Famille; setFamille: (f: Famille) => void; ftp: number; pret: boolean;
+  occupe: boolean; onGo: (c: Choix) => void; onTest: (p: "rampe" | "lsct") => void;
+}) {
+  const liste: SeanceCatalogue[] = seancesDe(famille, duree, { avecLsct: true });
+  const fam = FAMILLES.find((x) => x.id === famille)!;
+  const puce = (actif: boolean) => `rounded-full border px-3.5 py-2 text-[14px] font-extrabold transition ${actif ? "bg-slate-800 border-slate-800 text-white" : "bg-white border-[#eef2f7] text-slate-800 hover:bg-slate-50"}`;
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap gap-2">
+        {FAMILLES.map((x) => (
+          <button key={x.id} type="button" onClick={() => setFamille(x.id)} className={puce(famille === x.id)}>{x.emoji} {x.nom}</button>
+        ))}
+      </div>
+      {famille !== "test" && (
+        <div className="flex gap-1.5">
+          {DUREES.map((d) => (
+            <button key={d} type="button" onClick={() => setDuree(d)} className={`flex-1 ${puce(duree === d)}`}>{d}′</button>
+          ))}
+        </div>
+      )}
+      <p className="font-bold text-slate-500">{fam.phrase}</p>
+      {famille === "tranquille" && (
+        <Carte className="flex items-center gap-3">
+          <div className="flex-1 min-w-0">
+            <div className="font-black text-slate-800 text-base">Sortie libre</div>
+            <div className="text-[13px] font-semibold text-slate-500">Pas de séance : tu roules comme tu veux, − et + règlent la résistance</div>
+          </div>
+          <Bouton petit desactive={!pret} icone={mdiPlay} couleur="#0f766e" onClick={() => onGo({ titre: "Sortie libre", blocs: [], sessionId: null, texteCourt: null })}>Go</Bouton>
+        </Carte>
+      )}
+      {liste.length === 0 && famille !== "test" && (
+        <p className="text-center font-bold text-slate-400 p-3">Rien de ce genre en {duree} minutes : prends un peu plus de temps.</p>
+      )}
+      {liste.map((x) => {
+        if (x.test) return (
+          <Carte key={x.id} className="space-y-2">
+            <div className="font-black text-slate-800 text-base">{x.nom}</div>
+            <p className="text-[13.5px] font-semibold text-slate-500">{x.phrase}</p>
+            <p className="text-[12.5px] font-semibold text-slate-400">{CONSIGNES_TEST[x.test]}</p>
+            <Bouton large desactive={!pret || occupe} icone={mdiPlay} onClick={() => onTest(x.test!)}>{occupe ? "Je prépare le test…" : "Lancer le test"}</Bouton>
+          </Carte>
+        );
+        const blocs = depuisCourt(x.texte!, ftp).blocs;
+        return (
+          <Carte key={x.id} className="space-y-2.5">
+            <div className="flex items-center gap-3">
+              <div className="flex-1 min-w-0">
+                <div className="font-black text-slate-800 text-base">{x.nom} <span className="text-[13px] text-slate-400">· {x.minutes} min</span></div>
+                <div className="text-[13px] font-semibold text-slate-500">{x.phrase}</div>
+              </div>
+              <Bouton petit desactive={!pret} icone={mdiPlay} onClick={() => onGo({ titre: x.nom, blocs, sessionId: null, texteCourt: versCourt(blocs) })}>Go</Bouton>
+            </div>
+            {profilDe(blocs, ftp, 40)}
+          </Carte>
+        );
+      })}
+    </div>
+  );
+}
+
 function HomeTrainer() {
   const router = useRouter();
   const params = useSearchParams();
@@ -100,7 +187,11 @@ function HomeTrainer() {
   const derniereVitesse = useRef<number | null>(null);
   const [seances, setSeances] = useState<SeanceDb[]>([]);
   const [favoris, setFavoris] = useState<{ id: string; nom: string; texte: string }[]>([]);
-  const [onglet, setOnglet] = useState<"plan" | "main" | "favoris" | "cols" | "libre">("plan");
+  const [onglet, setOnglet] = useState<"plan" | "seances" | "main" | "favoris" | "cols">("plan");
+  const [dureeCat, setDureeCat] = useState<number>(45);
+  const [familleCat, setFamilleCat] = useState<Famille>("tranquille");
+  const [testEnCours, setTestEnCours] = useState(false);
+  const [erreurTest, setErreurTest] = useState<string | null>(null);
   const [records, setRecords] = useState<Map<string, number>>(new Map());
   const [classement, setClassement] = useState<{ rang: number; prenom: string; duree_s: number; wkg: number | null; moi: boolean }[] | null>(null);
   const [nouveauRecord, setNouveauRecord] = useState(false);
@@ -131,7 +222,7 @@ function HomeTrainer() {
       setMoi(id);
       const [{ data: am }, { data: ss }, { data: fav }, { data: pp }, { data: cp }] = await Promise.all([
         supabase.from("athlete_metrics").select("ftp_w, hr_zones").eq("user_id", id).maybeSingle(),
-        supabase.from("sessions").select("id, date, title, workout_text, planned_hour, status").eq("user_id", id).eq("sport", "Vélo")
+        supabase.from("sessions").select("id, date, title, workout_text, planned_hour, status, test").eq("user_id", id).eq("sport", "Vélo")
           .gte("date", dayjs().subtract(1, "day").format("YYYY-MM-DD")).lte("date", dayjs().add(6, "day").format("YYYY-MM-DD")).order("date"),
         supabase.from("ht_favoris").select("id, nom, texte").order("cree_le", { ascending: false }),
         // Le profil du cycliste : poids (W/kg) et puissance critique + réserve (jauge)
@@ -139,7 +230,10 @@ function HomeTrainer() {
         supabase.from("vitesse_critique").select("cs, d_prime").eq("user_id", id).eq("sport", "velo").order("jour", { ascending: false }).limit(1).maybeSingle(),
       ]);
       if (am?.ftp_w) setFtp(Number(am.ftp_w)); else setFtpConnue(false);
-      if (Array.isArray(am?.hr_zones) && am.hr_zones.length) setZonesFc(am.hr_zones.map(Number));
+      // Les zones VÉLO (celles des réglages ramenées à la FC max vélo), sinon celles des réglages.
+      const { data: zv } = await supabase.rpc("zones_fc_velo", { p_user: id });
+      const zf = Array.isArray(zv?.zones) ? zv.zones : am?.hr_zones;
+      if (Array.isArray(zf) && zf.length) setZonesFc(zf.map(Number));
       setProfil({ poids: pp?.poids_kg ? Number(pp.poids_kg) : null, cp: cp?.cs ? Number(cp.cs) : null, wPrime: cp?.d_prime ? Number(cp.d_prime) : null });
       let liste = (ss ?? []) as SeanceDb[];
       // Une version adaptée (grossesse) remplace la séance du coach, pour elle seule.
@@ -216,7 +310,7 @@ function HomeTrainer() {
   // ─── Rouler ───
   const demarrer = async (c: Choix) => {
     setChoix(c);
-    moteur.current = new Moteur(c.blocs, { ftp, ...profil, col: c.col ?? null });
+    moteur.current = new Moteur(c.blocs, { ftp, ...profil, col: c.col ?? null, rampe: c.test === "rampe" });
     setClassement(null); setNouveauRecord(false);
     setPhase("rouler");
     setEnvoi({ etat: "rien" }); setFavoriOk(false); setFavoriNom("");
@@ -290,6 +384,27 @@ function HomeTrainer() {
     const w = await ouvrirFenetre();
     w.addEventListener("pagehide", () => setFenetre(null));
     setFenetre(w);
+  };
+
+  // Un test du catalogue (02/11/2026) : il est programmé pour aujourd'hui dans
+  // le planning (comme depuis « Mes tests »), puis lancé, pour que le résultat
+  // arrive dans « Mes tests ».
+  const lancerTest = async (p: "rampe" | "lsct") => {
+    setErreurTest(null);
+    const auj = dayjs().format("YYYY-MM-DD");
+    const deja = seances.find((x) => x.test === p && x.date === auj && x.status !== "valide" && x.workout_text);
+    if (deja) { demarrer({ titre: deja.title || "Test", blocs: depuisIcu(deja.workout_text!, ftp), sessionId: deja.id, texteCourt: null, test: p }); return; }
+    setTestEnCours(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("tests", { body: { mode: "programmer", athleteId: moi, protocole: p, date: auj } });
+      if (error || !data?.session?.id) throw new Error(data?.error ?? "Je n'arrive pas à préparer le test.");
+      const { data: se } = await supabase.from("sessions").select("id, date, title, workout_text, planned_hour, status, test").eq("id", data.session.id).single();
+      if (!se?.workout_text) throw new Error("Le test n'a pas d'étapes.");
+      setSeances((l) => [se as SeanceDb, ...l]);
+      demarrer({ titre: se.title || "Test", blocs: depuisIcu(se.workout_text, ftp), sessionId: se.id, texteCourt: null, test: p });
+    } catch (e) {
+      setErreurTest((e as Error).message);
+    } finally { setTestEnCours(false); }
   };
 
   // ─── Fin ───
@@ -528,6 +643,7 @@ function HomeTrainer() {
               <Bulle icone={mdiMapMarkerDistance} texte={`${km} km`} />
             </div>
           </Ciel>
+          {choix.test === "rampe" && <CarteRampe points={pts} />}
 
           {choix.col && (
             <Carte className="space-y-3">
@@ -707,7 +823,15 @@ function HomeTrainer() {
         </div>
         <div className="space-y-3.5">
         <Titre>Ma séance</Titre>
-        <Onglets valeur={onglet} onChange={setOnglet} choix={[["plan", "Planning"], ["main", "À la main"], ["favoris", "Favoris"], ["cols", "Les cols"], ["libre", "Libre"]] as const} />
+        <Onglets valeur={onglet} onChange={setOnglet} choix={[["plan", "Planning"], ["seances", "Séances"], ["main", "Main"], ["favoris", "Favoris"], ["cols", "Cols"]] as const} />
+
+        {onglet === "seances" && (
+          <>
+            {erreurTest && <div className="flex items-center gap-2 rounded-2xl bg-rose-50 px-4 py-3 font-extrabold text-rose-700"><Icone d={mdiAlertCircle} taille={20} />Test impossible : {erreurTest}</div>}
+            <Catalogue duree={dureeCat} setDuree={setDureeCat} famille={familleCat} setFamille={setFamilleCat}
+              ftp={ftp} pret={pret} occupe={testEnCours} onGo={(c) => demarrer(c)} onTest={lancerTest} />
+          </>
+        )}
 
         {onglet === "plan" && (seances.length === 0 ? <Vide icone={mdiCalendarBlankOutline}>Pas de séance vélo cette semaine.<br />Fais-en une à la main !</Vide> : (
           <div className="space-y-2.5">
@@ -723,7 +847,7 @@ function HomeTrainer() {
                       {blocs.length ? <div className="text-[13px] font-semibold text-slate-500">{Math.round(dureeTotale(blocs) / 60)} min</div>
                         : <div className="text-[13px] font-extrabold text-amber-700">Pas d&apos;étapes : l&apos;app ne peut pas piloter l&apos;ERG</div>}
                     </div>
-                    <Bouton petit desactive={!pret} icone={mdiPlay} onClick={() => demarrer({ titre: s.title || "Vélo", blocs, sessionId: s.id, texteCourt: null })}>Go</Bouton>
+                    <Bouton petit desactive={!pret} icone={mdiPlay} onClick={() => demarrer({ titre: s.title || "Vélo", blocs, sessionId: s.id, texteCourt: null, test: s.test === "rampe" || s.test === "lsct" ? s.test : null })}>Go</Bouton>
                   </div>
                   {blocs.length > 0 && profilDe(blocs, ftp, 40)}
                   {!blocs.length && (
@@ -776,15 +900,6 @@ function HomeTrainer() {
 
         {onglet === "cols" && <ListeCols ftp={ftp} poids={profil.poids ?? null} records={records} pret={pret} onGo={(c) => demarrer({ titre: c.nom, blocs: [], sessionId: null, texteCourt: null, col: c })} />}
 
-        {onglet === "libre" && (
-          <Carte className="space-y-3">
-            <div className="flex items-center gap-3">
-              <div className="w-[38px] h-[38px] rounded-xl bg-teal-100 flex items-center justify-center shrink-0"><Icone d={mdiRoadVariant} taille={20} coul="#0f766e" /></div>
-              <p className="font-bold text-slate-800">Pas de séance : tu roules comme tu veux, les boutons − et + règlent la résistance.</p>
-            </div>
-            <Bouton large desactive={!pret} icone={mdiPlay} couleur="#0f766e" onClick={() => demarrer({ titre: "Sortie libre", blocs: [], sessionId: null, texteCourt: null })}>C&apos;est parti</Bouton>
-          </Carte>
-        )}
         </div>
       </div>
       {etal && (

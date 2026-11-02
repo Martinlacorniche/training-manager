@@ -17,6 +17,7 @@ const PASTILLES: Record<string, string[]> = {
   tranquille: ["📍 Même parcours", "⏱ ≈ 40 min", "🙂 Sans forcer"],
   lsct: ["🚲 Home-trainer", "⏱ ≈ 40 min", "❤️ Cœur dans la cible"],
   defi: ["📍 Piste ou plat", "⏱ ≈ 1 h", "⚡ 2 efforts à fond"],
+  rampe: ["🚲 Home-trainer", "⏱ ≈ 40 min", "⚡ À fond à la fin"],
 };
 // Une phrase à la place de la liste des paliers (le détail part sur la montre).
 function resume(protocole: string, texte?: string | null): string {
@@ -30,6 +31,7 @@ function resume(protocole: string, texte?: string | null): string {
     const f = t.match(/cœur à (\d+) bpm/g)?.map((x) => x.replace(/\D/g, "")) ?? [];
     return f.length === 3 ? `10 min facile, puis 3 paliers en gardant ton cœur à ${f[0]}, ${f[1]} et ${f[2]}.` : "10 min facile, puis 3 paliers à cœur fixe.";
   }
+  if (protocole === "rampe") return "10 min facile, puis +20 W chaque minute jusqu'à ne plus suivre, et 10 min de retour au calme.";
   return "3 min à fond, 20 min de récup, 12 min à fond.";
 }
 
@@ -43,7 +45,7 @@ export function ConsignesTest({ protocole, texte }: { protocole: string; texte?:
         {(PASTILLES[protocole] ?? []).map((x) => <div key={x} className="rounded-xl bg-violet-50 py-2 text-center text-sm font-bold text-slate-700">{x}</div>)}
       </div>
       <p className="font-semibold text-slate-800">{resume(protocole, texte)}</p>
-      <p className="text-sm text-slate-400">Envoie-le sur ta montre depuis l&apos;app : elle te guide.</p>
+      <p className="text-sm text-slate-400">{protocole === "lsct" || protocole === "rampe" ? "Lance-le depuis le home-trainer (ici ou dans l’app) : il règle les watts pour toi." : "Envoie-le sur ta montre depuis l’app : elle te guide."}</p>
       <button onClick={() => setOuvert((o) => !o)} className="text-sm font-bold text-violet-700">{ouvert ? "Masquer les consignes" : "Voir les consignes"}</button>
       {ouvert && <ul className="space-y-1">{(CONSIGNES[protocole] ?? []).map((c) => <li key={c} className="text-sm text-slate-600">• {c}</li>)}</ul>}
     </section>
@@ -53,9 +55,31 @@ export function ConsignesTest({ protocole, texte }: { protocole: string; texte?:
 export function ResultatTest({ sessionId, protocole, texte, faite }: { sessionId: string; protocole: string; texte?: string | null; faite: boolean }) {
   const [r, setR] = useState<Record<string, any> | null>(null);
   const [details, setDetails] = useState(false);
+  // Rampe vélo : FTP et FC max vélo actuelles, pour proposer la mise à jour.
+  const [actuel, setActuel] = useState<{ ftp: number | null; fcVelo: number | null } | null>(null);
+  const [maj, setMaj] = useState<"non" | "en_cours" | "ok" | "erreur">("non");
   useEffect(() => {
-    supabase.from("test_resultats").select("*").eq("session_id", sessionId).maybeSingle().then(({ data }) => setR(data ?? null));
+    supabase.from("test_resultats").select("*").eq("session_id", sessionId).maybeSingle().then(({ data }) => {
+      setR(data ?? null);
+      if (data?.protocole === "rampe") supabase.from("athlete_metrics").select("ftp_w, fc_max_velo").eq("user_id", data.user_id).maybeSingle()
+        .then(({ data: m }) => setActuel({ ftp: m?.ftp_w != null ? Number(m.ftp_w) : null, fcVelo: m?.fc_max_velo != null ? Number(m.fc_max_velo) : null }));
+    });
   }, [sessionId]);
+
+  // Rien ne change sans l'accord de l'athlète : un geste.
+  const appliquer = async () => {
+    if (!r) return;
+    const d = r.detail ?? {};
+    setMaj("en_cours");
+    const { error } = await supabase.from("athlete_metrics").upsert({
+      user_id: r.user_id, ftp_w: d.ftp, ...(d.fc_max ? { fc_max_velo: d.fc_max, fc_max_velo_le: r.jour } : {}), updated_at: new Date().toISOString(),
+    }, { onConflict: "user_id" });
+    if (error) { setMaj("erreur"); return; }
+    // Les zones vélo partent aussi sur intervals.icu (séances envoyées à la montre).
+    supabase.functions.invoke("zones-icu", { body: { athleteId: r.user_id } }).catch(() => {});
+    setActuel({ ftp: d.ftp, fcVelo: d.fc_max ?? actuel?.fcVelo ?? null });
+    setMaj("ok");
+  };
   if (!faite) return <ConsignesTest protocole={protocole} texte={texte} />;
   if (!r) return <p className="text-sm text-slate-500">Le résultat du test arrive dès que la montre a envoyé la séance.</p>;
   const v = VERDICTS[r.verdict] ?? VERDICTS.stable;
@@ -68,6 +92,11 @@ export function ResultatTest({ sessionId, protocole, texte, faite }: { sessionId
   } else if (protocole === "tranquille") {
     if (r.fc_a != null) chiffres.push([`${Math.round(r.fc_a)} bpm`, "Cœur, 1ʳᵉ allure"]);
     if (r.fc_b != null) chiffres.push([`${Math.round(r.fc_b)} bpm`, "Cœur, 2ᵉ allure"]);
+  } else if (protocole === "rampe") {
+    const d = r.detail ?? {};
+    if (d.ftp) chiffres.push([`${d.ftp} W`, "FTP"]);
+    if (d.pma) chiffres.push([`${d.pma} W`, "Meilleure minute"]);
+    if (d.fc_max) chiffres.push([`${Math.round(d.fc_max)} bpm`, "Cœur max à vélo"]);
   } else if (protocole === "lsct") {
     if (r.puissance_2 != null) chiffres.push([`${Math.round(r.puissance_2)} W`, "Palier 2"]);
     if (r.puissance_3 != null) chiffres.push([`${Math.round(r.puissance_3)} W`, "Palier 3"]);
@@ -78,16 +107,27 @@ export function ResultatTest({ sessionId, protocole, texte, faite }: { sessionId
       <h3 className="font-bold text-slate-800">Résultat du test</h3>
       <p className={`text-sm font-bold ${v.couleur}`}>{v.libelle}</p>
       <p className="font-semibold text-slate-800">{r.phrase}</p>
-      {chiffres.length > 0 && protocole !== "progressif" && (
+      {chiffres.length > 0 && protocole !== "progressif" && protocole !== "rampe" && (
         <button onClick={() => setDetails((x) => !x)} className="text-sm font-bold text-violet-700">{details ? "Masquer le détail" : "Voir le détail"}</button>
       )}
-      {chiffres.length > 0 && (details || protocole === "progressif") && (
+      {chiffres.length > 0 && (details || protocole === "progressif" || protocole === "rampe") && (
         <div className="flex flex-wrap gap-2">
           {chiffres.map(([val, lib]) => (
             <div key={lib} className="rounded-xl bg-slate-50 px-3 py-2"><p className="font-extrabold text-slate-800">{val}</p><p className="text-xs text-slate-400">{lib}</p></div>
           ))}
         </div>
       )}
+      {protocole === "rampe" && r.detail?.ftp && actuel && (
+        actuel.ftp === r.detail.ftp && (!r.detail.fc_max || actuel.fcVelo === Math.round(r.detail.fc_max)) ? (
+          <p className="text-sm font-extrabold text-green-600">✓ Ta FTP et tes zones vélo sont à jour</p>
+        ) : (
+          <button disabled={maj === "en_cours"} onClick={appliquer} className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-violet-600 text-white font-bold hover:bg-violet-700 disabled:opacity-50">
+            {maj === "en_cours" ? <span className="w-4 h-4 rounded-full border-2 border-white/40 border-t-white animate-spin" /> : "✓"} Mettre ma FTP à {r.detail.ftp} W{r.detail.fc_max ? " et mes zones vélo à jour" : ""}
+          </button>
+        )
+      )}
+      {protocole === "rampe" && actuel?.ftp != null && actuel.ftp !== r.detail?.ftp && <p className="text-xs text-slate-400 text-center">Aujourd’hui : {actuel.ftp} W</p>}
+      {maj === "erreur" && <p className="text-sm text-rose-600">Je n’ai pas pu enregistrer. Réessaie.</p>}
       <p className="text-xs text-slate-400">Chaleur déjà retirée, selon ta propre sensibilité.</p>
     </section>
   );
@@ -97,6 +137,7 @@ const MENU: { p: Protocole; titre: string; ligne: string }[] = [
   { p: "progressif", titre: "Calibrage", ligne: "Règle tes zones. Une fois, au stade." },
   { p: "tranquille", titre: "Check-up course", ligne: "Chaque mois, sans forcer." },
   { p: "lsct", titre: "Check-up vélo", ligne: "Chaque mois, sur home-trainer." },
+  { p: "rampe", titre: "Calibrage vélo", ligne: "Règle ta FTP et tes zones vélo. Sur home-trainer." },
   { p: "defi", titre: "Test allure 10 km", ligne: "Optionnel, si pas de course récente." },
 ];
 
@@ -111,7 +152,7 @@ function ProgrammerTest({ athleteId, coach, onFait, onFermer }: { athleteId: str
   // Les fiches préparées dès l'ouverture, en parallèle : au clic, elles sont là.
   const [cache] = useState<Partial<Record<Protocole, Promise<Record<string, any>>>>>(() => {
     const c: Partial<Record<Protocole, Promise<Record<string, any>>>> = {};
-    for (const p of ["progressif", "tranquille", "lsct", "defi"] as Protocole[]) { c[p] = apercuTest(athleteId, p); c[p]!.catch(() => {}); }
+    for (const p of ["progressif", "tranquille", "lsct", "defi", "rampe"] as Protocole[]) { c[p] = apercuTest(athleteId, p); c[p]!.catch(() => {}); }
     return c;
   });
 
@@ -144,7 +185,7 @@ function ProgrammerTest({ athleteId, coach, onFait, onFermer }: { athleteId: str
         {fait ? (
           <div className="space-y-3 text-center py-4">
             <p className="text-lg font-bold text-emerald-700">✓ C&apos;est dans le planning</p>
-            <p className="text-sm text-slate-600">{dayjs(date).format("dddd D MMMM")}.{coach ? "" : " Envoie-le sur ta montre depuis l'app."}</p>
+            <p className="text-sm text-slate-600">{dayjs(date).format("dddd D MMMM")}.{coach ? "" : protocole === "lsct" || protocole === "rampe" ? " Lance-le depuis le home-trainer." : " Envoie-le sur ta montre depuis l'app."}</p>
             <button onClick={onFermer} className="px-6 py-2 rounded-xl bg-blue-600 text-white font-bold">OK</button>
           </div>
         ) : !protocole ? (
@@ -186,8 +227,9 @@ const QUOI: Record<string, string> = {
   tranquille: "Ton cœur à la 2ᵉ allure. Plus il descend, plus tu es en forme.",
   lsct: "Ta puissance au 3ᵉ palier. Plus elle monte, plus tu es en forme.",
   defi: "Ton allure 10 km mesurée par le test. Plus elle est rapide, mieux c'est.",
+  rampe: "Ta meilleure minute sur la rampe. Plus elle monte, plus tu es en forme.",
 };
-const valeur = (p: string, x: number) => (p === "progressif" ? `${(x * 3.6).toFixed(1).replace(".", ",")} km/h` : p === "tranquille" ? `${Math.round(x)} bpm` : p === "lsct" ? `${Math.round(x)} W` : `${allure(x)}/km`);
+const valeur = (p: string, x: number) => (p === "progressif" ? `${(x * 3.6).toFixed(1).replace(".", ",")} km/h` : p === "tranquille" ? `${Math.round(x)} bpm` : p === "lsct" || p === "rampe" ? `${Math.round(x)} W` : `${allure(x)}/km`);
 
 export function SuiviTests({ userId, soi }: { userId: string; soi: boolean }) {
   const [resultats, setResultats] = useState<Record<string, any>[]>([]);
@@ -202,7 +244,7 @@ export function SuiviTests({ userId, soi }: { userId: string; soi: boolean }) {
     setPrevus((p ?? []).filter((s) => s.status !== "valide"));
   }, [userId]);
   useEffect(() => { charger(); }, [charger]);
-  const protocoles = (["tranquille", "lsct", "progressif", "defi"] as Protocole[]).filter((p) => resultats.some((r) => r.protocole === p));
+  const protocoles = (["tranquille", "lsct", "rampe", "progressif", "defi"] as Protocole[]).filter((p) => resultats.some((r) => r.protocole === p));
   const preTestFait = resultats.some((r) => r.protocole === "progressif" && r.valide);
   const preTestPrevu = prevus.some((s) => s.test === "progressif");
   const carte = "bg-white rounded-2xl border border-slate-200 p-5 space-y-3";

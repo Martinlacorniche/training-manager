@@ -4,13 +4,14 @@ import { supabase } from "@/lib/supabaseClient";
 // supabase/functions/tests et analyse). Mêmes textes que l'app
 // (App-Coach, lib/tests.ts et components/ConsignesTest.tsx).
 
-export type Protocole = "progressif" | "tranquille" | "lsct" | "defi";
+export type Protocole = "progressif" | "tranquille" | "lsct" | "defi" | "rampe";
 
 export const PROTOCOLES: Record<Protocole, { titre: string; quoi: string }> = {
   progressif: { titre: "Calibrage", quoi: "À faire une fois avant les tests course : il mesure ta VMA et ton cœur max, et fixe les allures de tes tests." },
   tranquille: { titre: "Check-up course", quoi: "Tous les mois, 2 × 6 min à allure fixe, sans forcer. Si ton cœur bat moins vite qu'avant, tu as progressé." },
   lsct: { titre: "Check-up vélo", quoi: "Tous les mois, sur home-trainer : 3 paliers à cœur fixe. Si tu pousses plus fort pour le même cœur, tu as progressé." },
   defi: { titre: "Test allure 10 km", quoi: "Pas obligatoire. Il mesure ton allure 10 km si tu n'as pas fait de course récemment. Pas plus d'une fois tous les 2 à 3 mois." },
+  rampe: { titre: "Calibrage vélo", quoi: "Une ou deux fois par an, sur home-trainer : les watts montent chaque minute jusqu'à ce que tu ne suives plus. Il mesure ta FTP et ton cœur max à vélo." },
 };
 
 export const VERDICTS: Record<string, { libelle: string; couleur: string }> = {
@@ -43,6 +44,12 @@ export const CONSIGNES: Record<string, string[]> = {
     "Reposé : rien de dur les 2 jours avant.",
     "Garde ton cœur autour de la cible affichée : pédale plus ou moins fort pour y rester.",
     "Fais le zéro de ton capteur de puissance avant.",
+  ],
+  rampe: [
+    "Sur home-trainer, en mode ERG, lancé depuis l'app.",
+    "Reposé : rien de dur les 2 jours avant.",
+    "Avec ta ceinture cardio.",
+    "Va vraiment jusqu'au bout : l'app passe toute seule au retour au calme.",
   ],
   defi: [
     "Il sert seulement à mesurer ton allure 10 km si tu n'as pas fait de course récemment. Pas obligatoire.",

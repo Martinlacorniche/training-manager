@@ -95,6 +95,8 @@ export function Bandeau({ fenetre, zoneFc, etat, etapes, ftp, position, police, 
             <span className="text-white/85 text-lg font-black">/ {etat.cible ?? "—"} W</span>
           </span>
         </div>
+        {/* Le temps qui reste de l'étape, juste à côté des watts (02/11/2026) */}
+        {!etat.col && <Valeur titre={`Étape · ${objectif(etat.etape, etat.ajust)}`}>{etat.attendLap ? "⏭" : chrono(etat.resteEtape ?? etat.tEtape)}</Valeur>}
         <Valeur titre="Cadence" icone={mdiRotateRight}>{etat.cadence ?? "—"}</Valeur>
         <Valeur titre="Cœur" icone={mdiHeart}>{etat.bpm ?? "—"}{zoneFc ? <span className="text-xs text-slate-400"> Z{zoneFc}</span> : null}</Valeur>
         {etat.col ? (
@@ -104,7 +106,6 @@ export function Bandeau({ fenetre, zoneFc, etat, etapes, ftp, position, police, 
             <Valeur titre="Vitesse">{etat.col.kmh.toFixed(1).replace(".", ",")}</Valeur>
           </>
         ) : <>
-        <Valeur titre={`Étape · ${objectif(etat.etape, etat.ajust)}`}>{etat.attendLap ? "⏭" : chrono(etat.resteEtape ?? etat.tEtape)}</Valeur>
         <Valeur titre="Ensuite">{etat.suivante ? <>{chrono(etat.suivante.s)} <span className="text-white/80 text-base">· {objectif(etat.suivante, etat.ajust)}</span></> : <span className="text-base">fin 🏁</span>}</Valeur>
         </>}
         <Valeur titre="Tour moy.">{etat.tour.w ?? "—"}</Valeur>

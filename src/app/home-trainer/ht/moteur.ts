@@ -5,10 +5,11 @@
 // enregistre une mesure par seconde pour le fichier .fit.
 //
 // Sécurités, choisies avec Martin le 30/10/2026 :
-//   - cadence qui s'effondre en ERG (< 25 tr/min pendant 5 s, 55 jugé trop
-//     haut par Martin le 01/11) : la consigne tombe à 60 % jusqu'à ce que la
-//     cadence repasse 40, pour ne pas rester planté sous le frein (la
-//     « spirale de la mort » de l'ERG) ;
+//   - cadence qui s'effondre en ERG (< 25 tr/min pendant 3 s, Martin 01-02/11 :
+//     un délai, pour qu'un capteur qui saute ou un lacet à resserrer ne coupe
+//     rien) : l'ERG est coupé (résistance minimale) jusqu'à ce que la cadence
+//     repasse 40, pour ne pas rester planté sous le frein (la « spirale de la
+//     mort » de l'ERG) ;
 //   - arrêt de pédalage 3 s : pause automatique, reprise dès qu'on repédale ;
 //   - sprint (> 150 % FTP sur 30 s ou moins) : résistance plutôt qu'ERG,
 //     l'ERG ne suit pas un sprint ;
@@ -23,7 +24,7 @@
 // ─────────────────────────────────────────────────────────────────────────
 
 import { aplatir, type Bloc, type Etape, wattsCibles, LIBRE_PCT } from "./seance";
-import { altitudeA, penteA, type Col } from "./cols";
+import { altitudeA, PAS_COL, penteA, type Col } from "./cols";
 
 export type Consigne = { type: "erg"; w: number } | { type: "pente"; pct: number };
 // c = watts visés ; x = position dans le dessin de la séance (s), pour y tracer les vrais watts
@@ -236,11 +237,11 @@ export class Moteur {
       if (this.erg && !sprint) {
         // Cadence qui s'effondre
         const seuil = 25;
-        if (cad != null && cad < seuil && this.pause === "non") { this.bas ||= now; if (now - this.bas > 5000) this.soulagement = true; }
+        if (cad != null && cad < seuil && this.pause === "non") { this.bas ||= now; if (now - this.bas > 3000) this.soulagement = true; }
         else this.bas = 0;
         if (this.soulagement && cad != null && cad >= seuil + 15) this.soulagement = false;
         if (this.soulagement) alerte = "Cadence trop basse : on relâche, relance les jambes";
-        consigne = { type: "erg", w: this.soulagement ? Math.round(cible * 0.6) : this.powerMatch(cible) };
+        consigne = this.soulagement ? { type: "pente", pct: 0 } : { type: "erg", w: this.powerMatch(cible) };
         // Anticipation : le home-trainer met 2 à 4 s à suivre une nouvelle
         // consigne ; on envoie celle de l'étape suivante 2 s avant le changement.
         const apres = this.etapes[this.i + 1];
@@ -344,6 +345,17 @@ export function vitesseSurPente(w: number, masse: number, pentePct: number): num
     v = Math.max(0.3, v - f / d);
   }
   return w <= 0 && pentePct >= 0 ? 0 : v * 3.6;
+}
+
+/** Le temps d'un col à puissance constante (s) : « À ton rythme : environ 24 min ». */
+export function tempsCol(col: Col, w: number, masse: number): number {
+  let t = 0;
+  for (let i = 0; i < col.pentes.length; i++) {
+    const long = Math.min(PAS_COL, col.km * 1000 - i * PAS_COL);
+    if (long <= 0) break;
+    t += long / Math.max(0.5, vitesseSurPente(w, masse, col.pentes[i]) / 3.6);
+  }
+  return Math.round(t);
 }
 
 /** Vitesse sur le plat pour une puissance (masse cycliste + vélo, CdA 0,32, Crr 0,004). */

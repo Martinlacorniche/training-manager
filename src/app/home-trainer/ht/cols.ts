@@ -59,5 +59,19 @@ export function altitudeA(c: Col, d: number): number {
   return Math.round(alt);
 }
 
+/** La fin d'un col sur `km` kilomètres (02/11/2026) : pour monter « la fin de
+ *  l'Alpe » quand on n'a que 20-30 min. Pas de temps des pros : ils ne valent
+ *  que pour la montée entière. */
+export function portion(c: Col, km: number): Col {
+  if (km >= c.km - 0.2) return c;
+  const n = Math.round((km * 1000) / PAS_COL), pentes = c.pentes.slice(-n);
+  const depart = altitudeA(c, (c.km - km) * 1000);
+  return {
+    ...c, id: `${c.id}~${km}`, nom: `${c.nom} · les ${String(km).replace(".", ",")} derniers km`,
+    km, depart, denivele: c.sommet - depart, moyenne: Math.round(((c.sommet - depart) / (km * 10)) * 10) / 10,
+    max: Math.max(...pentes), pentes, pros: undefined,
+  };
+}
+
 /** La couleur des bornes de col : vert, bleu, rouge, noir. */
 export const couleurPente = (p: number) => (p < 4 ? "#16a34a" : p < 7 ? "#2563eb" : p < 10 ? "#dc2626" : "#0f172a");

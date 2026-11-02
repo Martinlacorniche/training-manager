@@ -3,13 +3,36 @@
 // Le profil se dessine comme un vrai profil de col : l'altitude, colorée par
 // tranche de 1 km selon la pente (vert, bleu, rouge, noir, comme les bornes).
 import { mdiFlagCheckered, mdiHeart, mdiImageFilterHdr, mdiPause, mdiPlay, mdiRotateRight, mdiSpeedometer, mdiTimerOutline, mdiTrophyOutline } from "@mdi/js";
-import type { Etat } from "./ht/moteur";
-import { COLS, couleurPente, PAS_COL, type Col } from "./ht/cols";
+import { tempsCol, type Etat } from "./ht/moteur";
+import { COLS, couleurPente, PAS_COL, portion, type Col } from "./ht/cols";
 import { Bouton, Bulle as Pastille, Carte, Icone, Sur, Titre } from "./ui";
 import { chrono } from "./Bandeau";
 
+// Les fantômes (pros, ton record) dessinés sur le col : une pastille nommée qui avance (02/11/2026).
+export type Fantome = { nom: string; d: number };
+function Fantomes({ liste, gauche, hauteur }: { liste: Fantome[]; gauche: (d: number) => number | null; hauteur: number }) {
+  return (
+    <>
+      {liste.map((f, i) => {
+        const g = gauche(f.d);
+        if (g == null) return null;
+        return (
+          // Près du sommet, la pastille passe à gauche du trait pour rester visible.
+          <div key={f.nom} className={`absolute pointer-events-none flex flex-col ${g > 75 ? "items-end -translate-x-full" : "items-start"}`} style={{ left: `${Math.max(0, Math.min(100, g))}%`, top: 2 + (i % 2) * 18 }}>
+            <div className={`${g > 75 ? "-mr-1.5" : "-ml-1.5"} flex items-center gap-[3px] rounded-full bg-slate-900/80 px-1.5 py-0.5 whitespace-nowrap`}>
+              <span className="w-1.5 h-1.5 rounded-full bg-yellow-400" />
+              <span className="text-[10px] font-black text-white">{f.nom}</span>
+            </div>
+            <div className="w-0.5" style={{ height: hauteur, background: "rgba(250,204,21,0.8)" }} />
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
 /** Le profil du col ; `d` = où on en est (m), pour la montée en cours. */
-export function ProfilCol({ col, d, hauteur = 90, kmParKm = true }: { col: Col; d?: number; hauteur?: number; kmParKm?: boolean }) {
+export function ProfilCol({ col, d, hauteur = 90, kmParKm = true, fantomes }: { col: Col; d?: number; hauteur?: number; kmParKm?: boolean; fantomes?: Fantome[] }) {
   const n = col.pentes.length, larg = 1000;
   const alts: number[] = [col.depart];
   for (const p of col.pentes) alts.push(alts[alts.length - 1] + p);   // 100 m × p % = p m
@@ -22,7 +45,7 @@ export function ProfilCol({ col, d, hauteur = 90, kmParKm = true }: { col: Col; 
     tranches.push({ de: k, a: fin, p: col.pentes.slice(k, fin).reduce((s, v) => s + v, 0) / (fin - k) });
   }
   const ici = d != null ? Math.min(n, d / PAS_COL) : null;
-  return (
+  const profil = (
     <svg viewBox={`0 0 ${larg} ${hauteur}`} preserveAspectRatio="none" className="w-full block" style={{ height: hauteur }}>
       {tranches.map((t, k) => (
         <path key={k} fill={couleurPente(t.p)} opacity={ici != null && t.a <= ici ? 0.35 : 0.9}
@@ -39,11 +62,13 @@ export function ProfilCol({ col, d, hauteur = 90, kmParKm = true }: { col: Col; 
       )}
     </svg>
   );
+  if (!fantomes?.length) return profil;
+  return <div className="relative overflow-hidden" style={{ height: hauteur }}>{profil}<Fantomes liste={fantomes} hauteur={hauteur} gauche={(fd) => (Math.min(n, fd / PAS_COL) / n) * 100} /></div>;
 }
 
 /** Le zoom : les 1,5 km qui arrivent, une barre par 100 m avec sa pente
  *  écrite, et toi dessus. C'est là qu'on lit le prochain mur. */
-export function ZoomCol({ col, d, hauteur = 150 }: { col: Col; d: number; hauteur?: number }) {
+export function ZoomCol({ col, d, hauteur = 150, fantomes }: { col: Col; d: number; hauteur?: number; fantomes?: Fantome[] }) {
   const i0 = Math.max(0, Math.floor(d / PAS_COL) - 1), n = 16;
   const barres = Array.from({ length: n }, (_, k) => i0 + k).filter((i) => i < col.pentes.length);
   const max = Math.max(10, ...barres.map((i) => Math.abs(col.pentes[i])));
@@ -63,6 +88,7 @@ export function ZoomCol({ col, d, hauteur = 150 }: { col: Col; d: number; hauteu
         })}
       </div>
       <div className="absolute top-0 bottom-0 w-[3px] rounded-full bg-slate-800" style={{ left: `${ici}%` }} />
+      {fantomes?.length ? <Fantomes liste={fantomes} hauteur={hauteur - 20} gauche={(fd) => { const g = ((fd / PAS_COL - i0) / n) * 100; return g >= 0 && g <= 100 ? g : null; }} /> : null}
       <div className="absolute -bottom-5 text-[11px] font-bold text-slate-400 left-0">ici</div>
       <div className="absolute -bottom-5 text-[11px] font-bold text-slate-400 right-0">+{((n - 1) * PAS_COL / 1000).toFixed(1).replace(".", ",")} km</div>
     </div>
@@ -71,19 +97,8 @@ export function ZoomCol({ col, d, hauteur = 150 }: { col: Col; d: number; hauteu
 
 export type Record = { col_id: string; duree_s: number };
 
-export function ListeCols({ ftp, poids, records, pret, onGo }: { ftp: number; poids: number | null; records: Map<string, number>; pret: boolean; onGo: (c: Col) => void }) {
-  // Le temps qu'il te faudrait à ta FTP, pour savoir dans quoi tu te lances
-  const estime = (c: Col) => {
-    const m = (poids ?? 72) + 9, w = ftp * 0.95;
-    let t = 0;
-    for (const p of c.pentes) {
-      const th = Math.atan(p / 100), fixe = m * 9.81 * (0.004 * Math.cos(th) + Math.sin(th));
-      let v = 5;
-      for (let k = 0; k < 25; k++) v = Math.max(0.3, v - (fixe * v + 0.192 * v ** 3 - w) / (fixe + 0.576 * v ** 2));
-      t += PAS_COL / v;
-    }
-    return t;
-  };
+export function ListeCols({ ftp, poids, records, pret, onGo, onPasPret }: { ftp: number; poids: number | null; records: Map<string, number>; pret: boolean; onGo: (c: Col) => void; onPasPret: () => void }) {
+  const lancer = (c: Col) => (pret ? onGo(c) : onPasPret());
   const groupe = (famille: Col["famille"], titre: string) => (
     <div className="space-y-2.5">
       <Titre>{titre}</Titre>
@@ -94,15 +109,18 @@ export function ListeCols({ ftp, poids, records, pret, onGo }: { ftp: number; po
               <div className="text-[11px] font-extrabold uppercase tracking-[0.12em] text-slate-400">{c.pays}</div>
               <div className="font-black text-slate-800 text-base truncate">{c.nom}</div>
               <div className="text-[13px] font-semibold text-slate-500 tabular-nums">{c.km.toFixed(1).replace(".", ",")} km · {c.moyenne.toFixed(1).replace(".", ",")} % · {c.denivele} m D+ · max {Math.round(c.max)} %</div>
+              {records.has(c.id) && <div className="flex items-center gap-1 text-[13px] font-black text-amber-600"><Icone d={mdiTrophyOutline} taille={15} />{chrono(records.get(c.id)!)}</div>}
             </div>
-            <div className="text-right shrink-0">
-              {records.has(c.id)
-                ? <div className="flex items-center gap-1 justify-end text-[13px] font-black text-amber-600"><Icone d={mdiTrophyOutline} taille={15} />{chrono(records.get(c.id)!)}</div>
-                : <div className="text-[12px] font-bold text-slate-400">~ {chrono(Math.round(estime(c) / 60) * 60)} à ta FTP</div>}
-            </div>
-            <Bouton petit desactive={!pret} icone={mdiPlay} onClick={() => onGo(c)}>Go</Bouton>
+            <Bouton petit icone={mdiPlay} onClick={() => lancer(c)}>Go</Bouton>
           </div>
           <ProfilCol col={c} hauteur={56} kmParKm={false} />
+          {/* À ton rythme, et la fin du col pour les sorties courtes (02/11/2026) */}
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="text-[13px] font-bold text-slate-500">À ton rythme : environ {Math.round(tempsCol(c, ftp * 0.9, (poids ?? 72) + 9) / 60)} min{c.pros?.length ? ` · ${c.pros[0].nom} ${chrono(c.pros[0].s)}` : ""}</span>
+            {c.km > 7 && (
+              <button type="button" onClick={() => lancer(portion(c, 5))} className="rounded-full border border-slate-200 px-3 py-1.5 text-[13px] font-extrabold text-slate-800 hover:bg-slate-50">Les 5 derniers km</button>
+            )}
+          </div>
         </Carte>
       ))}
     </div>
@@ -138,6 +156,8 @@ export function EcranCol({ etat, col, poids, zoneFc, record, onPause, onTerminer
     ...(record ? [{ nom: "Ton record", s: record }] : []),
     ...(col.pros ?? []).map((x) => ({ nom: `${x.nom} ${x.annee}`, s: x.s })),
   ];
+  // Où serait chaque fantôme maintenant, à vitesse moyenne constante.
+  const surProfil = fantomes.map((f) => ({ nom: f.nom.replace(/ \d{4}$/, ""), d: Math.min(c.total, (etat.tTotal / f.s) * c.total) }));
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-2 lg:grid-cols-12 gap-3">
@@ -191,11 +211,11 @@ export function EcranCol({ etat, col, poids, zoneFc, record, onPause, onTerminer
       <div className="grid lg:grid-cols-12 gap-3">
         <Carte className="lg:col-span-5 !pb-7">
           <div className="text-[11px] font-extrabold uppercase tracking-[0.12em] text-slate-400 mb-2">Ce qui arrive</div>
-          <ZoomCol col={col} d={c.d} hauteur={150} />
+          <ZoomCol col={col} d={c.d} hauteur={150} fantomes={surProfil} />
         </Carte>
         <Carte className="lg:col-span-7 !p-3">
           <div className="text-[11px] font-extrabold uppercase tracking-[0.12em] text-slate-400 mb-1 px-1">Le col · {kmTexte(c.d)} / {kmTexte(c.total)} km</div>
-          <ProfilCol col={col} d={c.d} hauteur={170} />
+          <ProfilCol col={col} d={c.d} hauteur={170} fantomes={surProfil} />
         </Carte>
       </div>
 

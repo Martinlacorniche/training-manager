@@ -7,6 +7,9 @@
 // Pendant de l'app : App-Coach/app/home-trainer.tsx, même design (celui de
 // l'app : Météo du corps, Progression). La logique (séances, Bluetooth,
 // moteur, .fit, zones) est partagée : ./ht/*.ts.
+// Refonte du 02/11/2026 (maquette validée, comme l'app) : pastille du vélo,
+// séance du coach du jour en tête, catalogue en cartes « Tu vas sentir »,
+// séance en cours avec temps restant + watts, fin en un geste.
 // ─────────────────────────────────────────────────────────────────────────
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -14,15 +17,15 @@ import dayjs from "dayjs";
 import "dayjs/locale/fr";
 import { Plus_Jakarta_Sans } from "next/font/google";
 import {
-  mdiAlertCircle, mdiArrowDownBold, mdiArrowUpBold, mdiBike, mdiBikeFast, mdiCalendarBlankOutline, mdiCalendarMonth, mdiCheckCircle, mdiChevronLeft, mdiCloudUploadOutline,
+  mdiAlertCircle, mdiBike, mdiChevronDown, mdiChevronUp, mdiTarget, mdiBikeFast, mdiCalendarBlankOutline, mdiCalendarMonth, mdiCheckCircle, mdiChevronLeft, mdiCloudUploadOutline,
   mdiDownload, mdiFlagCheckered, mdiHeart, mdiHeartPulse, mdiLightningBolt, mdiMapMarkerDistance, mdiMinus, mdiPause, mdiPauseCircle,
-  mdiPictureInPictureBottomRight, mdiPlay, mdiPlus, mdiRotateRight, mdiSkipNext, mdiSkipPrevious, mdiSlopeUphill, mdiStar,
-  mdiStarOutline, mdiTimerOutline, mdiTrophyOutline, mdiTuneVariant, mdiFullscreen, mdiFullscreenExit, mdiScaleBathroom,
-  mdiFlagVariantOutline, mdiHistory, mdiBatteryHigh, mdiSigma, mdiGamepadVariantOutline, mdiAccountOutline, mdiKeyboardOutline, mdiTuneVertical,
+  mdiPictureInPictureBottomRight, mdiPlay, mdiPlus, mdiSkipNext, mdiSkipPrevious, mdiStar,
+  mdiStarOutline, mdiTimerOutline, mdiTrophyOutline, mdiFullscreen, mdiFullscreenExit, mdiScaleBathroom,
+  mdiGamepadVariantOutline, mdiAccountOutline, mdiKeyboardOutline, mdiTuneVertical,
 } from "@mdi/js";
 import { supabase } from "@/lib/supabaseClient";
 import { depuisCourt, depuisIcu, versCourt, versIcu, aplatir, dureeTotale, type Bloc, type Etape } from "./ht/seance";
-import { Moteur, type Etat, type Moyennes as MoyennesT, type Profil as ProfilCycliste } from "./ht/moteur";
+import { Moteur, type Etat, type Profil as ProfilCycliste } from "./ht/moteur";
 import { compliment } from "./ht/compliment";
 import { fichierFit } from "./ht/fit";
 import { ecart, zoneCoeur, zoneEtape, ZONE_PAUSE } from "./ht/zones";
@@ -30,9 +33,10 @@ import { Capteur, Simulateur, bluetoothDispo, messageConnexion, type EtatCapteur
 import { Editeur } from "./Editeur";
 import { EcranCol, ListeCols, ProfilCol } from "./Cols";
 import type { Col } from "./ht/cols";
-import { DUREES, FAMILLES, resultatRampe, seancesDe, type Famille, type SeanceCatalogue } from "./ht/catalogue";
+import { resultatRampe, type Famille } from "./ht/catalogue";
+import Catalogue from "./Catalogue";
 import { Bandeau, bandeauDispo, chrono, ouvrirFenetre, type Actions } from "./Bandeau";
-import { Anneau, Bouton, Bulle, Carte, Ciel, Icone, Jauge, Onglets, Profil, profilDe, Sur, Titre } from "./ui";
+import { Bouton, Bulle, Carte, Ciel, degrade, Icone, Jauge, Onglets, Profil, profilDe, Sur } from "./ui";
 
 dayjs.locale("fr");
 const jakarta = Plus_Jakarta_Sans({ subsets: ["latin"], weight: ["500", "600", "700", "800"], display: "swap" });
@@ -49,6 +53,13 @@ const CIEL_PRET = ["#2563eb", "#0ea5e9", "#38bdf8"], CIEL_ATTENTE = ["#475569", 
 // Où en est-on dans le dessin de la séance (les étapes « lap » peuvent déborder).
 const position = (etapes: Etape[], e: Etat) => etapes.slice(0, e.i).reduce((a, x) => a + x.s, 0) + Math.min(e.tEtape, e.etape?.s ?? 0);
 const cibleTexte = (e: Etape, ajust = 1) => e.cible.type === "w" ? `${Math.round(((e.cible.min + e.cible.max) / 2) * ajust)} W` : e.cible.type === "bpm" ? `${e.cible.min} bpm` : "libre";
+// La part du temps « dans le mille » (±4 %, au moins 5 W, des watts visés).
+function dansLeMille(points: { w: number | null; c: number | null }[]): number | null {
+  let n = 0, ok = 0;
+  for (const p of points) if (p.c && p.w != null) { n++; if (Math.abs(p.w - p.c) <= Math.max(5, p.c * 0.04)) ok++; }
+  return n >= 20 ? Math.round((ok / n) * 100) : null;
+}
+const colFini = (col: Col, points: { m: number }[]) => (points[points.length - 1]?.m ?? 0) >= col.km * 1000 - 5;
 
 function versBase64(o: Uint8Array) {
   let s = "";
@@ -57,11 +68,13 @@ function versBase64(o: Uint8Array) {
 }
 
 // Hors du composant : recréés à chaque image (4 par seconde), les boutons perdraient des clics.
-const Mesure = ({ titre, icone, coul, children, unite, classe = "" }: { titre: string; icone: string; coul?: string; children: React.ReactNode; unite?: string; classe?: string }) => (
-  <Carte className={classe}>
-    <div className="flex items-center gap-1.5 text-[11px] font-extrabold uppercase tracking-[0.12em] text-slate-400"><Icone d={icone} taille={15} coul={coul ?? "#94a3b8"} />{titre}</div>
-    <div className="flex items-baseline gap-1 mt-0.5"><span className="text-[44px] font-black text-slate-800 tabular-nums leading-tight">{children}</span>{unite && <span className="text-[13px] font-extrabold text-slate-400">{unite}</span>}</div>
-  </Carte>
+// Une case de chiffres, centrée (refonte du 02/11/2026, comme l'app).
+const Case = ({ titre, valeur, sous, sousCoul, coul }: { titre: string; valeur: React.ReactNode; sous?: string; sousCoul?: string; coul?: string }) => (
+  <div className="flex-1 min-w-0 rounded-[18px] bg-white border border-[#eef2f7] px-1.5 py-2 lg:py-3 flex flex-col items-center justify-center text-center">
+    <div className="text-[10.5px] lg:text-[11.5px] font-extrabold uppercase tracking-[0.1em] text-slate-400 truncate max-w-full">{titre}</div>
+    <div className="text-[26px] lg:text-[34px] font-black tabular-nums leading-tight truncate max-w-full" style={{ color: coul ?? "#1e293b" }}>{valeur}</div>
+    {sous ? <div className={`text-[11.5px] lg:text-[12.5px] truncate max-w-full ${sousCoul ? "font-black" : "font-bold text-slate-500"}`} style={sousCoul ? { color: sousCoul } : undefined}>{sous}</div> : null}
+  </div>
 );
 const Rond = ({ onClick, d, titre, grand, couleurs }: { onClick: () => void; d: string; titre: string; grand?: boolean; couleurs?: readonly string[] }) => (
   <button type="button" title={titre} onClick={onClick}
@@ -69,13 +82,6 @@ const Rond = ({ onClick, d, titre, grand, couleurs }: { onClick: () => void; d: 
     style={grand && couleurs ? { backgroundImage: `linear-gradient(135deg, ${couleurs.join(", ")})`, boxShadow: `0 6px 18px ${couleurs[0]}66` } : { boxShadow: "0 3px 10px rgba(100,116,139,0.12)" }}>
     <Icone d={d} taille={grand ? 40 : 26} />
   </button>
-);
-const Moyennes = ({ titre, icone, m, classe = "" }: { titre: string; icone: string; m: MoyennesT | null; classe?: string }) => (
-  <Carte className={classe}>
-    <div className="flex items-center gap-1.5 text-[11px] font-extrabold uppercase tracking-[0.12em] text-slate-400"><Icone d={icone} taille={15} coul="#94a3b8" />{titre}{m?.s ? <span className="normal-case tracking-normal font-bold"> · {chrono(m.s)}</span> : null}</div>
-    <div className="text-[34px] font-black text-slate-800 tabular-nums leading-tight">{m?.w ?? "—"} <span className="text-[14px] text-slate-400">W moy.</span></div>
-    <div className="text-[13px] font-extrabold text-slate-500 tabular-nums">{m?.bpm ?? "—"} bpm · {m?.cad ?? "—"} tr/min</div>
-  </Carte>
 );
 const Vide = ({ icone, children }: { icone: string; children: React.ReactNode }) => (
   <div className="flex flex-col items-center gap-1.5 py-6 text-center"><Icone d={icone} taille={34} coul="#cbd5e1" /><p className="font-bold text-slate-500">{children}</p></div>
@@ -101,72 +107,6 @@ function CarteRampe({ points }: { points: { w: number | null; bpm: number | null
   );
 }
 
-// Le catalogue (02/11/2026) : combien de temps, envie de quoi, et c'est parti.
-const CONSIGNES_TEST: Record<"rampe" | "lsct", string> = {
-  rampe: "Reposé, avec ta ceinture cardio, en mode ERG. Va vraiment jusqu'au bout : l'app passe toute seule au retour au calme.",
-  lsct: "Reposé, avec ta ceinture cardio. Le home-trainer règle les watts pour garder ton cœur sur la cible.",
-};
-function Catalogue({ duree, setDuree, famille, setFamille, ftp, pret, occupe, onGo, onTest }: {
-  duree: number; setDuree: (d: number) => void; famille: Famille; setFamille: (f: Famille) => void; ftp: number; pret: boolean;
-  occupe: boolean; onGo: (c: Choix) => void; onTest: (p: "rampe" | "lsct") => void;
-}) {
-  const liste: SeanceCatalogue[] = seancesDe(famille, duree, { avecLsct: true });
-  const fam = FAMILLES.find((x) => x.id === famille)!;
-  const puce = (actif: boolean) => `rounded-full border px-3.5 py-2 text-[14px] font-extrabold transition ${actif ? "bg-slate-800 border-slate-800 text-white" : "bg-white border-[#eef2f7] text-slate-800 hover:bg-slate-50"}`;
-  return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap gap-2">
-        {FAMILLES.map((x) => (
-          <button key={x.id} type="button" onClick={() => setFamille(x.id)} className={puce(famille === x.id)}>{x.emoji} {x.nom}</button>
-        ))}
-      </div>
-      {famille !== "test" && (
-        <div className="flex gap-1.5">
-          {DUREES.map((d) => (
-            <button key={d} type="button" onClick={() => setDuree(d)} className={`flex-1 ${puce(duree === d)}`}>{d}′</button>
-          ))}
-        </div>
-      )}
-      <p className="font-bold text-slate-500">{fam.phrase}</p>
-      {famille === "tranquille" && (
-        <Carte className="flex items-center gap-3">
-          <div className="flex-1 min-w-0">
-            <div className="font-black text-slate-800 text-base">Sortie libre</div>
-            <div className="text-[13px] font-semibold text-slate-500">Pas de séance : tu roules comme tu veux, − et + règlent la résistance</div>
-          </div>
-          <Bouton petit desactive={!pret} icone={mdiPlay} couleur="#0f766e" onClick={() => onGo({ titre: "Sortie libre", blocs: [], sessionId: null, texteCourt: null })}>Go</Bouton>
-        </Carte>
-      )}
-      {liste.length === 0 && famille !== "test" && (
-        <p className="text-center font-bold text-slate-400 p-3">Rien de ce genre en {duree} minutes : prends un peu plus de temps.</p>
-      )}
-      {liste.map((x) => {
-        if (x.test) return (
-          <Carte key={x.id} className="space-y-2">
-            <div className="font-black text-slate-800 text-base">{x.nom}</div>
-            <p className="text-[13.5px] font-semibold text-slate-500">{x.phrase}</p>
-            <p className="text-[12.5px] font-semibold text-slate-400">{CONSIGNES_TEST[x.test]}</p>
-            <Bouton large desactive={!pret || occupe} icone={mdiPlay} onClick={() => onTest(x.test!)}>{occupe ? "Je prépare le test…" : "Lancer le test"}</Bouton>
-          </Carte>
-        );
-        const blocs = depuisCourt(x.texte!, ftp).blocs;
-        return (
-          <Carte key={x.id} className="space-y-2.5">
-            <div className="flex items-center gap-3">
-              <div className="flex-1 min-w-0">
-                <div className="font-black text-slate-800 text-base">{x.nom} <span className="text-[13px] text-slate-400">· {x.minutes} min</span></div>
-                <div className="text-[13px] font-semibold text-slate-500">{x.phrase}</div>
-              </div>
-              <Bouton petit desactive={!pret} icone={mdiPlay} onClick={() => onGo({ titre: x.nom, blocs, sessionId: null, texteCourt: versCourt(blocs) })}>Go</Bouton>
-            </div>
-            {profilDe(blocs, ftp, 40)}
-          </Carte>
-        );
-      })}
-    </div>
-  );
-}
-
 function HomeTrainer() {
   const router = useRouter();
   const params = useSearchParams();
@@ -187,9 +127,16 @@ function HomeTrainer() {
   const derniereVitesse = useRef<number | null>(null);
   const [seances, setSeances] = useState<SeanceDb[]>([]);
   const [favoris, setFavoris] = useState<{ id: string; nom: string; texte: string }[]>([]);
-  const [onglet, setOnglet] = useState<"plan" | "seances" | "main" | "favoris" | "cols">("plan");
+  const [onglet, setOnglet] = useState<"plan" | "seances" | "main" | "favoris" | "cols">("seances");
+  // Ouverte depuis une séance du planning (?seance=) : l'onglet Planning, sauf si c'est celle du jour.
+  useEffect(() => {
+    const x = seanceChoisie ? seances.find((y) => y.id === seanceChoisie) : null;
+    if (x && x.date !== dayjs().format("YYYY-MM-DD")) setOnglet("plan");
+  }, [seanceChoisie, seances]);
+  const [materielOuvert, setMaterielOuvert] = useState(false);
+  const [pasPretOuvert, setPasPretOuvert] = useState(false);   // « Le vélo n'est pas connecté »
   const [dureeCat, setDureeCat] = useState<number>(45);
-  const [familleCat, setFamilleCat] = useState<Famille>("tranquille");
+  const [familleCat, setFamilleCat] = useState<Famille>("decouverte");
   const [testEnCours, setTestEnCours] = useState(false);
   const [erreurTest, setErreurTest] = useState<string | null>(null);
   const [records, setRecords] = useState<Map<string, number>>(new Map());
@@ -202,7 +149,7 @@ function HomeTrainer() {
   const [phase, setPhase] = useState<"preparer" | "rouler" | "fin">("preparer");
   const [etat, setEtat] = useState<Etat | null>(null);
   const [fenetre, setFenetre] = useState<Window | null>(null);
-  const [rpe, setRpe] = useState(5);
+  const [rpe, setRpe] = useState<number | null>(null);   // pas de valeur d'avance : elle fausserait la donnée
   const [aideRpe, setAideRpe] = useState(false);
   const [envoi, setEnvoi] = useState<{ etat: "rien" | "en_cours" | "ok" | "erreur"; texte?: string }>({ etat: "rien" });
   const [favoriNom, setFavoriNom] = useState("");
@@ -311,7 +258,7 @@ function HomeTrainer() {
   const demarrer = async (c: Choix) => {
     setChoix(c);
     moteur.current = new Moteur(c.blocs, { ftp, ...profil, col: c.col ?? null, rampe: c.test === "rampe" });
-    setClassement(null); setNouveauRecord(false);
+    setClassement(null); setNouveauRecord(false); setRpe(null); setAideRpe(false);
     setPhase("rouler");
     setEnvoi({ etat: "rien" }); setFavoriOk(false); setFavoriNom("");
     if (simu) { sim.current = new Simulateur(ecoute); sim.current.demarrer(); }
@@ -408,7 +355,8 @@ function HomeTrainer() {
   };
 
   // ─── Fin ───
-  const enregistrer = async () => {
+  // Toucher son ressenti enregistre ET envoie sur Strava : un seul geste (02/11/2026).
+  const enregistrer = async (note: number | null = rpe) => {
     const m = moteur.current;
     if (!m || !moi || !choix) return;
     if (m.points.length < 30) { setEnvoi({ etat: "erreur", texte: "Moins de 30 secondes enregistrées : rien à envoyer." }); return; }
@@ -417,13 +365,13 @@ function HomeTrainer() {
       let sessionId = choix.sessionId;
       if (sessionId) {
         // Séance du planning écrite ici « à la main » : on y range aussi ses étapes
-        await supabase.from("sessions").update({ status: "valide", rpe, ...(choix.texteCourt && choix.blocs.length ? { workout_text: versIcu(choix.blocs), workout_target: "POWER" } : {}) }).eq("id", sessionId);
+        await supabase.from("sessions").update({ status: "valide", rpe: note, ...(choix.texteCourt && choix.blocs.length ? { workout_text: versIcu(choix.blocs), workout_target: "POWER" } : {}) }).eq("id", sessionId);
       } else {
         const { data, error } = await supabase.from("sessions").insert({
           user_id: moi, date: dayjs().format("YYYY-MM-DD"), sport: "Vélo", title: choix.titre,
           planned_hour: Math.round(((dureeTotale(choix.blocs) || m.points.length) / 3600) * 100) / 100,
           workout_text: choix.blocs.length ? versIcu(choix.blocs) : null, workout_target: choix.blocs.length ? "POWER" : null,
-          status: "valide", rpe,
+          status: "valide", rpe: note,
         }).select("id").single();
         if (error) throw new Error(error.message);
         sessionId = data.id;
@@ -507,17 +455,28 @@ function HomeTrainer() {
   }
 
   // ─────────────────────────── Rouler ───────────────────────────
-  // Tout l'écran (31/10, Martin) : la puissance 3 s en très gros, l'étape,
-  // le cœur et la cadence, puis les moyennes du tour, du tour d'avant et de
-  // la séance, la réserve, et la séance dessinée avec les vrais watts.
+  // Refonte du 02/11 (maquette validée, comme l'app) : en ERG, le temps
+  // restant de l'étape et les watts côte à côte, aussi gros l'un que l'autre ;
+  // sous la grande carte, des chiffres utiles (ce tour, dans le mille, la
+  // séance, la suite) puis le dessin à hauteur fixe. Tout est centré dans les
+  // cartes. Le compte à rebours est visuel : pas de son.
   if (phase === "rouler" && etat && choix) {
+    const m = moteur.current;
     const z = etat.pause !== "non" ? ZONE_PAUSE : zoneEtape(etat.etape, ftp);
     const ec = ecart(etat.w3s, etat.cible);
-    const partEtape = etat.etape && etat.etape.s ? Math.min(1, etat.tEtape / etat.etape.s) : 0;
     const wkg = profil.poids && etat.w3s != null ? (etat.w3s / profil.poids).toFixed(1).replace(".", ",") : null;
-    // Le dessin prend la hauteur qui reste sur un grand écran
-    const hauteurProfil = typeof window !== "undefined" ? Math.max(120, Math.min(300, window.innerHeight - 830)) : 130;
+    const zc = zoneCoeur(etat.bpm, zonesFc);
+    const avecEtapes = etapes.length > 0 && !!etat.etape;
     const perdus = (["ht", "cardio", "pedales"] as Source[]).filter((x) => !simu && capteurs[x] && !capteurs[x]!.connecte);
+    // « Dans le mille » : la part du temps à ±4 % (au moins 5 W) des watts visés, depuis le début.
+    const mille = dansLeMille(m?.points ?? []);
+    const resteSeance = etat.dureeTotale ? Math.max(0, etat.dureeTotale - position(etapes, etat)) : null;
+    const km = m?.points.length ? (m.points[m.points.length - 1].m / 1000).toFixed(1).replace(".", ",") : "0";
+    const suite = etapes.slice(etat.i + 1, etat.i + 4);
+    // Le compte à rebours avant le changement d'étape : visuel seulement.
+    const rebours = avecEtapes && etat.pause === "non" && etat.suivante && etat.resteEtape != null && etat.resteEtape > 0 && etat.resteEtape <= 3.2 ? Math.ceil(etat.resteEtape) : null;
+    const gros = "text-[64px] sm:text-[88px] lg:text-[120px] font-black tabular-nums leading-none tracking-tight";
+    const petitBlanc = "text-[12px] lg:text-[13px] font-extrabold uppercase tracking-[0.12em] text-white/90";
     return (
       <main className={`${jakarta.className} min-h-screen bg-[#F8FAFC] px-4 lg:px-8 py-4`}>
         <div className="space-y-3">
@@ -543,82 +502,88 @@ function HomeTrainer() {
               <button type="button" onClick={() => connecter(x)} className="rounded-full bg-white px-3 py-1.5 text-xs font-black text-amber-900">Choisir à nouveau</button>
             </div>
           ))}
-          {(etat.alerte || etat.pause !== "non") && (
-            <div className={`flex items-center gap-2 rounded-2xl px-4 py-3 font-extrabold ${etat.alerte ? "bg-amber-100 text-amber-800" : "bg-sky-100 text-sky-800"}`}>
-              <Icone d={etat.alerte ? mdiAlertCircle : mdiPauseCircle} taille={20} />
-              {etat.alerte ?? (etat.pause === "auto" ? "En pause : repédale pour reprendre" : "Prêt ? Pédale pour démarrer")}
-            </div>
-          )}
 
-          <div className="grid grid-cols-2 lg:grid-cols-12 gap-3">
-            <Ciel couleurs={z.degrade} icone={mdiLightningBolt} className="col-span-2 lg:col-span-6 lg:row-span-2 !p-6 flex flex-col justify-center">
-              <div className="flex items-center gap-2 flex-wrap">
-                <Sur>{z.mot} · 3 s</Sur>
-                {etat.erg && etat.ajust !== 1 && <Bulle icone={mdiTuneVariant} texte={`${Math.round(etat.ajust * 100)} %`} />}
-                {!etat.erg && <Bulle icone={mdiSlopeUphill} texte={`Pente ${etat.pente} %`} />}
-              </div>
-              <div className="flex items-baseline gap-3 mt-1">
-                <span className="text-[96px] lg:text-[150px] font-black tabular-nums leading-none tracking-tight">{etat.w3s ?? "—"}</span>
-                <span className="text-2xl lg:text-4xl font-black text-white/85">/ {etat.cible ?? "—"} W</span>
-              </div>
-              {etat.pause === "non" && <Jauge w={etat.w3s} cible={etat.cible} />}
-              <div className="flex gap-2 mt-3 flex-wrap min-h-[32px]">
-                {ec && <Bulle icone={ec.bon ? mdiCheckCircle : (etat.w3s ?? 0) < (etat.cible ?? 0) ? mdiArrowUpBold : mdiArrowDownBold} texte={ec.texte} fort={ec.bon} />}
-                {wkg && <Bulle icone={mdiScaleBathroom} texte={`${wkg} W/kg`} />}
-                {etat.etape?.cadence ? <Bulle icone={mdiRotateRight} texte={`Vise ${etat.etape.cadence} tr/min`} /> : null}
-              </div>
-            </Ciel>
-            <Mesure titre="Cadence" icone={mdiRotateRight} unite="tr/min" classe="lg:col-span-3">{etat.cadence ?? "—"}</Mesure>
-            <Mesure titre="Cœur" icone={mdiHeart} coul="#f43f5e" unite={zoneCoeur(etat.bpm, zonesFc) ? `bpm · ${zoneCoeur(etat.bpm, zonesFc)!.texte}` : "bpm"} classe="lg:col-span-3">{etat.bpm ?? "—"}</Mesure>
-            <Carte className="col-span-2 lg:col-span-6 flex items-center gap-4">
-              <div className="relative flex items-center justify-center shrink-0">
-                <Anneau part={partEtape} coul={z.plein} taille={76} />
-                <span className="absolute text-xs font-black text-slate-800">{etapes.length ? `${Math.min(etat.i + 1, etapes.length)}/${etapes.length}` : "∞"}</span>
-              </div>
-              <div className="min-w-0">
-                <div className="text-[11px] font-extrabold uppercase tracking-[0.12em] text-slate-400">{etat.attendLap ? "Quand tu es prêt" : etapes.length ? "Fin de l'étape dans" : "Sortie libre"}</div>
-                <div className="text-[44px] font-black text-slate-800 tabular-nums leading-tight">{etat.attendLap ? "⏭" : chrono(etat.resteEtape ?? etat.tEtape)}</div>
-                <div className="text-[14px] font-bold text-slate-500 truncate">{etat.suivante ? `Ensuite : ${chrono(etat.suivante.s)} à ${cibleTexte(etat.suivante, etat.ajust)}` : etapes.length ? "Dernière étape 💪" : `${etat.seance.km.toFixed(1)} km`}</div>
-              </div>
-            </Carte>
-
-            <Moyennes titre="Ce tour" icone={mdiFlagVariantOutline} m={etat.tour} classe="lg:col-span-3" />
-            <Moyennes titre="Tour d'avant" icone={mdiHistory} m={etat.tourPrec} classe="lg:col-span-3" />
-            <Carte className="lg:col-span-3">
-              <div className="flex items-center gap-1.5 text-[11px] font-extrabold uppercase tracking-[0.12em] text-slate-400"><Icone d={mdiBatteryHigh} taille={15} coul="#94a3b8" />Ma réserve</div>
-              {etat.reserve != null ? (
-                <>
-                  <div className="text-[34px] font-black text-slate-800 tabular-nums leading-tight">{Math.round(etat.reserve * 100)} %</div>
-                  <div className="h-3 rounded-full bg-slate-100 overflow-hidden mt-1">
-                    <div className="h-full rounded-full transition-all duration-300" style={{ width: `${etat.reserve * 100}%`, background: etat.reserve > 0.5 ? "#10b981" : etat.reserve > 0.2 ? "#f59e0b" : "#f43f5e" }} />
+          {/* Écran large : la grande carte et les boutons à gauche, les chiffres à droite. */}
+          <div className="grid lg:grid-cols-2 gap-3 items-start">
+            <div className="space-y-3">
+              <div className="relative overflow-hidden rounded-[26px] px-5 py-4 lg:py-6 text-white space-y-1.5" style={degrade(z.degrade)}>
+                <div className={`${petitBlanc} text-center`}>
+                  {`${z.mot.toUpperCase()}${avecEtapes ? ` · ÉTAPE ${Math.min(etat.i + 1, etapes.length)}/${etapes.length}` : ` · ${etat.erg ? "ERG" : `PENTE ${etat.pente} %`}`}${etat.ajust !== 1 ? ` · ${etat.ajust > 1 ? "+" : ""}${Math.round((etat.ajust - 1) * 100)} %` : ""}`}
+                </div>
+                {avecEtapes ? (
+                  <div className="flex items-end justify-around gap-2">
+                    <div className="flex flex-col items-center min-w-0">
+                      <span className={petitBlanc}>{etat.attendLap ? "QUAND TU ES PRÊT" : "ENCORE"}</span>
+                      <span className={gros}>{etat.attendLap ? "⏭" : chrono(etat.resteEtape ?? 0)}</span>
+                    </div>
+                    <div className="flex flex-col items-center min-w-0">
+                      <span className={petitBlanc}>WATTS · 3 S</span>
+                      <span className={gros}>{etat.w3s ?? "—"}</span>
+                    </div>
                   </div>
-                  <div className="text-[12px] font-bold text-slate-400 mt-1">Au-dessus de {Math.round(profil.cp ?? 0)} W, elle se vide</div>
-                </>
-              ) : <div className="text-[13px] font-bold text-slate-400 mt-2">Il faut quelques efforts à fond pour la connaître.</div>}
-            </Carte>
-            <Carte className="lg:col-span-3">
-              <div className="flex items-center gap-1.5 text-[11px] font-extrabold uppercase tracking-[0.12em] text-slate-400"><Icone d={mdiSigma} taille={15} coul="#94a3b8" />La séance</div>
-              <div className="text-[34px] font-black text-slate-800 tabular-nums leading-tight">{etat.seance.w ?? "—"} <span className="text-[14px] text-slate-400">W moy.</span></div>
-              <div className="text-[13px] font-extrabold text-slate-500 tabular-nums">{etat.seance.kj} kJ · {etat.seance.km.toFixed(1)} km</div>
-            </Carte>
-          </div>
+                ) : (
+                  <div className="text-center text-[96px] sm:text-[120px] lg:text-[160px] font-black tabular-nums leading-none tracking-tight">{etat.w3s ?? "—"}</div>
+                )}
+                {etat.pause === "non" && <Jauge w={etat.w3s} cible={etat.cible} />}
+                <p className="text-center text-[16px] lg:text-[19px] font-black text-white/95">
+                  {etat.cible ? `visé ${etat.cible} W${ec ? ` · ${ec.bon ? "dans le mille" : ec.texte}` : ""}` : "moyenne 3 s"}{wkg ? ` · ${wkg} W/kg` : ""}{etat.etape?.cadence ? ` · vise ${etat.etape.cadence} tr/min` : ""}
+                </p>
+                {rebours != null && (
+                  <div className="pointer-events-none absolute inset-0 !m-0 flex flex-col items-center justify-center bg-slate-900/55">
+                    <span className="text-[120px] lg:text-[180px] font-black leading-none">{rebours}</span>
+                    {etat.suivante && <span className="text-[18px] lg:text-[24px] font-black">puis {cibleTexte(etat.suivante, etat.ajust)}</span>}
+                  </div>
+                )}
+              </div>
 
-          {etapes.length > 0 && <Carte className="!p-3"><Profil etapes={etapes} ftp={ftp} ecoule={position(etapes, etat)} hauteur={hauteurProfil} trace={moteur.current?.trace} /></Carte>}
+              {(etat.alerte || etat.pause !== "non") && (
+                <div className={`flex items-center justify-center gap-2 rounded-2xl px-4 py-3 font-extrabold ${etat.alerte ? "bg-amber-100 text-amber-800" : "bg-sky-100 text-sky-800"}`}>
+                  <Icone d={etat.alerte ? mdiAlertCircle : mdiPauseCircle} taille={20} />
+                  {etat.alerte ?? (etat.pause === "auto" ? "En pause : repédale pour reprendre" : "Prêt ? Pédale pour démarrer")}
+                </div>
+              )}
 
-          <div className="flex items-center justify-center gap-3 lg:gap-4 pt-1">
-            <Rond titre="Moins dur" d={mdiMinus} onClick={actions.moins} />
-            <Rond titre="Précédent" d={mdiSkipPrevious} onClick={actions.precedente} />
-            <Rond grand couleurs={z.degrade} titre="Pause" d={etat.pause === "non" ? mdiPause : mdiPlay} onClick={actions.pause} />
-            <Rond titre="Suivant" d={mdiSkipNext} onClick={actions.suivante} />
-            <Rond titre="Plus dur" d={mdiPlus} onClick={actions.plus} />
+              <div className="flex items-center justify-center gap-3 lg:gap-4 pt-1">
+                <Rond titre="Moins dur" d={mdiMinus} onClick={actions.moins} />
+                <Rond titre="Précédent" d={mdiSkipPrevious} onClick={actions.precedente} />
+                <Rond grand couleurs={z.degrade} titre="Pause" d={etat.pause === "non" ? mdiPause : mdiPlay} onClick={actions.pause} />
+                <Rond titre="Suivant" d={mdiSkipNext} onClick={actions.suivante} />
+                <Rond titre="Plus dur" d={mdiPlus} onClick={actions.plus} />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex gap-2">
+                <Case titre="Cadence" valeur={etat.cadence ?? "—"} sous="tr/min" />
+                <Case titre="Cœur" valeur={etat.bpm ?? "—"} sous={zc ? zc.texte : "bpm"} sousCoul={zc?.coul} />
+                <Case titre="Réserve" valeur={etat.reserve != null ? `${Math.round(etat.reserve * 100)}%` : "—"} sous={etat.reserve != null ? undefined : "à mesurer"} />
+              </div>
+              <div className="flex gap-2">
+                <Case titre="Ce tour" valeur={<>{etat.tour.w ?? "—"}<span className="text-[13px] text-slate-400"> W</span></>} sous={`avant ${etat.tourPrec?.w ?? "—"} W`} />
+                <Case titre="Dans le mille" valeur={mille != null ? `${mille} %` : "—"} coul={mille != null && mille >= 70 ? "#059669" : undefined} sous="du temps" />
+                <Case titre="Séance" valeur={resteSeance != null ? chrono(resteSeance) : chrono(etat.tTotal)} sous={`${resteSeance != null ? "restantes · " : ""}${km} km`} />
+              </div>
+              {suite.length > 0 && (
+                <div className="rounded-[18px] bg-white border border-[#eef2f7] px-3.5 py-2.5 space-y-1">
+                  <div className="text-center text-[10.5px] lg:text-[11.5px] font-extrabold uppercase tracking-[0.1em] text-slate-400">Et après</div>
+                  {suite.map((e, i) => (
+                    <div key={i} className="flex items-center justify-center gap-2.5" style={{ opacity: i === 0 ? 1 : i === 1 ? 0.75 : 0.5 }}>
+                      <span className="w-[11px] h-[11px] rounded-[3px] shrink-0" style={{ background: zoneEtape(e, ftp).plein }} />
+                      <span className={`text-[15px] lg:text-[17px] text-slate-800 tabular-nums ${i === 0 ? "font-black" : "font-bold"}`}>{chrono(e.s)} à {cibleTexte(e, etat.ajust)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {etapes.length > 0 && <Carte className="!p-2.5"><Profil etapes={etapes} ftp={ftp} ecoule={position(etapes, etat)} hauteur={90} trace={m?.trace} /></Carte>}
+              <div className="flex items-center justify-center gap-2.5 pt-1">
+                {etapes.length > 0 && <button type="button" onClick={() => moteur.current?.basculerErg()} className="rounded-full bg-white border border-[#eef2f7] px-4 py-2.5 text-sm font-extrabold text-slate-700 hover:bg-slate-50">{etat.erg ? "Passer en résistance" : "Repasser en ERG"}</button>}
+                <button type="button" onClick={() => { if (confirm("Terminer la séance ?")) actions.terminer(); }} className="flex items-center gap-1.5 rounded-full bg-rose-50 px-4 py-2.5 text-sm font-black text-rose-600 hover:bg-rose-100"><Icone d={mdiFlagCheckered} taille={16} /> Terminer</button>
+              </div>
+              <p className="text-center text-xs text-slate-400 hidden md:block">Clavier : espace = pause · ← → = étapes · ↑ ↓ = plus ou moins dur</p>
+            </div>
           </div>
-          <div className="flex items-center justify-center gap-2.5">
-            {etapes.length > 0 && <button type="button" onClick={() => moteur.current?.basculerErg()} className="rounded-full bg-white border border-[#eef2f7] px-4 py-2.5 text-sm font-extrabold text-slate-700 hover:bg-slate-50">{etat.erg ? "Passer en résistance" : "Repasser en ERG"}</button>}
-            <button type="button" onClick={() => { if (confirm("Terminer la séance ?")) actions.terminer(); }} className="flex items-center gap-1.5 rounded-full bg-rose-50 px-4 py-2.5 text-sm font-black text-rose-600 hover:bg-rose-100"><Icone d={mdiFlagCheckered} taille={16} /> Terminer</button>
-          </div>
-          <p className="text-center text-xs text-slate-400 hidden md:block">Clavier : espace = pause · ← → = étapes · ↑ ↓ = plus ou moins dur</p>
         </div>
-        {fenetre && <Bandeau fenetre={fenetre} zoneFc={zoneCoeur(etat.bpm, zonesFc)?.n ?? null} etat={etat} etapes={etapes} ftp={ftp} position={position(etapes, etat)} police={jakarta.style.fontFamily} perdu={!simu && capteurs.ht && !capteurs.ht.connecte ? "Home-trainer perdu, je le rebranche…" : null} actions={actions} onFermer={() => { fenetre.close(); window.focus(); }} />}
+        {fenetre && <Bandeau fenetre={fenetre} zoneFc={zc?.n ?? null} etat={etat} etapes={etapes} ftp={ftp} position={position(etapes, etat)} police={jakarta.style.fontFamily} perdu={!simu && capteurs.ht && !capteurs.ht.connecte ? "Home-trainer perdu, je le rebranche…" : null} actions={actions} onFermer={() => { fenetre.close(); window.focus(); }} />}
       </main>
     );
   }
@@ -628,12 +593,13 @@ function HomeTrainer() {
     const pts = moteur.current.points;
     const moy = (k: "w" | "bpm") => { const v = pts.map((p) => p[k]).filter((x): x is number => x != null); return v.length ? Math.round(v.reduce((a, b) => a + b, 0) / v.length) : "—"; };
     const km = pts.length ? (pts[pts.length - 1].m / 1000).toFixed(1) : "0";
+    const mille = dansLeMille(pts);
     return (
       <main className={fond}>
         <div className="max-w-xl mx-auto space-y-3.5">
           <Ciel couleurs={["#059669", "#10b981", "#34d399"]} icone={mdiTrophyOutline}>
-            <Sur>{choix.col ? ((pts[pts.length - 1]?.m ?? 0) >= choix.col.km * 1000 - 5 ? "Sommet atteint" : "Montée abandonnée") : "Séance terminée"}</Sur>
-            <div className="text-[30px] font-black mt-1">{choix.col && (pts[pts.length - 1]?.m ?? 0) < choix.col.km * 1000 - 5 ? "Ce sera pour la prochaine 💪" : "Bien joué 💪"}</div>
+            <Sur>Séance terminée</Sur>
+            <div className="text-[30px] font-black mt-1">Bien joué 💪</div>
             <div className="font-bold max-w-[70%] truncate">{choix.titre}</div>
             <div className="flex flex-wrap gap-2 mt-4">
               <Bulle icone={mdiTimerOutline} texte={chrono(pts.length)} />
@@ -641,6 +607,7 @@ function HomeTrainer() {
               {profil.poids && typeof moy("w") === "number" ? <Bulle icone={mdiScaleBathroom} texte={`${((moy("w") as number) / profil.poids).toFixed(1).replace(".", ",")} W/kg`} /> : null}
               <Bulle icone={mdiHeart} texte={`${moy("bpm")} bpm`} />
               <Bulle icone={mdiMapMarkerDistance} texte={`${km} km`} />
+              {mille != null && <Bulle icone={mdiTarget} texte={`${mille} % dans le mille`} fort />}
             </div>
           </Ciel>
           {choix.test === "rampe" && <CarteRampe points={pts} />}
@@ -649,9 +616,13 @@ function HomeTrainer() {
             <Carte className="space-y-3">
               <div className="flex items-center justify-between">
                 <span className="font-black text-slate-800 text-base">⛰️ {choix.col.nom}</span>
-                {nouveauRecord && <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-black text-amber-700">🏆 Nouveau record</span>}
+                {nouveauRecord && <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-black text-amber-700">🏆 Record</span>}
               </div>
               <ProfilCol col={choix.col} hauteur={70} kmParKm={false} />
+              {!colFini(choix.col, pts) && <p className="font-extrabold text-slate-500">Pas jusqu&apos;au sommet cette fois : ce sera pour la prochaine 💪</p>}
+              {colFini(choix.col, pts) && (choix.col.pros ?? []).slice(0, 1).map((x) => (
+                <p key={x.nom} className="font-black text-slate-800">{pts.length > x.s ? `Tu aurais passé la ligne ${chrono(pts.length - x.s)} après ${x.nom}` : `Plus vite que ${x.nom} en ${x.annee} !`}</p>
+              ))}
               {(choix.col.pros ?? []).map((x) => (
                 <div key={x.nom} className="flex justify-between text-[14px] font-extrabold"><span className="text-slate-500">{x.nom} ({x.annee})</span><span className="tabular-nums text-slate-800">{chrono(x.s)}</span></div>
               ))}
@@ -677,12 +648,12 @@ function HomeTrainer() {
                   {/* L'échelle détaillée, comme quand on valide une séance (Martin, 01/11) */}
                   <button type="button" onClick={() => setAideRpe(!aideRpe)} className="text-xs font-extrabold text-blue-600 hover:underline">{aideRpe ? "Fermer l'aide" : "Aide"}</button>
                 </span>
-                <span className="font-black" style={{ color: RPE_COUL[rpe] }}>{RPE[rpe]}</span>
+                {rpe != null && <span className="font-black" style={{ color: RPE_COUL[rpe] }}>{RPE[rpe]}</span>}
               </div>
               {aideRpe && (
                 <div className="rounded-xl border border-slate-100 overflow-hidden">
                   {RPE.map((mot, n) => n > 0 && (
-                    <button key={n} type="button" onClick={() => { setRpe(n); setAideRpe(false); }} className="w-full flex items-center gap-3 px-3 py-1.5 text-left text-sm border-b last:border-0 border-slate-50 hover:bg-slate-50">
+                    <button key={n} type="button" disabled={envoi.etat === "en_cours"} onClick={() => { setRpe(n); setAideRpe(false); enregistrer(n); }} className="w-full flex items-center gap-3 px-3 py-1.5 text-left text-sm border-b last:border-0 border-slate-50 hover:bg-slate-50">
                       <span className="w-7 h-7 rounded-lg flex items-center justify-center font-black text-white" style={{ background: RPE_COUL[n] }}>{n}</span>
                       <span className="font-extrabold text-slate-800">{mot}</span>
                       <span className="text-slate-500 text-xs">{RPE_REPERE[n]}</span>
@@ -692,11 +663,11 @@ function HomeTrainer() {
               )}
               <div className="flex gap-1.5">
                 {Array.from({ length: 10 }, (_, k) => k + 1).map((n) => (
-                  <button key={n} type="button" onClick={() => setRpe(n)} className="flex-1 h-11 rounded-xl font-black transition"
-                    style={{ background: n === rpe ? RPE_COUL[n] : n < rpe ? RPE_COUL[n] + "33" : "#f1f5f9", color: n === rpe ? "#fff" : "#64748b" }}>{n}</button>
+                  <button key={n} type="button" disabled={envoi.etat === "en_cours"} onClick={() => { setRpe(n); enregistrer(n); }} className="flex-1 h-12 rounded-xl font-black text-[16px] transition disabled:cursor-wait"
+                    style={{ background: n === rpe ? RPE_COUL[n] : RPE_COUL[n] + "26", color: n === rpe ? "#fff" : "#1e293b" }}>{n}</button>
                 ))}
               </div>
-              <p className="text-center text-sm font-bold text-slate-500">{RPE_REPERE[rpe]}</p>
+              <p className="text-center text-sm font-bold text-slate-500">{rpe != null ? RPE_REPERE[rpe] : "Touche ton ressenti : la séance s'enregistre et part sur Strava."}</p>
             </Carte>
           )}
 
@@ -707,9 +678,8 @@ function HomeTrainer() {
             </div>
           )}
 
-          {envoi.etat !== "ok"
-            ? <Bouton large desactive={envoi.etat === "en_cours"} onClick={enregistrer} icone={mdiCloudUploadOutline} couleur="#fc4c02">Enregistrer et envoyer sur Strava</Bouton>
-            : <Bouton large onClick={() => router.push("/athlete")} icone={mdiCalendarMonth}>Retour au planning</Bouton>}
+          {envoi.etat === "erreur" && rpe != null && <Bouton large onClick={() => enregistrer(rpe)} icone={mdiCloudUploadOutline} couleur="#fc4c02">Réessayer l&apos;envoi</Bouton>}
+          {envoi.etat === "ok" && <Bouton large onClick={() => router.push("/athlete")} icone={mdiCalendarMonth}>Retour au planning</Bouton>}
           <button type="button" onClick={telecharger} className="w-full flex items-center justify-center gap-1.5 py-2 text-sm font-extrabold text-slate-500 hover:text-slate-800"><Icone d={mdiDownload} taille={17} /> Télécharger le fichier</button>
 
           {choix.texteCourt && !favoriOk && (
@@ -741,95 +711,123 @@ function HomeTrainer() {
     );
   };
 
+  // Vélo pas prêt : on le dit au lieu de griser les séances.
+  const pasPret = () => { setMaterielOuvert(true); setPasPretOuvert(true); };
+  // La séance du coach pour aujourd'hui, en tête (maquette du 02/11/2026).
+  const duJour = seances.find((x) => x.date === dayjs().format("YYYY-MM-DD") && x.status !== "valide" && x.workout_text);
+  const blocsJour = duJour ? depuisIcu(duJour.workout_text!, ftp) : [];
+  const avecPastille = simu || bluetoothDispo();
+
   return (
     <main className={fond}>
-      <div className="max-w-[1600px] mx-auto lg:px-4 grid lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] gap-x-8 gap-y-3.5 items-start">
-        <div className="lg:col-span-2">
-          <div className="flex items-center gap-1.5">
-            <a href="/athlete" className="-ml-1 p-1 text-slate-800"><Icone d={mdiChevronLeft} taille={28} /></a>
-            <h1 className="text-2xl font-extrabold text-slate-800">Home-trainer</h1>
-            {simu && <span className="ml-1 rounded-full bg-violet-100 px-2 py-0.5 text-xs font-extrabold text-violet-700">simulateur</span>}
-          </div>
-          <p className="text-sm text-slate-500">Tes séances sur ton vélo, sans le superflu</p>
+      <div className="max-w-[1100px] mx-auto space-y-3.5">
+        <div className="flex items-center gap-1.5">
+          <a href="/athlete" className="-ml-1 p-1 text-slate-800"><Icone d={mdiChevronLeft} taille={28} /></a>
+          <h1 className="flex-1 text-2xl font-extrabold text-slate-800">Home-trainer</h1>
+          {simu && <span className="rounded-full bg-violet-100 px-2 py-0.5 text-xs font-extrabold text-violet-700">simulateur</span>}
+          {avecPastille && (
+            <button type="button" onClick={() => setMaterielOuvert((x) => !x)}
+              className={`inline-flex items-center gap-[7px] rounded-full border px-3 py-2 text-[13.5px] font-extrabold ${pret ? "border-green-200 bg-green-50 text-green-800" : "border-amber-200 bg-amber-50 text-amber-800"}`}>
+              <span className={`w-[9px] h-[9px] rounded-full ${pret ? "bg-green-600" : "bg-amber-500"}`} />
+              {pret ? "Vélo prêt" : "Brancher le vélo"}
+              <Icone d={materielOuvert ? mdiChevronUp : mdiChevronDown} taille={16} />
+            </button>
+          )}
         </div>
 
-        <div className="space-y-3.5 lg:sticky lg:top-6">
-        <Titre>Mon vélo</Titre>
-        {!bluetoothDispo() && !simu ? (
-          <Ciel couleurs={CIEL_ATTENTE} icone={mdiBike}>
-            <Sur>Mon matériel</Sur>
-            <div className="text-[26px] font-black mt-1.5 max-w-[72%]">Il faut Chrome</div>
-            <p className="font-semibold mt-1.5 max-w-[78%] leading-snug">Le Bluetooth marche dans Chrome (ou Edge) sur ordinateur. Sous Linux : ouvre <code className="rounded bg-white/25 px-1">chrome://flags</code>, active « Experimental Web Platform features », puis relance Chrome.</p>
-          </Ciel>
-        ) : (
-          <Ciel couleurs={pret ? CIEL_PRET : CIEL_ATTENTE} icone={mdiBikeFast}>
-            <Sur>Mon matériel</Sur>
-            <div className="text-[28px] font-black mt-1.5 max-w-[72%]">{pret ? "Prêt à rouler" : "On branche le vélo ?"}</div>
-            <p className="font-semibold mt-1 max-w-[75%]">{simu ? "Faux home-trainer : il suit la consigne tout seul." : pret ? `${connectes.length} appareil${connectes.length > 1 ? "s" : ""} connecté${connectes.length > 1 ? "s" : ""}` : "Clique sur « Home-trainer » pour le connecter."}</p>
-            {!simu && (
-              <div className="flex flex-wrap gap-2 mt-4">
-                {puce("ht", "Home-trainer", mdiBike)}
-                {puce("cardio", "Cardio", mdiHeartPulse)}
-                {puce("pedales", "Capteur de puissance", mdiLightningBolt)}
-                {puce("guidon", "Guidon Zwift", mdiGamepadVariantOutline)}
-              </div>
+        {/* Le matériel : affiché tant que le vélo n'est pas prêt, sinon à la demande (pastille). */}
+        {(!avecPastille || !pret || materielOuvert || !ftpConnue) && (
+          <div className="grid md:grid-cols-[minmax(0,7fr)_minmax(0,5fr)] gap-3.5 items-start">
+            {!bluetoothDispo() && !simu ? (
+              <Ciel couleurs={CIEL_ATTENTE} icone={mdiBike}>
+                <Sur>Mon matériel</Sur>
+                <div className="text-[26px] font-black mt-1.5 max-w-[72%]">Il faut Chrome</div>
+                <p className="font-semibold mt-1.5 max-w-[78%] leading-snug">Le Bluetooth marche dans Chrome (ou Edge) sur ordinateur. Sous Linux : ouvre <code className="rounded bg-white/25 px-1">chrome://flags</code>, active « Experimental Web Platform features », puis relance Chrome.</p>
+              </Ciel>
+            ) : (
+              <Ciel couleurs={pret ? CIEL_PRET : CIEL_ATTENTE} icone={mdiBikeFast}>
+                <Sur>Mon matériel</Sur>
+                <div className="text-[28px] font-black mt-1.5 max-w-[72%]">{pret ? "Prêt à rouler" : "On branche le vélo ?"}</div>
+                <p className="font-semibold mt-1 max-w-[75%]">{simu ? "Faux home-trainer : il suit la consigne tout seul." : pret ? `${connectes.length} appareil${connectes.length > 1 ? "s" : ""} connecté${connectes.length > 1 ? "s" : ""}` : "Clique sur « Home-trainer » pour le connecter."}</p>
+                {!simu && (
+                  <div className="flex flex-wrap gap-2 mt-4">
+                    {puce("ht", "Home-trainer", mdiBike)}
+                    {puce("cardio", "Cardio", mdiHeartPulse)}
+                    {puce("pedales", "Capteur de puissance", mdiLightningBolt)}
+                    {puce("guidon", "Guidon Zwift", mdiGamepadVariantOutline)}
+                  </div>
+                )}
+                {!simu && capteurs.ht?.connecte && (
+                  <button type="button" onClick={() => setEtal({ etape: "intro" })} className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-white/20 px-3.5 py-2 text-[13px] font-black text-white hover:bg-white/30">
+                    <Icone d={mdiTuneVertical} taille={16} /> Étalonner le home-trainer
+                  </button>
+                )}
+                {erreurBt && <p className="mt-2 text-xs font-bold text-white/90">{erreurBt}</p>}
+                {!ftpConnue && (
+                  <div className="flex items-center gap-2 mt-3 font-bold">
+                    Ta FTP <input type="number" value={ftp} onChange={(e) => setFtp(Math.max(80, Number(e.target.value) || 200))} className="w-20 rounded-lg bg-white px-2 py-1 font-black text-slate-800" /> W
+                  </div>
+                )}
+              </Ciel>
             )}
-            {!simu && capteurs.ht?.connecte && (
-              <button type="button" onClick={() => setEtal({ etape: "intro" })} className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-white/20 px-3.5 py-2 text-[13px] font-black text-white hover:bg-white/30">
-                <Icone d={mdiTuneVertical} taille={16} /> Étalonner le home-trainer
-              </button>
-            )}
-            {erreurBt && <p className="mt-2 text-xs font-bold text-white/90">{erreurBt}</p>}
-            {!ftpConnue && (
-              <div className="flex items-center gap-2 mt-3 font-bold">
-                Ta FTP <input type="number" value={ftp} onChange={(e) => setFtp(Math.max(80, Number(e.target.value) || 200))} className="w-20 rounded-lg bg-white px-2 py-1 font-black text-slate-800" /> W
-              </div>
-            )}
-          </Ciel>
+
+            <div className="space-y-3.5">
+              {/* Mon profil : ce que l'écran utilise, pour que rien ne soit une boîte noire */}
+              <Carte className="space-y-3">
+                <div className="flex items-center gap-1.5 text-[11px] font-extrabold uppercase tracking-[0.12em] text-slate-400"><Icone d={mdiAccountOutline} taille={15} coul="#94a3b8" />Mon profil</div>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    ["FTP", `${ftp} W`, profil.poids ? `${(ftp / profil.poids).toFixed(1).replace(".", ",")} W/kg` : ""],
+                    ["Poids", profil.poids ? `${profil.poids} kg` : "—", ""],
+                    ["Réserve", profil.cp ? `${Math.round(profil.cp)} W` : "—", profil.wPrime ? `+ ${Math.round(profil.wPrime / 1000)} kJ` : "à mesurer"],
+                  ].map(([t, v, sous]) => (
+                    <div key={t} className="rounded-2xl bg-slate-50 px-3 py-2.5">
+                      <div className="text-[11px] font-extrabold uppercase tracking-[0.1em] text-slate-400">{t}</div>
+                      <div className="text-[22px] font-black text-slate-800 tabular-nums leading-tight">{v}</div>
+                      {sous && <div className="text-[12px] font-bold text-slate-500">{sous}</div>}
+                    </div>
+                  ))}
+                </div>
+              </Carte>
+
+              <Carte className="space-y-2.5 hidden lg:block">
+                <div className="flex items-center gap-1.5 text-[11px] font-extrabold uppercase tracking-[0.12em] text-slate-400"><Icone d={mdiKeyboardOutline} taille={15} coul="#94a3b8" />Pendant la séance</div>
+                {[
+                  [mdiPictureInPictureBottomRight, "Mode bandeau", "une fenêtre étroite, toujours au-dessus, à poser à côté de ton film"],
+                  [mdiKeyboardOutline, "Clavier", "espace = pause · ← → = étapes · ↑ ↓ = plus ou moins dur"],
+                  [mdiGamepadVariantOutline, "Guidon Zwift", "palettes = plus ou moins dur · A = pause · croix = étapes"],
+                  [mdiCloudUploadOutline, "À la fin", "ressenti, puis ta séance part sur Strava et intervals.icu"],
+                ].map(([d, t, x]) => (
+                  <div key={t} className="flex items-start gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-blue-50 flex items-center justify-center shrink-0"><Icone d={d} taille={18} coul="#2563eb" /></div>
+                    <div className="min-w-0"><div className="font-black text-slate-800 text-sm">{t}</div><div className="text-[13px] font-semibold text-slate-500">{x}</div></div>
+                  </div>
+                ))}
+              </Carte>
+            </div>
+          </div>
         )}
 
-        {/* Mon profil : ce que l'écran utilise, pour que rien ne soit une boîte noire */}
-        <Carte className="space-y-3">
-          <div className="flex items-center gap-1.5 text-[11px] font-extrabold uppercase tracking-[0.12em] text-slate-400"><Icone d={mdiAccountOutline} taille={15} coul="#94a3b8" />Mon profil</div>
-          <div className="grid grid-cols-3 gap-2">
-            {[
-              ["FTP", `${ftp} W`, profil.poids ? `${(ftp / profil.poids).toFixed(1).replace(".", ",")} W/kg` : ""],
-              ["Poids", profil.poids ? `${profil.poids} kg` : "—", ""],
-              ["Réserve", profil.cp ? `${Math.round(profil.cp)} W` : "—", profil.wPrime ? `+ ${Math.round(profil.wPrime / 1000)} kJ` : "à mesurer"],
-            ].map(([t, v, sous]) => (
-              <div key={t} className="rounded-2xl bg-slate-50 px-3 py-2.5">
-                <div className="text-[11px] font-extrabold uppercase tracking-[0.1em] text-slate-400">{t}</div>
-                <div className="text-[22px] font-black text-slate-800 tabular-nums leading-tight">{v}</div>
-                {sous && <div className="text-[12px] font-bold text-slate-500">{sous}</div>}
-              </div>
-            ))}
+        {duJour && blocsJour.length > 0 && (
+          <div className="rounded-[26px] p-5 space-y-2.5 text-white" style={degrade(["#7c3aed", "#a855f7"])}>
+            <div className="text-[12px] font-extrabold tracking-[0.12em] text-white/90">AUJOURD&apos;HUI · TON COACH</div>
+            <div className="text-[28px] font-black leading-tight line-clamp-2">{duJour.title || "Vélo"}</div>
+            <div className="text-[15px] font-bold text-white/95">{Math.round(dureeTotale(blocsJour) / 60)} min</div>
+            <div className="rounded-[14px] bg-white/90 p-2">{profilDe(blocsJour, ftp, 52)}</div>
+            <button type="button" onClick={() => (pret ? demarrer({ titre: duJour.title || "Vélo", blocs: blocsJour, sessionId: duJour.id, texteCourt: null, test: duJour.test === "rampe" || duJour.test === "lsct" ? duJour.test : null }) : pasPret())}
+              className="w-full flex items-center justify-center gap-2 rounded-full bg-white py-3.5 text-[17px] font-black text-violet-700 hover:bg-violet-50 transition active:scale-[0.99]">
+              <Icone d={mdiPlay} taille={20} /> C&apos;est parti
+            </button>
           </div>
-        </Carte>
+        )}
 
-        <Carte className="space-y-2.5 hidden lg:block">
-          <div className="flex items-center gap-1.5 text-[11px] font-extrabold uppercase tracking-[0.12em] text-slate-400"><Icone d={mdiKeyboardOutline} taille={15} coul="#94a3b8" />Pendant la séance</div>
-          {[
-            [mdiPictureInPictureBottomRight, "Mode bandeau", "une fenêtre étroite, toujours au-dessus, à poser à côté de ton film"],
-            [mdiKeyboardOutline, "Clavier", "espace = pause · ← → = étapes · ↑ ↓ = plus ou moins dur"],
-            [mdiGamepadVariantOutline, "Guidon Zwift", "palettes = plus ou moins dur · A = pause · croix = étapes"],
-            [mdiCloudUploadOutline, "À la fin", "ressenti, puis ta séance part sur Strava et intervals.icu"],
-          ].map(([d, t, x]) => (
-            <div key={t} className="flex items-start gap-3">
-              <div className="w-9 h-9 rounded-xl bg-blue-50 flex items-center justify-center shrink-0"><Icone d={d} taille={18} coul="#2563eb" /></div>
-              <div className="min-w-0"><div className="font-black text-slate-800 text-sm">{t}</div><div className="text-[13px] font-semibold text-slate-500">{x}</div></div>
-            </div>
-          ))}
-        </Carte>
-        </div>
-        <div className="space-y-3.5">
-        <Titre>Ma séance</Titre>
-        <Onglets valeur={onglet} onChange={setOnglet} choix={[["plan", "Planning"], ["seances", "Séances"], ["main", "Main"], ["favoris", "Favoris"], ["cols", "Cols"]] as const} />
+        <Onglets valeur={onglet} onChange={setOnglet} choix={[["seances", "Séances"], ["plan", "Planning"], ["main", "Main"], ["favoris", "Favoris"], ["cols", "Cols"]] as const} />
 
         {onglet === "seances" && (
           <>
             {erreurTest && <div className="flex items-center gap-2 rounded-2xl bg-rose-50 px-4 py-3 font-extrabold text-rose-700"><Icone d={mdiAlertCircle} taille={20} />Test impossible : {erreurTest}</div>}
             <Catalogue duree={dureeCat} setDuree={setDureeCat} famille={familleCat} setFamille={setFamilleCat}
-              ftp={ftp} pret={pret} occupe={testEnCours} onGo={(c) => demarrer(c)} onTest={lancerTest} />
+              ftp={ftp} pret={pret} occupe={testEnCours} onGo={(c) => demarrer(c)} onTest={lancerTest} onPasPret={pasPret} />
           </>
         )}
 
@@ -898,10 +896,19 @@ function HomeTrainer() {
           </div>
         ))}
 
-        {onglet === "cols" && <ListeCols ftp={ftp} poids={profil.poids ?? null} records={records} pret={pret} onGo={(c) => demarrer({ titre: c.nom, blocs: [], sessionId: null, texteCourt: null, col: c })} />}
-
-        </div>
+        {onglet === "cols" && <ListeCols ftp={ftp} poids={profil.poids ?? null} records={records} pret={pret} onPasPret={pasPret} onGo={(c) => demarrer({ titre: c.nom, blocs: [], sessionId: null, texteCourt: null, col: c })} />}
       </div>
+      {pasPretOuvert && (
+        <div className="fixed inset-0 z-50 grid place-items-center p-4">
+          <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setPasPretOuvert(false)} />
+          <div className="relative w-full max-w-sm rounded-[26px] bg-white p-6 space-y-3 shadow-2xl">
+            <div className="text-xl font-black text-slate-800">Le vélo n&apos;est pas connecté</div>
+            <p className="text-[15px] font-semibold text-slate-600">Branche d&apos;abord le home-trainer.</p>
+            {!simu && bluetoothDispo() && <Bouton large icone={mdiBike} onClick={() => { setPasPretOuvert(false); connecter("ht"); }}>Le chercher</Bouton>}
+            <button type="button" onClick={() => setPasPretOuvert(false)} className="w-full py-2 text-sm font-extrabold text-slate-500 hover:text-slate-800">Plus tard</button>
+          </div>
+        </div>
+      )}
       {etal && (
         <div className="fixed inset-0 z-50 grid place-items-center p-4">
           <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setEtal(null)} />

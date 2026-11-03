@@ -83,6 +83,11 @@ export function Bandeau({ fenetre, zoneFc, etat, etapes, ftp, position, police, 
   const z = etat.pause !== "non" ? ZONE_PAUSE : zoneEtape(etat.etape, ftp);
   const ec = ecart(etat.w3s, etat.cible);
   const total = etapes.reduce((a, e) => a + e.s, 0);
+  // Comme l'écran de séance (02/11/2026) : le 3-2-1 avant de changer d'étape (visuel, sans son)
+  // et une fine jauge sous les watts (la bande claire = la plage visée).
+  const rebours = !etat.col && etat.pause === "non" && etat.suivante && etat.resteEtape != null && etat.resteEtape > 0 && etat.resteEtape <= 3.2 ? Math.ceil(etat.resteEtape) : null;
+  const tol = etat.cible ? Math.max(5, etat.cible * 0.04) : 0;
+  const pos = (w: number) => etat.cible ? Math.max(0, Math.min(100, ((w - etat.cible * 0.7) / (etat.cible * 0.6)) * 100)) : 0;
   const message = perdu ?? etat.alerte ?? (etat.pause === "auto" ? "En pause — repédale pour reprendre" : etat.pause === "manuelle" ? "En pause" : null);
 
   return createPortal(
@@ -94,9 +99,17 @@ export function Bandeau({ fenetre, zoneFc, etat, etapes, ftp, position, police, 
             <span className="text-[44px] font-black text-white tabular-nums leading-none tracking-tight">{etat.w3s ?? "—"}</span>
             <span className="text-white/85 text-lg font-black">/ {etat.cible ?? "—"} W</span>
           </span>
+          {etat.cible && etat.pause === "non" ? (
+            <div className="relative h-2 mt-1.5 rounded-full bg-black/20">
+              <div className="absolute h-2 rounded-full bg-white/60" style={{ left: `${pos(etat.cible - tol)}%`, width: `${pos(etat.cible + tol) - pos(etat.cible - tol)}%` }} />
+              {etat.w3s != null && <div className={`absolute -top-1 h-4 w-4 -ml-2 rounded-full border-2 border-white transition-[left] duration-500 ${Math.abs(etat.w3s - etat.cible) <= tol ? "bg-white" : "bg-slate-900"}`} style={{ left: `${pos(etat.w3s)}%` }} />}
+            </div>
+          ) : null}
         </div>
         {/* Le temps qui reste de l'étape, juste à côté des watts (02/11/2026) */}
-        {!etat.col && <Valeur titre={`Étape · ${objectif(etat.etape, etat.ajust)}`}>{etat.attendLap ? "⏭" : chrono(etat.resteEtape ?? etat.tEtape)}</Valeur>}
+        {!etat.col && (rebours != null
+          ? <div className="flex flex-col justify-center shrink-0 min-w-[110px] rounded-2xl bg-black/30 px-3"><span className="text-[10px] font-extrabold uppercase tracking-[0.12em] text-white/80 leading-none">Puis {objectif(etat.suivante!, etat.ajust)}</span><span className="text-white font-black tabular-nums leading-none text-[40px]">{rebours}</span></div>
+          : <Valeur titre={`Étape · ${objectif(etat.etape, etat.ajust)}`}>{etat.attendLap ? "⏭" : chrono(etat.resteEtape ?? etat.tEtape)}</Valeur>)}
         <Valeur titre="Cadence" icone={mdiRotateRight}>{etat.cadence ?? "—"}</Valeur>
         <Valeur titre="Cœur" icone={mdiHeart}>{etat.bpm ?? "—"}{zoneFc ? <span className="text-xs text-slate-400"> Z{zoneFc}</span> : null}</Valeur>
         {etat.col ? (

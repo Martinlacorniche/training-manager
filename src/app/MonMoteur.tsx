@@ -32,6 +32,8 @@ export function MonMoteur({ userId, soi, cs, niveau }: { userId: string; soi: bo
   const [cp, setCp] = useState<{ cs: number; d_prime: number } | null>(null);
   const [profil, setProfil] = useState<{ annee_naissance: number | null; sexe: string | null; poids_kg: number | null } | null>(null);
   const [pop, setPop] = useState<Pop>(null);
+  // Vélo « plancher » (04/11/2026), comme l'app : meilleur 5 min des 8 derniers mois > celui des 3 derniers.
+  const [plancher, setPlancher] = useState<{ w: number; jour: string } | null>(null);
   useEffect(() => {
     (async () => {
       const [{ data: vv }, { data: pp }] = await Promise.all([
@@ -39,6 +41,13 @@ export function MonMoteur({ userId, soi, cs, niveau }: { userId: string; soi: bo
         supabase.from("profil_physique").select("annee_naissance, sexe, poids_kg").eq("user_id", userId).maybeSingle(),
       ]);
       setCp(vv ? { cs: Number(vv.cs), d_prime: Number(vv.d_prime) } : null);
+      const il = (j: number) => new Date(Date.now() - j * 86_400_000).toISOString().slice(0, 10);
+      const { data: e5 } = await supabase.from("activite_efforts").select("valeur, activites!inner(jour, sport)")
+        .eq("user_id", userId).eq("duree_s", 300).eq("activites.sport", "Vélo").gte("activites.jour", il(240));
+      const liste = ((e5 ?? []) as unknown as { valeur: number; activites: { jour: string } | null }[]).map((x) => ({ w: Number(x.valeur), jour: x.activites?.jour ?? "" }));
+      const recent = Math.max(0, ...liste.filter((x) => x.jour >= il(90)).map((x) => x.w));
+      const meilleur = liste.reduce((b: { w: number; jour: string } | null, x) => (!b || x.w > b.w ? x : b), null);
+      setPlancher(meilleur && meilleur.w > recent * 1.02 ? meilleur : null);
       setProfil(pp ?? null);
     })();
   }, [userId]);
@@ -54,8 +63,8 @@ export function MonMoteur({ userId, soi, cs, niveau }: { userId: string; soi: bo
     : (soi ? "Indique ton sexe et ton année de naissance dans les réglages pour te situer." : "");
 
   const tuile = "flex-1 flex flex-col items-center bg-slate-50 rounded-xl py-2.5 px-1 hover:bg-slate-100 transition";
-  const Chiffre = ({ v, s }: { v: number | null; s: Situation | null }) => (<>
-    <span className="text-2xl font-extrabold text-slate-900 leading-none">{v != null ? Math.round(v) : "—"}</span>
+  const Chiffre = ({ v, s, plus }: { v: number | null; s: Situation | null; plus?: boolean }) => (<>
+    <span className="text-2xl font-extrabold text-slate-900 leading-none">{v != null ? `${Math.round(v)}${plus ? "+" : ""}` : "—"}</span>
     {s && <span className="text-[11px] font-bold" style={{ color: s.couleur }}>{s.mot}</span>}
   </>);
   return (
@@ -71,10 +80,12 @@ export function MonMoteur({ userId, soi, cs, niveau }: { userId: string; soi: bo
         </button>
         <button className={tuile} onClick={() => setPop({ titre: "VO2max estimée — vélo", lignes: [
           vv != null ? `${Math.round(vv)} ml/kg/min. ${comparaison(sv)}` : (soi ? "Il faut ton poids (réglages) et des efforts à fond à vélo." : "Pas encore estimable."),
-          "Tirée de ta puissance tenable 5 min, rapportée à ton poids.", "Même échelle que les montres, à ±5 près."],
+          "Tirée de ta puissance tenable 5 min, rapportée à ton poids.",
+          plancher ? `« + » : tu as déjà fait mieux (${Math.round(plancher.w)} W sur 5 min le ${plancher.jour.slice(8, 10)}/${plancher.jour.slice(5, 7)}), mais rien d'aussi fort ces 3 derniers mois. Un vrai effort de 5 min à fond donnera un chiffre juste.` : "",
+          "Même échelle que les montres, à ±5 près."],
           source: "Formule ACSM · comparaison : registre FRIEND (Mayo Clinic, 2015)" })}>
           <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">Vélo</span>
-          <Jauge s={sv}><Chiffre v={vv} s={sv} /></Jauge><Info size={14} className="text-slate-400" />
+          <Jauge s={sv}><Chiffre v={vv} s={sv} plus={!!plancher} /></Jauge><Info size={14} className="text-slate-400" />
         </button>
         <button className={tuile} onClick={() => setPop({ titre: "Niveau de course", lignes: [
           niveau ? `${Math.round(Number(niveau.niveau))} (entre ${Math.round(Number(niveau.bas))} et ${Math.round(Number(niveau.haut))}), calculé sur ${niveau.source}, chaleur retirée.` : "Calculé après ta prochaine course ou ton calibrage.",

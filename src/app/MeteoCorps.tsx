@@ -26,7 +26,7 @@ const CIEL: Record<string, { mot: string; Icone: any; fond: string }> = {
 };
 const PASTILLE: Record<string, string> = { habituel: "#22c55e", a_surveiller: "#f59e0b", ecart: "#f43f5e", inconnu: "#cbd5e1" };
 const SIGNAUX = [
-  { domaine: "recuperation", nom: "Nuits", Icone: MoonStars },
+  { domaine: "recuperation", nom: "Récup", Icone: MoonStars },   // « Nuits » prêtait à confusion avec Sommeil (04/11/2026)
   { domaine: "sommeil", nom: "Sommeil", Icone: Bed },
   { domaine: "ressenti", nom: "Ressenti", Icone: Smiley },
   { domaine: "performance", nom: "Cœur", Icone: Heartbeat },

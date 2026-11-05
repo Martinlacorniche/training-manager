@@ -26,8 +26,11 @@
 import { aplatir, type Bloc, type Etape, wattsCibles, LIBRE_PCT } from "./seance";
 import { altitudeA, PAS_COL, penteA, type Col } from "./cols";
 
-/** Part de la pente réelle envoyée au home-trainer sur un col (Zwift : 50 % par défaut). */
-export const DIFFICULTE_COL = 0.5;
+/** Pignons virtuels des cols : 24 rapports de 0,75 à 5,49 (ceux du Zwift Ride), du plus souple au plus dur. */
+export const PIGNONS = Array.from({ length: 24 }, (_, i) => Math.round(0.75 * (5.49 / 0.75) ** (i / 23) * 100) / 100);
+/** Le pignon neutre : le rapport du vélo réel supposé (environ 2,4, un 34 × 14), où la pente part telle quelle. */
+export const PIGNON_NEUTRE = PIGNONS.reduce((m, g, i) => (Math.abs(g - 2.4) < Math.abs(PIGNONS[m] - 2.4) ? i : m), 0);
+const CRR = 0.004;
 
 export type Consigne = { type: "erg"; w: number } | { type: "pente"; pct: number };
 // c = watts visés ; x = position dans le dessin de la séance (s), pour y tracer les vrais watts
@@ -50,7 +53,7 @@ export type Etat = {
   tour: Moyennes;           // le tour (l'étape) en cours
   tourPrec: Moyennes | null;
   seance: { w: number | null; kj: number; km: number };
-  col: { d: number; total: number; pente: number; alt: number; kmh: number; ressenti: number; cran: number } | null;   // « Les grands cols »
+  col: { d: number; total: number; pente: number; alt: number; kmh: number; pignon: number; pignons: number } | null;   // « Les grands cols »
 };
 
 const PAS = 1000;
@@ -77,11 +80,11 @@ export class Moteur {
   private erg = true;
   private ajust = 1;            // −/+ 5 %
   private pente = 1;            // % en mode résistance
-  // Col (05/11/2026, Martin : « impossible de pédaler » sur le Faron) : comme Zwift,
-  // le home-trainer reçoit la moitié de la pente, et − / + font des vitesses
-  // virtuelles (un cran = 1 % de pente ressentie). La progression sur le col,
-  // elle, vient toujours de tes watts sur la vraie pente.
-  private cranCol = 0;
+  // Col (05/11/2026, Martin : « faut que ça reste la réalité, je veux juste gérer
+  // mes pignons ») : la VRAIE pente, et − / + passent des pignons virtuels, comme
+  // le Zwift Ride. Au pignon neutre, le home-trainer reçoit la pente telle quelle
+  // (un vrai vélo y passe ses vraies vitesses).
+  private pignon = PIGNON_NEUTRE;
   private wBpm: number;         // watts tenus par la régulation cardio
   private derniereRegul = 0;
   private bas = 0;              // depuis quand la cadence est basse (ms), 0 = non
@@ -158,13 +161,21 @@ export class Moteur {
     // Au début d'une étape, revient à la précédente ; sinon recommence l'étape.
     this.passer(this.tEtape < 5 ? Math.max(0, this.i - 1) : this.i);
   }
-  plus() { if (this.col) { this.cranCol = Math.min(6, this.cranCol + 1); return; } if (this.erg) this.ajust = Math.min(1.5, Math.round((this.ajust + 0.05) * 100) / 100); else this.pente = Math.min(15, this.pente + 1); }
-  moins() { if (this.col) { this.cranCol = Math.max(-8, this.cranCol - 1); return; } if (this.erg) this.ajust = Math.max(0.5, Math.round((this.ajust - 0.05) * 100) / 100); else this.pente = Math.max(-5, this.pente - 1); }
+  plus() { if (this.col) { this.pignon = Math.min(PIGNONS.length - 1, this.pignon + 1); return; } if (this.erg) this.ajust = Math.min(1.5, Math.round((this.ajust + 0.05) * 100) / 100); else this.pente = Math.min(15, this.pente + 1); }
+  moins() { if (this.col) { this.pignon = Math.max(0, this.pignon - 1); return; } if (this.erg) this.ajust = Math.max(0.5, Math.round((this.ajust - 0.05) * 100) / 100); else this.pente = Math.max(-5, this.pente - 1); }
   basculerErg() { this.erg = !this.erg; }
-  /** Ce que le home-trainer fait sentir sur un col : la moitié de la pente, plus les crans. */
+  /**
+   * La pente à envoyer pour faire sentir le pignon virtuel. Le couple aux
+   * pédales vaut F × r × G (G : plateau / pignon). Pour qu'un home-trainer au
+   * rapport fixe fasse sentir le rapport G, il faut F × G / G_neutre, soit
+   * (pente + Crr) × G / G_neutre − Crr. La vitesse sur le col, elle, vient
+   * toujours de tes watts sur la vraie pente : un pignon change la façon de
+   * pousser, pas ce qu'il faut produire pour monter.
+   */
   private penteRessentie(): number {
     if (!this.col) return this.pente;
-    return Math.max(-5, Math.round((penteA(this.col, this.dCol) * DIFFICULTE_COL + this.cranCol) * 10) / 10);
+    const vraie = penteA(this.col, this.dCol) / 100, k = PIGNONS[this.pignon] / PIGNONS[PIGNON_NEUTRE];
+    return Math.max(-10, Math.min(20, Math.round(((vraie + CRR) * k - CRR) * 1000) / 10));
   }
   /** Toutes les étapes faites (et pas « Terminer » en cours de route). */
   get bouclee() { return this.etapes.length > 0 && this.i >= this.etapes.length; }
@@ -313,7 +324,7 @@ export class Moteur {
       alerte, attendLap: !!(et?.lap && this.tEtape >= et.s),
       reserve: this.wBal != null && this.w0 ? Math.max(0, Math.min(1, this.wBal / this.w0)) : null,
       w3s,
-      col: this.col ? { d: this.dCol, total: this.col.km * 1000, pente: penteA(this.col, this.dCol), alt: altitudeA(this.col, this.dCol), kmh: this.kmh, ressenti: this.penteRessentie(), cran: this.cranCol } : null,
+      col: this.col ? { d: this.dCol, total: this.col.km * 1000, pente: penteA(this.col, this.dCol), alt: altitudeA(this.col, this.dCol), kmh: this.kmh, pignon: this.pignon + 1, pignons: PIGNONS.length } : null,
       // Des sommes tenues au fil de l'eau : rien n'est recalculé sur toute la séance à chaque image
       tour: this.sTour.moyennes(),
       tourPrec: this.tourPrec,

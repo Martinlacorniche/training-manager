@@ -12,13 +12,15 @@ import dayjs from "dayjs";
 import "dayjs/locale/fr";
 import isoWeek from "dayjs/plugin/isoWeek";
 import { DragDropContext, Droppable, Draggable, type DropResult } from "@hello-pangea/dnd";
-import { CaretLeft, CaretRight, CaretDown, Copy, Trash, BabyCarriage, Heartbeat, WarningCircle } from "@phosphor-icons/react";
+import { CaretLeft, CaretRight, CaretDown, Copy, Trash, BabyCarriage, Heartbeat } from "@phosphor-icons/react";
 import { supabase } from "@/lib/supabaseClient";
 import Coque, { useCoque, NIVEAU } from "../../Coque";
-import { Avatar, Bandeau, ETAT, INTENSITE, IconeSport, SPORT_COULEUR, SPORT_NOM, alerteSeance, duree, etatSeance, lireDuree, type Message } from "../../commun";
+import { Avatar, Bandeau, alerteSeance, duree, type Message } from "../../commun";
 import CarteCourse from "../../CarteCourse";
 import { creneauxCoach, heureCourte, ROSE } from "../../grossesse";
 import Panneau, { type Seance, type Vue } from "./Panneau";
+import { AjoutRapide, Bascule, CarteSeance, lireSaisie } from "./Cartes";
+import Equipe from "./Equipe";
 import { annulerCopie, copierSemaine, type Copie } from "../copie";
 dayjs.locale("fr");
 dayjs.extend(isoWeek);
@@ -27,65 +29,6 @@ dayjs.extend(isoWeek);
 type Absence = Record<string, any> & { id: string; date: string; type: string };
 type Bilan = { id: string; rpe_life: number | null; comment: string | null; fatigue: number | null; sommeil: number | null; stress: number | null; jambes: number | null; douleur: boolean | null; douleur_zone: string | null };
 type Bande = { lundi: string; prevu: number; fait: number; theme: string | null; course: string | null };
-
-// « Footing 1h facile » → une séance : le sport, la durée et l'intensité se lisent dans le texte.
-function lireSaisie(t: string): { sport: string; title: string; planned_hour: number | null; intensity: string } {
-  const b = t.toLowerCase();
-  const sport = /v[ée]lo|home|ht\b|route|vtt|gravel/.test(b) ? "Vélo"
-    : /nat|piscine|crawl|swim/.test(b) ? "Natation"
-    : /trail|d\+|montagne|c[ôo]te/.test(b) ? "Trail"
-    : /renfo|gainage|abdo|pilates|yoga|mobilit/.test(b) ? "Renfo"
-    : /muscu|squat|soulev|force/.test(b) ? "Muscu"
-    : /repos|marche|autre/.test(b) ? "Autre" : "Run";
-  const m = b.match(/(\d{1,2}\s?h\s?\d{0,2}|\d{1,3}\s?(?:min|mn|'|′))/);
-  const h = m ? lireDuree(m[1].replace(/mn/, "min")) : null;
-  const intensity = /facile|ef\b|tranquille|r[ée]cup|endurance|z1|z2|balade/.test(b) ? "basse"
-    : /vma|fractionn|seuil|intense|dur\b|sprint|test|côtes|cotes|\d+\s?[x×]/.test(b) ? "haute" : "moyenne";
-  return { sport, title: t.trim(), planned_hour: h, intensity };
-}
-
-function CarteSeance({ s, ouverte, onOuvrir, vu }: { s: Seance; ouverte: boolean; onOuvrir: () => void; vu: boolean }) {
-  const auj = dayjs().format("YYYY-MM-DD");
-  const e = ETAT[etatSeance(s, auj)];
-  const alerte = alerteSeance(s);
-  const t = INTENSITE[s.intensity ?? "moyenne"];
-  return (
-    <button onClick={onOuvrir}
-      className={`w-full text-left rounded-xl bg-white p-2 flex flex-col gap-1 border transition hover:shadow-md ${ouverte ? "ring-[3px] ring-blue-200 border-blue-400" : alerte === "douleur" ? "border-red-200" : "border-slate-200"}`}
-      style={{ borderLeft: `5px solid ${SPORT_COULEUR[s.sport] ?? "#64748b"}` }}>
-      <span className="text-[13.5px] font-extrabold leading-tight text-slate-800 line-clamp-2 break-words">{s.title || SPORT_NOM[s.sport] || "Séance"}</span>
-      <span className="flex items-center gap-1 text-xs font-semibold text-slate-500"><IconeSport sport={s.sport} size={13} /><span className="truncate">{[duree(s.planned_hour), t?.nom.toLowerCase()].filter(Boolean).join(" · ")}</span></span>
-      <span className="flex flex-wrap items-center gap-1">
-        <span className="text-[11px] font-extrabold rounded-full px-2 py-0.5" style={{ background: e.fond, color: e.couleur }}>{e.nom}</span>
-        {s.test && <span className="text-[11px] font-extrabold rounded-full px-2 py-0.5 bg-violet-100 text-violet-700">Test</span>}
-        {alerte && <WarningCircle size={15} weight="fill" className="text-red-500" />}
-      </span>
-      {(s.rpe != null || s.athlete_comment) && (
-        <span className={`text-xs leading-snug ${alerte === "douleur" ? "text-red-700 font-semibold" : "text-slate-600"}`}>
-          {s.rpe != null && <b className="not-italic">{s.rpe}/10 </b>}
-          {s.athlete_comment && <i className="line-clamp-3">« {s.athlete_comment} »</i>}
-          {vu && <span className="block text-[11px] font-bold text-green-600 not-italic">✓ vu</span>}
-        </span>
-      )}
-    </button>
-  );
-}
-
-function AjoutRapide({ onAjout }: { onAjout: (t: string) => Promise<void> }) {
-  const [ouvert, setOuvert] = useState(false);
-  const [t, setT] = useState("");
-  const [occupe, setOccupe] = useState(false);
-  if (!ouvert) return (
-    <button onClick={() => setOuvert(true)} className="w-full rounded-xl border-[1.5px] border-dashed border-slate-300 py-2 text-[13px] font-extrabold text-slate-400 hover:border-blue-400 hover:text-blue-600 hover:bg-blue-50/40">+ Ajouter</button>
-  );
-  return (
-    <form onSubmit={async (e) => { e.preventDefault(); if (!t.trim()) return; setOccupe(true); await onAjout(t); setOccupe(false); setT(""); setOuvert(false); }}>
-      <input autoFocus value={t} disabled={occupe} onChange={(e) => setT(e.target.value)} onBlur={() => { if (!t.trim()) setOuvert(false); }}
-        onKeyDown={(e) => { if (e.key === "Escape") { setT(""); setOuvert(false); } }}
-        placeholder="Footing 1h facile ↵" className="w-full rounded-xl border-2 border-blue-400 px-2.5 py-2 text-[13px] font-bold focus:outline-none" />
-    </form>
-  );
-}
 
 function Planning() {
   const { moi, athletes, etats, setEtroit } = useCoque();
@@ -288,6 +231,7 @@ function Planning() {
               {reperes && (reperes.vma_kmh || reperes.ftp_w) ? <span className="text-slate-400">· {[reperes.vma_kmh ? `VMA ${reperes.vma_kmh}` : "", reperes.ftp_w ? `FTP ${reperes.ftp_w} W` : ""].filter(Boolean).join(" · ")}</span> : null}
             </p>
           </div>
+          <Bascule equipe={false} lundi={lundi} athleteId={athlete.id_auth} />
           <a href={`/progres?athlete=${athlete.id_auth}`} className="rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm font-extrabold text-slate-800 hover:bg-slate-50 flex items-center gap-1.5"><Heartbeat size={16} weight="bold" />Ses progrès</a>
           <div className="relative">
             <button onClick={() => setMenuCopie((v) => !v)} className={`rounded-xl px-3.5 py-2.5 text-sm font-extrabold flex items-center gap-1.5 ${menuCopie ? "border-2 border-blue-600 bg-blue-50 text-blue-600" : "border border-slate-200 bg-white text-slate-800 hover:bg-slate-50"}`}>
@@ -376,7 +320,7 @@ function Planning() {
                         </div>
                       ))}
                       {duJour.map((s, i) => (
-                        <Draggable key={s.id} draggableId={s.id} index={i} isDragDisabled={s.status === "valide"}>
+                        <Draggable key={s.id} draggableId={s.id} index={i} isDragDisabled={s.status === "valide"} disableInteractiveElementBlocking>
                           {(d) => (
                             <div ref={d.innerRef} {...d.draggableProps} {...d.dragHandleProps}>
                               <CarteSeance s={s} vu={vus.has(s.id)} ouverte={!!vue && vue.quoi !== "copier" && vue.id === s.id} onOuvrir={() => setVue({ quoi: "seance", id: s.id })} />
@@ -411,6 +355,14 @@ function Planning() {
   );
 }
 
+// ?vue=equipe : toute l'équipe sur la semaine ; sinon la semaine d'un athlète.
+function Aiguillage() {
+  const [equipe, setEquipe] = useState<boolean | null>(null);
+  useEffect(() => { setEquipe(new URLSearchParams(window.location.search).get("vue") === "equipe"); }, []);
+  if (equipe === null) return null;
+  return equipe ? <Equipe /> : <Planning />;
+}
+
 export default function Page() {
-  return <Coque plein titre="Planning"><Planning /></Coque>;
+  return <Coque plein titre="Planning"><Aiguillage /></Coque>;
 }

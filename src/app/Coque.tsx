@@ -67,10 +67,10 @@ function Menu({ moi, athletes, etats, chemin, athleteActif, onDeconnexion, etroi
           <div className="text-[10.5px] font-extrabold tracking-wider text-slate-400">{coach ? "ESPACE COACH" : "MON ESPACE"}</div>
         </div>
       </a>
-      {coach ? (
+      {!moi ? null : coach ? (
         <>
           <Lien href="/coach" actif={est("/coach")} icone={<House size={19} weight="bold" />}>Accueil</Lien>
-          <Lien href="/coach/planning" actif={est("/coach/planning")} icone={<CalendarBlank size={19} weight="bold" />}>Planning</Lien>
+          <Lien href="/coach/planning?vue=equipe" actif={est("/coach/planning")} icone={<CalendarBlank size={19} weight="bold" />}>Planning</Lien>
           <Lien href="/coach/stats" actif={est("/coach/stats")} icone={<UsersThree size={19} weight="bold" />}>Équipe</Lien>
           <Lien href="/progres" actif={est("/progres")} icone={<Heartbeat size={19} weight="bold" />}>Progrès</Lien>
           <Lien href="/home-trainer" actif={est("/home-trainer")} icone={<Bicycle size={19} weight="bold" />}>Home-trainer</Lien>

@@ -3,8 +3,6 @@ import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import dayjs from "dayjs";
 import "dayjs/locale/fr";
-import { Plus_Jakarta_Sans } from "next/font/google";
-import { ArrowLeft } from "@phosphor-icons/react";
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid } from "recharts";
 import { supabase } from "@/lib/supabaseClient";
 import InfoWbgt from "../InfoWbgt";
@@ -13,9 +11,9 @@ import { Voyage } from "../Voyage";
 import { Chaleur } from "../Chaleur";
 import { MonMoteur } from "../MonMoteur";
 import { MeteoCorps } from "../MeteoCorps";
+import Coque from "../Coque";
 
 dayjs.locale("fr");
-const jakarta = Plus_Jakarta_Sans({ subsets: ["latin"], weight: ["500", "600", "700", "800"], display: "swap" });
 
 // Le suivi d'un athlète : état par domaine, forme corrigée de la chaleur et
 // du dénivelé, et — pour l'athlète seul — la récupération. Ouvert à
@@ -155,15 +153,13 @@ function Progres() {
   // UNE PHRASE SIMPLE D'ABORD, les chiffres ensuite et en petit, comme dans
   // l'app : le détail technique est réservé au MCP.
   return (
-    <main className={`${jakarta.className} min-h-screen bg-slate-100 px-4 py-8`}>
-      <div className="max-w-3xl mx-auto space-y-5">
-        <button onClick={() => router.back()} className="flex items-center gap-2 text-sm font-semibold text-slate-500 hover:text-slate-800">
-          <ArrowLeft size={16} /> Retour
-        </button>
-        <header>
-          <h1 className="text-2xl font-extrabold text-slate-800">Progrès{!soi && nom ? ` · ${nom}` : ""}</h1>
-          <p className="text-sm text-slate-500">Comparé à {soi ? "toi-même" : "lui-même"}, jamais aux autres.</p>
-          <div className="mt-3 flex rounded-xl bg-slate-200/70 p-1">
+    <div className="space-y-5 max-w-[1700px]">
+        <header className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <h1 className="text-[28px] font-extrabold text-slate-800">Progrès{!soi && nom ? ` · ${nom}` : ""}</h1>
+            <p className="text-[15px] font-semibold text-slate-500">Comparé à {soi ? "toi-même" : "lui-même"}, jamais aux autres.</p>
+          </div>
+          <div className="flex rounded-xl bg-slate-200/70 p-1 w-full sm:w-auto sm:min-w-[420px]">
             {([["forme", soi ? "Ma forme" : "Sa forme"], ["tests", soi ? "Mes tests" : "Ses tests"], ["voyage", soi ? "Mon voyage" : "Son voyage"]] as const).map(([k, lib]) => (
               <button key={k} onClick={() => setOnglet(k)} className={`flex-1 rounded-lg py-2 text-sm font-bold ${onglet === k ? "bg-white text-slate-800 shadow-sm" : "text-slate-500"}`}>{lib}</button>
             ))}
@@ -172,9 +168,11 @@ function Progres() {
 
         {onglet === "tests" && cibleId && <SuiviTests userId={cibleId} soi={soi} />}
         {onglet === "voyage" && cibleId && <Voyage userId={cibleId} soi={soi} />}
-        {onglet === "forme" && (<>
+        {onglet === "forme" && (<div className="grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3 gap-5 items-start">
 
-        {/* Rangée en trois temps (15/10), comme l'app : aujourd'hui, mon niveau, mes progrès. */}
+        {/* Rangée en trois temps (15/10), comme l'app : aujourd'hui, mon niveau, mes progrès.
+            Sur grand écran, trois colonnes côte à côte (05/11). */}
+        <div className="space-y-4 min-w-0">
         <h3 className="px-1 pt-2 text-xs font-black uppercase tracking-widest text-slate-400">Aujourd&apos;hui</h3>
         {/* La météo du corps (15/10) : l'athlète, dès qu'un état existe. */}
         {soi && global && cibleId && <MeteoCorps userId={cibleId} etats={etats} sommeilNuit={Number(derniere?.sommeil_s) || null} />}
@@ -232,6 +230,8 @@ function Progres() {
           </section>
         )}
 
+        </div>
+        <div className="space-y-4 min-w-0">
         {(cs?.actuel || niveau?.actuel) && <h3 className="px-1 pt-2 text-xs font-black uppercase tracking-widest text-slate-400">Mon niveau</h3>}
         {/* Mon moteur (15/10) : VO2max estimée course et vélo + niveau de course (Daniels). */}
         {cibleId && <MonMoteur userId={cibleId} soi={soi} cs={cs?.actuel ?? null} niveau={niveau?.actuel ?? null} />}
@@ -255,6 +255,8 @@ function Progres() {
           );
         })()}
 
+        </div>
+        <div className="space-y-4 min-w-0 lg:col-span-2 2xl:col-span-1">
         <h3 className="px-1 pt-2 text-xs font-black uppercase tracking-widest text-slate-400">Mes progrès</h3>
         {points.length >= 3 && (
           <section className={carte}>
@@ -282,12 +284,12 @@ function Progres() {
         )}
 
         {cibleId && <Chaleur userId={cibleId} soi={soi} />}
-        </>)}
-      </div>
-    </main>
+        </div>
+        </div>)}
+    </div>
   );
 }
 
 export default function Page() {
-  return <Suspense><Progres /></Suspense>;
+  return <Coque titre="Progrès"><Suspense><Progres /></Suspense></Coque>;
 }

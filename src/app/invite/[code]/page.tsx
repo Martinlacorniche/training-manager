@@ -5,12 +5,10 @@
 // télécharger. Gardée 24 h. Pas de compte, pas de nom. Design de l'app.
 import { Suspense, use, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { Plus_Jakarta_Sans } from "next/font/google";
 import { mdiAlertCircle, mdiCheckCircle, mdiDownload, mdiLightningBolt, mdiMapMarkerDistance, mdiTimerOutline, mdiTrophyOutline } from "@mdi/js";
 import { Bulle, Ciel, Icone, Sur } from "../../home-trainer/ui";
 import { chrono } from "../../home-trainer/Bandeau";
 
-const jakarta = Plus_Jakarta_Sans({ subsets: ["latin"], weight: ["500", "600", "700", "800"], display: "swap" });
 const FN = "https://ihigmlpgliasczlvxttd.supabase.co/functions/v1/ht-invite";
 
 type Info = { nom: string; compliment: string | null; resume: { duree_s?: number; w?: number; km?: number } | null; envoye: boolean };
@@ -34,7 +32,7 @@ function SortieInvite({ code }: { code: string }) {
   }, [code]);
 
   return (
-    <main className={`${jakarta.className} min-h-screen bg-[#F8FAFC] px-4 py-8`}>
+    <main className={`min-h-screen bg-[#F8FAFC] px-4 py-8`}>
       <div className="max-w-md mx-auto space-y-4">
         {erreur && <div className="rounded-2xl bg-rose-50 text-rose-700 font-extrabold px-4 py-4 flex items-center gap-2"><Icone d={mdiAlertCircle} taille={20} />{erreur}</div>}
         {info && (

@@ -3,9 +3,7 @@ import { useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { Plus_Jakarta_Sans } from "next/font/google";
 
-const jakarta = Plus_Jakarta_Sans({ subsets: ["latin"], weight: ["400","500","600","700","800"], display: "swap" });
 
 export default function Login() {
   const router = useRouter();
@@ -33,7 +31,7 @@ export default function Login() {
   };
 
   return (
-    <main className={`${jakarta.className} min-h-screen bg-slate-100 flex flex-col items-center justify-center px-4`}>
+    <main className={`min-h-screen bg-slate-100 flex flex-col items-center justify-center px-4`}>
 
       <div className="w-full max-w-sm">
 

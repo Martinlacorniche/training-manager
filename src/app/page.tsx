@@ -4,14 +4,12 @@ import { supabase } from "@/lib/supabaseClient";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { QRCodeSVG } from "qrcode.react";
-import { Plus_Jakarta_Sans } from "next/font/google";
 import {
   ClipboardList, Users, BarChart2, Key,
   Smartphone, Bike, Activity, Timer, Heart, Zap, Target, TrendingUp,
   Send,
 } from "lucide-react";
 
-const jakarta = Plus_Jakarta_Sans({ subsets: ["latin"], weight: ["400","500","600","700","800"], display: "swap" });
 
 const COACH_FEATURES = [
   { icon: ClipboardList, text: "Planification hebdomadaire complète" },
@@ -71,7 +69,7 @@ export default function Home() {
   }
 
   return (
-    <main className={`${jakarta.className} min-h-screen text-slate-800 bg-cover bg-center bg-fixed`} style={{ backgroundImage: "url('/background.png')" }}>
+    <main className={`min-h-screen text-slate-800 bg-cover bg-center bg-fixed`} style={{ backgroundImage: "url('/background.png')" }}>
 
       {/* ── HEADER ── */}
       <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/90 backdrop-blur-md shadow-sm">

@@ -3,22 +3,22 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import dayjs from "dayjs";
 import "dayjs/locale/fr";
-import { Plus_Jakarta_Sans } from "next/font/google";
 import { ArrowLeft } from "@phosphor-icons/react";
 import { supabase } from "@/lib/supabaseClient";
 import DemandeVsFait from "../../DemandeVsFait";
 import StravaMetrics from "../../StravaMetrics";
 import { ResultatTest } from "../../Tests";
 import SuiviSeance from "../../SuiviSeance";
+import Coque from "../../Coque";
+import { SPORT_NOM } from "../../commun";
 import { ROSE, superposerAdaptees } from "../../grossesse";
 
 dayjs.locale("fr");
-const jakarta = Plus_Jakarta_Sans({ subsets: ["latin"], weight: ["500", "600", "700", "800"], display: "swap" });
 
 // L'analyse d'une séance sur le site, pour l'athlète et pour son coach : la
 // RLS décide qui la voit. Pendant de l'écran d'analyse de l'app
 // (App-Coach, app/session/[id].tsx).
-export default function Seance() {
+function Seance() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const [s, setS] = useState<any | null>(null);
@@ -39,8 +39,7 @@ export default function Seance() {
   }, [id]);
 
   return (
-    <main className={`${jakarta.className} min-h-screen bg-slate-100 px-4 py-8`}>
-      <div className="max-w-2xl mx-auto space-y-4">
+    <div className="space-y-4 max-w-[1500px]">
         <button onClick={() => router.back()} className="flex items-center gap-2 text-sm font-semibold text-slate-500 hover:text-slate-800">
           <ArrowLeft size={16} /> Retour
         </button>
@@ -48,9 +47,15 @@ export default function Seance() {
         {s && (
           <>
             <header>
-              <p className="text-xs uppercase font-bold text-slate-400">{dayjs(s.date).format("dddd D MMMM YYYY")} · {s.sport}</p>
-              <h1 className="text-2xl font-extrabold text-slate-800">{s.title || "Séance"}</h1>
+              <p className="text-sm font-bold text-slate-500 first-letter:uppercase">{dayjs(s.date).format("dddd D MMMM YYYY")} · {SPORT_NOM[s.sport] ?? s.sport}</p>
+              <h1 className="text-[28px] font-extrabold text-slate-800">{s.title || "Séance"}</h1>
             </header>
+            {/* Grand écran : l'analyse à gauche (8/12), ce qu'il en a dit et les consignes à droite (4/12). */}
+            <div className="grid grid-cols-1 xl:grid-cols-12 gap-5 items-start">
+            <div className="xl:col-span-8 space-y-4 min-w-0">
+              <SuiviSeance sessionId={s.id} sport={s.sport} rpe={s.rpe ?? null} date={s.date ?? null} coach={coachView} />
+            </div>
+            <div className="xl:col-span-4 space-y-4 min-w-0 xl:sticky xl:top-6">
             {s.test && <ResultatTest sessionId={s.id} protocole={s.test} texte={s.planned_inter} faite={s.status === "valide"} />}
             {s.planned_inter && !(s.test && s.status !== "valide") && (
               <section className="bg-white rounded-2xl border border-slate-200 p-4">
@@ -63,10 +68,14 @@ export default function Seance() {
               <StravaMetrics data={s} />
               {s.athlete_comment && <p className="text-sm text-slate-600 italic">« {s.athlete_comment} »</p>}
             </section>
-            <SuiviSeance sessionId={s.id} sport={s.sport} rpe={s.rpe ?? null} date={s.date ?? null} />
+            </div>
+            </div>
           </>
         )}
-      </div>
-    </main>
+    </div>
   );
+}
+
+export default function Page() {
+  return <Coque titre="Séance"><Seance /></Coque>;
 }

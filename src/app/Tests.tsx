@@ -141,7 +141,7 @@ const MENU: { p: Protocole; titre: string; ligne: string }[] = [
   { p: "defi", titre: "Test allure 10 km", ligne: "Optionnel, si pas de course récente." },
 ];
 
-function ProgrammerTest({ athleteId, coach, onFait, onFermer }: { athleteId: string; coach: boolean; onFait: () => void; onFermer: () => void }) {
+export function ProgrammerTest({ athleteId, coach, onFait, onFermer }: { athleteId: string; coach: boolean; onFait: () => void; onFermer: () => void }) {
   const [protocole, setProtocole] = useState<Protocole | null>(null);
   const [vmaFait, setVmaFait] = useState(false);
   const [apercu, setApercu] = useState<Record<string, any> | null>(null);

@@ -4,10 +4,9 @@ import { ProfilPhysique } from "../../ProfilPhysique";
 import { ReglagesGrossesse } from "../../ReglagesGrossesse";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
-import { Plus_Jakarta_Sans } from "next/font/google";
-import { ArrowLeft, Watch, Robot, UserCircleGear } from "@phosphor-icons/react";
+import Coque from "../../Coque";
+import { Watch, Robot, UserCircleGear } from "@phosphor-icons/react";
 
-const jakarta = Plus_Jakarta_Sans({ subsets: ["latin"], weight: ["500", "600", "700", "800"], display: "swap" });
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
 // Le connecteur passe par notre domaine (relais Netlify, Site-Coach/netlify.toml) :
 // sous le domaine Supabase, Claude affichait « échec » à la connexion.
@@ -23,7 +22,7 @@ type Dialogue = { titre: string; texte: string[]; boutons: Bouton[]; couleur: st
 
 type Moi = { id_auth: string; coach_id: string | null; strava_athlete_id: number | null; partage_etat_coach: boolean | null; partage_informe_le: string | null; consentement_ia_le: string | null };
 
-export default function Reglages() {
+function Reglages() {
   const router = useRouter();
   const [moi, setMoi] = useState<Moi | null>(null);
   const [icu, setIcu] = useState(false);
@@ -154,13 +153,11 @@ export default function Reglages() {
   const carte = "bg-white rounded-2xl border border-slate-200 p-5 space-y-3";
 
   return (
-    <main className={`${jakarta.className} min-h-screen bg-slate-100 px-4 py-8`}>
-      <div className="max-w-xl mx-auto space-y-5">
-        <button onClick={() => router.push("/athlete")} className="flex items-center gap-2 text-sm font-semibold text-slate-500 hover:text-slate-800">
-          <ArrowLeft size={16} /> Retour au planning
-        </button>
-        <h1 className="text-2xl font-extrabold text-slate-800">Réglages</h1>
+    <div className="max-w-[1500px] space-y-5">
+        <h1 className="text-[28px] font-extrabold text-slate-800">Réglages</h1>
         {message && <div className="rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-sm p-3">{message}</div>}
+      {/* Grand écran : les cartes en deux colonnes (05/11), plus de colonne étroite au milieu. */}
+      <div className="columns-1 lg:columns-2 gap-5 [&>*]:break-inside-avoid [&>*]:mb-5">
 
         <ProfilPhysique className={carte} />
 
@@ -287,6 +284,10 @@ export default function Reglages() {
           </div>
         </div>
       )}
-    </main>
+    </div>
   );
+}
+
+export default function Page() {
+  return <Coque titre="Réglages"><Reglages /></Coque>;
 }

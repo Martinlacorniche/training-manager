@@ -2,7 +2,6 @@
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Image from "next/image";
-import { Plus_Jakarta_Sans } from "next/font/google";
 import { ShieldCheck, Eye, EyeSlash, CircleNotch } from "@phosphor-icons/react";
 import { supabase } from "@/lib/supabaseClient";
 
@@ -12,7 +11,6 @@ import { supabase } from "@/lib/supabaseClient";
 // voit QUI demande et OÙ part l'accès, et autorise. Le code est émis par la
 // fonction `oauth`, relayée sous /oauth.
 
-const jakarta = Plus_Jakarta_Sans({ subsets: ["latin"], weight: ["400", "500", "600", "700", "800"], display: "swap" });
 
 function Autoriser() {
   const q = useSearchParams();
@@ -66,7 +64,7 @@ function Autoriser() {
   const champ = "w-full bg-slate-50 border border-slate-200 text-slate-800 placeholder-slate-400 rounded-xl px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-emerald-400/40 focus:border-emerald-400 transition";
 
   return (
-    <main className={`${jakarta.className} min-h-screen bg-slate-100 flex items-center justify-center px-4 py-10`}>
+    <main className={`min-h-screen bg-slate-100 flex items-center justify-center px-4 py-10`}>
       <div className="w-full max-w-sm">
         <div className="flex flex-col items-center mb-6">
           <Image src="/coach-logo.jpg" width={56} height={56} alt="C'est Ludique" className="rounded-full border border-slate-200 object-cover mb-3 shadow-sm" />

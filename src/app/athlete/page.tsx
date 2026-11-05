@@ -14,16 +14,13 @@ dayjs.locale("fr");
 dayjs.extend(isoWeek);
 dayjs.extend(isBetween); // Correction: Extension du plugin isBetween
 
-// Font
-import { Plus_Jakarta_Sans } from "next/font/google";
-const jakarta = Plus_Jakarta_Sans({ subsets: ["latin"], weight: ["500","600","700"], display: "swap" });
 
 // Icons (Phosphor)
 import {
   PencilSimple, Trash, Plus, ChatCircleDots,
-  CaretLeft, CaretRight, SignOut, GearSix,
-  ChartLineUp as LoadIcon, Bicycle, SwimmingPool, Mountains, PersonSimpleRun, Clock, ChartLineUp,
-  Smiley, SmileySad, SmileyMeh, Notebook, WarningCircle, Fire, Question, X,
+  CaretLeft, CaretRight,
+  ChartLineUp as LoadIcon, Clock, ChartLineUp,
+  Smiley, SmileySad, SmileyMeh, Notebook, WarningCircle, Question, X,
   ArrowsClockwise, LinkSimple, BabyCarriage, MagicWand
 } from "@phosphor-icons/react";
 
@@ -37,42 +34,10 @@ import CarteBebe from "../CarteBebe";
 import GrossesseRdv, { IconeGenre } from "../GrossesseRdv";
 import { rdvDuPlanning, maGrossesse, superposerAdaptees, adapter, ROSE, ROSE_FOND, heureCourte, type RdvGrossesse, type Adaptable } from "../grossesse";
 import AdapterSeance from "../AdapterSeance";
+import Coque from "../Coque";
+import { ETAT, INTENSITE, IconeSport, SPORT_COULEUR, SPORT_NOM, alerteSeance, duree, etatSeance } from "../commun";
 
 // ---------- HELPERS & STYLES (COHÉRENCE COACH) ----------
-
-const EST_RPE: Record<string, number> = { basse: 3, moyenne: 6, haute: 9 };
-
-function getSportStyle(s?: string) {
-  switch (s) {
-    case "Vélo": return { bg: "bg-sky-100", text: "text-sky-900", border: "border-sky-300", icon: "text-sky-700" };
-    case "Run": return { bg: "bg-slate-200", text: "text-slate-800", border: "border-slate-400", icon: "text-slate-600" };
-    case "Natation": return { bg: "bg-cyan-100", text: "text-cyan-900", border: "border-cyan-300", icon: "text-cyan-700" };
-    case "Trail": return { bg: "bg-lime-100", text: "text-lime-900", border: "border-lime-300", icon: "text-lime-700" };
-    case "Renfo":
-    case "Muscu": return { bg: "bg-orange-100", text: "text-orange-900", border: "border-orange-300", icon: "text-orange-700" };
-    default: return { bg: "bg-gray-100", text: "text-gray-800", border: "border-gray-300", icon: "text-gray-600" };
-  }
-}
-
-function sportIcon(s?: string, size: number = 16) {
-  switch (s) {
-    case "Vélo": return <Bicycle size={size} />;
-    case "Run": return <PersonSimpleRun size={size} />;
-    case "Natation": return <SwimmingPool size={size} />;
-    case "Trail": return <Mountains size={size} />;
-    case "Renfo":
-    case "Muscu": return <ChartLineUp size={size} />;
-    default: return <ChartLineUp size={size} />;
-  }
-}
-
-function intensityBar(level?: string) {
-  switch (level) {
-    case "haute": return "bg-red-500";
-    case "moyenne": return "bg-amber-400";
-    default: return "bg-emerald-500";
-  }
-}
 
 function fmtTime(h?: number | null) {
   if (h === undefined || h === null) return "";
@@ -647,84 +612,40 @@ function AbsenceModal({ open, onClose, onSaved, initial, athleteId, date }:{ ope
   );
 }
 
-// ---------- Cards (Miroir du coach, pour l'homogénéité)
+// ---------- Cards : les mêmes que le planning coach (refonte du 05/11/2026),
+// bordure à la couleur du sport, état en pastille, toute la carte se touche.
 const SessionCard = React.memo(function SessionCard({ s, onEdit, onDelete }:{ s: SessionType; onEdit: ()=>void; onDelete: ()=>void; }) {
-  const style = getSportStyle(s.sport);
-  const isPast = dayjs(s.date).isBefore(dayjs(), 'day');
-
-  // Logique Bordure/Alerte
-  let borderClass = "border border-transparent";
-  const hasPain = s.athlete_comment && /(^|[^a-zà-ÿ])(mal|douleur|bless|gên|gene|bobo)/i.test(s.athlete_comment);
-  const hasBadRpe = s.status === "valide" && s.intensity === "basse" && (s.rpe || 0) > 8;
-  
-  if (hasPain || hasBadRpe) {
-    borderClass = "border-2 border-rose-500 shadow-red-100";
-  }
-  else if (s.status === "valide") {
-    borderClass = "border border-emerald-400 ring-1 ring-emerald-400 shadow-sm";
-  }
-  else if (isPast) {
-    borderClass = "border-2 border-amber-500 shadow-amber-100";
-  }
-
+  const auj = dayjs().format("YYYY-MM-DD");
+  const e = ETAT[etatSeance(s, auj)];
+  const alerte = alerteSeance(s);
+  const t = INTENSITE[s.intensity ?? "moyenne"];
   return (
-    <div className={`relative rounded-xl p-3 mb-2 overflow-hidden transition-all shadow-sm ${style.bg} ${borderClass}`}>
-      {/* Header */}
-      <div className="flex items-start justify-between gap-1 mb-1.5">
-        <div className="flex items-center gap-1.5 min-w-0">
-           <span className={`${style.icon} shrink-0`}>{sportIcon(s.sport, 16)}</span>
-           <span className={`text-[11px] font-bold uppercase tracking-wider truncate ${style.text}`}>{s.sport}</span>
-           {s.adaptee && (
-             <span title="Ta version adaptée" className="inline-flex shrink-0 items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[9px] font-black uppercase" style={{ background: ROSE_FOND, color: ROSE }}>
-               <MagicWand size={10} weight="bold" /> adaptée
-             </span>
-           )}
-        </div>
-        <div className="flex gap-1 shrink-0">
-             {(hasPain || hasBadRpe) && <div className="text-rose-600 animate-pulse"><WarningCircle size={16} weight="fill"/></div>}
-             <button onClick={onEdit} className={`${style.text} opacity-60 hover:opacity-100 p-0.5 hover:bg-white/50 rounded`} title="Valider/Modifier"><PencilSimple size={15}/></button>
-             <button onClick={onDelete} className={`${style.text} opacity-60 hover:text-rose-600 p-0.5 hover:bg-white/50 rounded`} title="Supprimer"><Trash size={15}/></button>
-        </div>
-      </div>
-
-      {/* Barre Intensité */}
-      <div className={`h-1 w-10 rounded-full mb-2 ${intensityBar(s.intensity)}`} />
-
-      {/* Titre */}
-      {s.title && <div className={`text-sm font-bold leading-tight mb-1 ${style.text}`}>{s.title}</div>}
-      
-      {/* Metrics */}
-      <div className={`flex items-center justify-between text-xs font-medium ${style.text} opacity-90`}>
-        <div className="flex items-center gap-1">
-          <Clock size={12}/> {fmtTime(s.planned_hour)}
-        </div>
-        {s.status === "valide" && s.rpe ? (
-            <div className="flex items-center gap-1 font-bold">
-               {hasBadRpe && <Fire size={12} className="text-rose-500"/>}
-               <span>RPE {s.rpe}</span>
-               {s.vu_coach && <span className="ml-1 text-emerald-600 font-bold" title="Vu par ton coach">· vu</span>}
-            </div>
-        ) : s.status === "valide" ? (
-            <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-700 border border-amber-300 rounded px-1.5 py-0.5 text-[9px] font-black uppercase">
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse inline-block"/> RPE ?
-            </span>
-        ) : (
-            <div className="opacity-60 italic text-[10px]">Prévu ~{EST_RPE[s.intensity || "moyenne"] || 6}</div>
+    <div role="button" tabIndex={0} onClick={onEdit} onKeyDown={(ev) => { if (ev.key === "Enter") onEdit(); }} title="Ouvrir, valider ou modifier"
+      className={`group relative w-full text-left rounded-xl bg-white p-2 flex flex-col gap-1 border cursor-pointer transition hover:shadow-md ${alerte ? "border-red-200" : "border-slate-200"}`}
+      style={{ borderLeft: `5px solid ${SPORT_COULEUR[s.sport ?? "Autre"] ?? "#64748b"}` }}>
+      <button onClick={(ev) => { ev.stopPropagation(); onDelete(); }} aria-label="Supprimer" title="Supprimer"
+        className="absolute top-1.5 right-1.5 p-1 rounded-md text-slate-300 opacity-0 group-hover:opacity-100 hover:text-rose-600 hover:bg-rose-50"><Trash size={14}/></button>
+      <span className="pr-3 text-[13.5px] font-extrabold leading-tight text-slate-800 line-clamp-2 break-words">{s.title || SPORT_NOM[s.sport ?? "Autre"] || "Séance"}</span>
+      <span className="flex items-center gap-1 text-xs font-semibold text-slate-500"><IconeSport sport={s.sport} size={13} /><span className="truncate">{[duree(s.planned_hour), t?.nom.toLowerCase()].filter(Boolean).join(" · ")}</span></span>
+      <span className="flex flex-wrap items-center gap-1">
+        <span className="text-[11px] font-extrabold rounded-full px-2 py-0.5" style={{ background: e.fond, color: e.couleur }}>{e.nom}</span>
+        {s.adaptee && (
+          <span title="Ta version adaptée" className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-black" style={{ background: ROSE_FOND, color: ROSE }}>
+            <MagicWand size={10} weight="bold" /> adaptée
+          </span>
         )}
-      </div>
-
-      {/* Consigne Coach */}
-      {s.planned_inter && (
-        <div className={`mt-2 pt-2 border-t border-black/5 text-[11px] whitespace-pre-line ${style.text} opacity-90`}>
-           {s.planned_inter}
-        </div>
+        {s.status === "valide" && s.rpe == null && <span className="text-[11px] font-extrabold rounded-full px-2 py-0.5 bg-amber-100 text-amber-700">Ton ressenti ?</span>}
+        {alerte && <WarningCircle size={15} weight="fill" className="text-red-500" />}
+      </span>
+      {s.planned_inter && s.status !== "valide" && (
+        <span className="text-[11.5px] leading-snug text-slate-500 whitespace-pre-line line-clamp-4">{s.planned_inter}</span>
       )}
-
-      {/* Commentaire Athlète */}
-      {(s.athlete_comment || s.rpe) && (
-        <div className={`mt-2 p-2 bg-white/80 rounded-lg text-[11px] italic text-slate-700 border border-white/50 ${hasPain ? "border-rose-300 bg-rose-50 text-rose-800 font-medium" : ""}`}>
-          {s.athlete_comment ? `“${s.athlete_comment}”` : ""}{!s.athlete_comment && s.rpe ? `RPE ${s.rpe}/10` : ""}
-        </div>
+      {(s.rpe != null || s.athlete_comment) && (
+        <span className={`text-xs leading-snug ${alerte === "douleur" ? "text-red-700 font-semibold" : "text-slate-600"}`}>
+          {s.rpe != null && <b>{s.rpe}/10 </b>}
+          {s.athlete_comment && <i className="line-clamp-3">« {s.athlete_comment} »</i>}
+          {s.vu_coach && <span className="block text-[11px] font-bold text-green-600" title="Vu par ton coach">✓ vu par ton coach</span>}
+        </span>
       )}
     </div>
   );
@@ -884,8 +805,7 @@ function AthleteThematicCalendar({ athleteId, onWeekClick }:{ athleteId: string;
                                 {/* AFFICHAGE DE L'INDICE DE CHARGE (IC) & HEURES */}
                                 {metrics && metrics.hours > 0 && (
                                     <div className={`mt-0.5 flex justify-between text-[10px] font-semibold p-0.5 rounded-full ${isCurrent ? 'text-blue-900' : 'text-slate-600'} `}>
-                                        <span className="font-bold">IC: {metrics.load.toFixed(0)}</span>
-                                        <span>H: {fmtTime(metrics.hours)}</span>
+                                        <span>{fmtTime(metrics.hours)}</span>
                                     </div>
                                 )}
 
@@ -951,7 +871,7 @@ function AthleteMetrics({ athleteId }: { athleteId: string }) {
 
 
 // ---------- Main page
-export default function AthletePage() {
+function AthletePage() {
   const router = useRouter();
   const [athlete, setAthlete] = useState<UserType | null>(null);
   const [weekOffset, setWeekOffset] = useState(0);
@@ -979,7 +899,7 @@ export default function AthletePage() {
   // Etat pour la modale bilan
   const [reviewOpen, setReviewOpen] = useState(false);
 
-  const [prevWeekLoad, setPrevWeekLoad] = useState<number>(0);
+  const [, setPrevWeekLoad] = useState<number>(0);
   const [nextRaceText, setNextRaceText] = useState<string>("");
   // La météo du jour, en discret dans l'en-tête : à la ville de « Mon voyage »,
   // sinon au départ de la dernière sortie en extérieur.
@@ -1089,8 +1009,6 @@ export default function AthletePage() {
     })();
   }, [athlete?.id_auth, weekStart]);
 
-  async function logout() { await supabase.auth.signOut(); router.push("/login"); }
-
   async function connectStrava() {
     if (!athlete?.id_auth) return;
     // L'URL vient du serveur : il y signe le `state` qui dit à quel compte
@@ -1188,7 +1106,7 @@ export default function AthletePage() {
   }, [sessions, absences]);
 
   return (
-    <main className={`${jakarta.className} min-h-screen bg-slate-100 text-slate-800`}>
+    <div className="min-h-screen text-slate-800">
       <PartageCoachInfo athlete={athlete} />
       {lignesChaleur && meteo && (
         <div className="fixed inset-0 z-50 grid place-items-center p-4" onClick={() => setLignesChaleur(null)}>
@@ -1202,10 +1120,9 @@ export default function AthletePage() {
       )}
       {/* Header */}
       <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/90 backdrop-blur-md shadow-sm">
-        <div className="max-w-screen-2xl mx-auto px-3 py-3 flex items-center justify-between">
+        <div className="px-4 lg:px-7 py-3 flex flex-wrap gap-3 items-center justify-between">
           <div className="flex items-center gap-3">
-             <div className="bg-blue-600 text-white px-2 py-1 rounded font-bold text-sm tracking-tight">ATHLÈTE</div>
-             <div className="text-sm font-medium text-slate-600 hidden sm:block">Bonjour {athlete?.name?.split(" ")[0]}</div>
+             <div className="text-lg font-extrabold text-slate-800 hidden sm:block">Bonjour {athlete?.name?.split(" ")[0]}</div>
              {meteo && <button onClick={ouvrirChaleur} className="text-xs font-semibold text-slate-400 hidden md:block hover:text-slate-600">Aujourd&apos;hui {meteo.t}° · <span className="font-bold" style={{ color: couleurWbgt(meteo.wbgt) }}>indice chaleur {meteo.wbgt} ⓘ</span></button>}
           </div>
           
@@ -1216,9 +1133,6 @@ export default function AthletePage() {
           </div>
 
           <div className="flex items-center gap-2">
-            <a href="/athlete/stats/" target="_blank" rel="noopener noreferrer" className="p-2 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-slate-50" title="Mes Statistiques">
-              <ChartLineUp size={20} weight="bold"/>
-            </a>
             {/* Aide RPE Global */}
             <div className="relative">
                 <button onClick={()=>setShowRpeHelp(!showRpeHelp)} className={`p-2 rounded-lg transition ${showRpeHelp ? "bg-blue-100 text-blue-700" : "text-slate-400 hover:text-blue-600 hover:bg-slate-50"}`} title="Aide RPE">
@@ -1257,18 +1171,15 @@ export default function AthletePage() {
                 Lier Strava
               </button>
             )}
-            <a href="/progres" className="px-2 py-1 rounded-lg text-sm font-bold text-slate-500 hover:text-blue-600 hover:bg-slate-50" title="Mon état et ma forme">Progrès</a>
-            <a href="/home-trainer" className="px-2 py-1 rounded-lg text-sm font-bold text-slate-500 hover:text-blue-600 hover:bg-slate-50" title="Rouler sur le home-trainer">Home-trainer</a>
-            <a href="/athlete/reglages" className="p-2 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-slate-50" title="Réglages"><GearSix size={18}/></a>
-            <button onClick={logout} className="text-rose-500 hover:bg-rose-50 p-2 rounded-lg"><SignOut size={18}/></button>
           </div>
         </div>
       </header>
 
-      <div className="max-w-screen-2xl mx-auto px-3 py-5 grid grid-cols-12 gap-4">
+      <div className="px-4 lg:px-7 py-5 grid grid-cols-12 gap-5">
         
         {/* Sidebar */}
-        <aside className="col-span-12 md:col-span-3 space-y-4">
+        {/* Écran moyen : ces cartes en bandeau au-dessus de la semaine, qui garde toute la largeur. */}
+        <aside className="col-span-12 2xl:col-span-2 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-1 gap-4 items-start">
           {/* Bilan Hebdo (Nouveau) */}
           <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
               <div className="flex justify-between items-center mb-3">
@@ -1279,12 +1190,12 @@ export default function AthletePage() {
               <div className="flex flex-col gap-2">
                   {/* Charge Sport */}
                   <div className="flex items-center justify-between p-2 bg-slate-50 rounded-lg">
-                      <div className="flex items-center gap-2 text-slate-600"><LoadIcon size={16} weight="duotone"/> <span className="text-xs font-bold">Charge Sport</span></div>
+                      <div className="flex items-center gap-2 text-slate-600"><LoadIcon size={16} weight="duotone"/> <span className="text-xs font-bold">Effort de la semaine</span></div>
                       <div className="text-sm font-bold text-slate-800">{stats.load.toFixed(0)}</div>
                   </div>
                   {/* Charge Vie */}
                   <button onClick={()=>setReviewOpen(true)} className={`flex items-center justify-between p-2 rounded-lg border transition hover:shadow-md ${weeklyReview ? "bg-white border-emerald-200" : "bg-white border-dashed border-slate-300"}`}>
-                      <div className="flex items-center gap-2 text-slate-600"><Smiley size={16} weight="duotone"/> <span className="text-xs font-bold">Charge Vie</span></div>
+                      <div className="flex items-center gap-2 text-slate-600"><Smiley size={16} weight="duotone"/> <span className="text-xs font-bold">Ma semaine hors sport</span></div>
                       {weeklyReview ? (
                           <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${weeklyReview.rpe_life <= 3 ? "bg-emerald-100 text-emerald-700" : weeklyReview.rpe_life <= 6 ? "bg-amber-100 text-amber-700" : "bg-rose-100 text-rose-700"}`}>
                               {weeklyReview.rpe_life}/9
@@ -1311,7 +1222,6 @@ export default function AthletePage() {
             <div className="text-xs font-bold uppercase text-slate-400 tracking-wider mb-2">Infos</div>
             <div className="space-y-2 text-xs">
               <div className="flex justify-between"><span>Prochaine course</span> <span className="font-bold text-slate-900">{nextRaceText}</span></div>
-              <div className="flex justify-between"><span>Charge S-1</span> <span className="font-bold text-slate-900">{prevWeekLoad.toFixed(0)}</span></div>
             </div>
           </div>
 
@@ -1319,7 +1229,7 @@ export default function AthletePage() {
         </aside>
 
         {/* Main Grid */}
-        <section className="col-span-12 md:col-span-9">
+        <section className="col-span-12 2xl:col-span-10">
           {/* Rien tant qu'il n'y a ni grossesse visible ni surprise déclenchée */}
           <CarteBebe userId={athlete?.id_auth} partnerId={(athlete as UserType & { partner_id?: string | null } | null)?.partner_id} />
           {athlete && (
@@ -1504,6 +1414,12 @@ export default function AthletePage() {
             />
         </>
       )}
-    </main>
+    </div>
   );
+}
+
+// Dans la coque commune (05/11/2026) : le menu de gauche porte Progrès,
+// Home-trainer, Réglages et la déconnexion ; la semaine prend toute la largeur.
+export default function Page() {
+  return <Coque plein titre="Mon planning"><AthletePage /></Coque>;
 }

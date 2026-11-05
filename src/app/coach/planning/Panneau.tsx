@@ -7,6 +7,7 @@
 //   l'app, components/coach/CoachSessionSheet.tsx) ;
 // — dupliquer une séance, copier la semaine : vers lui ou d'autres athlètes.
 // ─────────────────────────────────────────────────────────────────────────
+import Link from "next/link";
 import React, { useEffect, useRef, useState } from "react";
 import dayjs from "dayjs";
 import { X, CaretLeft, Copy, Trash, Check, ArrowSquareOut, Flask, Timer, Sparkle } from "@phosphor-icons/react";
@@ -267,7 +268,7 @@ function Lire({ s, onDupliquer, onFermer }: { s: Seance; onDupliquer: () => void
       )}
       <div className="flex gap-2">
         <button onClick={onDupliquer} className="flex-1 h-11 rounded-xl border border-slate-200 text-sm font-extrabold text-slate-800 hover:bg-slate-50 flex items-center justify-center gap-1.5"><Copy size={16} weight="bold" />Dupliquer</button>
-        <a href={`/seance/${s.id}`} className="flex-1 h-11 rounded-xl bg-blue-600 text-sm font-extrabold text-white hover:bg-blue-700 flex items-center justify-center gap-1.5"><ArrowSquareOut size={16} weight="bold" />Voir en grand</a>
+        <Link href={`/seance/${s.id}`} className="flex-1 h-11 rounded-xl bg-blue-600 text-sm font-extrabold text-white hover:bg-blue-700 flex items-center justify-center gap-1.5"><ArrowSquareOut size={16} weight="bold" />Voir en grand</Link>
       </div>
     </div>
   );

@@ -8,6 +8,7 @@
 // tout relire deux fois.
 // ─────────────────────────────────────────────────────────────────────────
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
+import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import dayjs from "dayjs";
 import {
@@ -28,8 +29,10 @@ type Valeur = {
   recharger: () => void;
   /** Le menu se réduit à ses icônes (le planning, quand son panneau est ouvert). */
   setEtroit: (v: boolean) => void;
+  /** Sans menu ni marges : le home-trainer pendant qu'on roule. */
+  setSansMenu: (v: boolean) => void;
 };
-const Contexte = createContext<Valeur>({ moi: null, athletes: [], etats: new Map(), recharger: () => {}, setEtroit: () => {} });
+const Contexte = createContext<Valeur>({ moi: null, athletes: [], etats: new Map(), recharger: () => {}, setEtroit: () => {}, setSansMenu: () => {} });
 export const useCoque = () => useContext(Contexte);
 
 export const NIVEAU: Record<string, { couleur: string; libelle: string }> = {
@@ -43,9 +46,9 @@ const EtroitCtx = createContext(false);
 function Lien({ href, actif, icone, children }: { href: string; actif: boolean; icone: React.ReactNode; children: React.ReactNode }) {
   const etroit = useContext(EtroitCtx);
   return (
-    <a href={href} title={etroit ? String(children) : undefined} className={`flex items-center gap-2.5 py-2.5 rounded-xl text-sm transition ${etroit ? "justify-center px-0" : "px-3"} ${actif ? "bg-blue-50 text-blue-600 font-extrabold" : "text-slate-700 font-bold hover:bg-slate-50"}`}>
+    <Link href={href} title={etroit ? String(children) : undefined} className={`flex items-center gap-2.5 py-2.5 rounded-xl text-sm transition ${etroit ? "justify-center px-0" : "px-3"} ${actif ? "bg-blue-50 text-blue-600 font-extrabold" : "text-slate-700 font-bold hover:bg-slate-50"}`}>
       {icone}{!etroit && children}
-    </a>
+    </Link>
   );
 }
 
@@ -59,14 +62,14 @@ function Menu({ moi, athletes, etats, chemin, athleteActif, onDeconnexion, etroi
   return (
     <EtroitCtx.Provider value={etroit}>
     <nav aria-label="Navigation" className={`h-full flex flex-col gap-1 overflow-y-auto ${etroit ? "p-2.5" : "p-4"}`}>
-      <a href={coach ? "/coach" : "/athlete"} className={`flex items-center gap-2.5 pb-5 ${etroit ? "justify-center" : "px-2"}`}>
+      <Link href={coach ? "/coach" : "/athlete"} className={`flex items-center gap-2.5 pb-5 ${etroit ? "justify-center" : "px-2"}`}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/logo.png" alt="" className="w-9 h-9 rounded-full object-cover" />
         <div className={etroit ? "hidden" : ""}>
           <div className="font-extrabold text-[15px] text-slate-800 leading-tight">C&apos;est Ludique</div>
           <div className="text-[10.5px] font-extrabold tracking-wider text-slate-400">{coach ? "ESPACE COACH" : "MON ESPACE"}</div>
         </div>
-      </a>
+      </Link>
       {!moi ? null : coach ? (
         <>
           <Lien href="/coach" actif={est("/coach")} icone={<House size={19} weight="bold" />}>Accueil</Lien>
@@ -85,12 +88,12 @@ function Menu({ moi, athletes, etats, chemin, athleteActif, onDeconnexion, etroi
             <>
               <div className={`text-[10.5px] font-extrabold tracking-wider text-slate-400 pt-4 pb-1 ${etroit ? "border-t border-slate-100 mt-2" : "px-3"}`}>{etroit ? "" : "MES ATHLÈTES"}</div>
               {athletes.filter((a) => !a.moi).map((a) => (
-                <a key={a.id_auth} href={`/coach/planning?athlete=${a.id_auth}`} title={etroit ? a.name : undefined}
+                <Link key={a.id_auth} href={`/coach/planning?athlete=${a.id_auth}`} title={etroit ? a.name : undefined}
                   className={`relative flex items-center gap-2.5 py-1.5 rounded-xl text-sm ${etroit ? "justify-center" : "px-3"} ${athleteActif === a.id_auth ? "bg-slate-100 font-extrabold" : "font-bold hover:bg-slate-50"} text-slate-800`}>
                   <Avatar id={a.id_auth} nom={a.name} taille={28} />
                   {!etroit && <span className="truncate">{a.name.split(" ")[0]}</span>}
                   <span className={`w-2 h-2 rounded-full shrink-0 ${etroit ? "absolute top-1 right-2 ring-2 ring-white" : "ml-auto"}`} style={{ background: pastille(a.id_auth) }} />
-                </a>
+                </Link>
               ))}
             </>
           )}
@@ -124,13 +127,29 @@ function Menu({ moi, athletes, etats, chemin, athleteActif, onDeconnexion, etroi
   );
 }
 
-/**
- * `plein` : le contenu touche les bords (la page gère ses marges, par exemple
- * le planning et son panneau latéral). Sinon : marges de 32 px, toute la largeur.
- */
-export default function Coque({ children, plein, titre }: { children: React.ReactNode; plein?: boolean; titre?: string }) {
+// Posée une seule fois, dans le layout racine (05/11/2026) : le menu reste en
+// place d'une page à l'autre, rien ne se recharge. Hors de l'espace connecté
+// (accueil public, connexion…), elle laisse passer la page telle quelle.
+const ESPACE = ["/coach", "/athlete", "/progres", "/seance", "/home-trainer"];
+// Ces pages gèrent leurs marges (panneau latéral, semaine pleine largeur).
+const PLEIN = ["/coach/planning", "/athlete"];
+const TITRES: [string, string][] = [
+  ["/coach/planning", "Planning"], ["/coach/stats", "Équipe"], ["/coach", "Accueil"], ["/athlete/reglages", "Réglages"],
+  ["/athlete/stats", "Mes chiffres"], ["/athlete", "Mon planning"], ["/progres", "Progrès"], ["/seance", "Séance"], ["/home-trainer", "Home-trainer"],
+];
+
+export default function Coque({ children }: { children: React.ReactNode }) {
+  const chemin = usePathname() ?? "";
+  const espace = ESPACE.some((p) => chemin === p || chemin.startsWith(p + "/"));
+  if (!espace) return <>{children}</>;
+  return <CoqueEspace chemin={chemin}>{children}</CoqueEspace>;
+}
+
+function CoqueEspace({ children, chemin }: { children: React.ReactNode; chemin: string }) {
   const router = useRouter();
-  const chemin = usePathname();
+  const plein = PLEIN.includes(chemin);
+  const titre = TITRES.find(([p]) => chemin === p || chemin.startsWith(p + "/"))?.[1];
+  const [sansMenu, setSansMenu] = useState(false);
   const [moi, setMoi] = useState<Moi | null>(null);
   const [athletes, setAthletes] = useState<AthleteCoque[]>([]);
   const [etats, setEtats] = useState<Map<string, EtatJour[]>>(new Map());
@@ -169,6 +188,11 @@ export default function Coque({ children, plein, titre }: { children: React.Reac
     })();
     return () => { annule = true; };
   }, [router, n]);
+  // Reconnecté sous un autre compte : on relit tout.
+  useEffect(() => {
+    const { data } = supabase.auth.onAuthStateChange((ev) => { if (ev === "SIGNED_IN" || ev === "SIGNED_OUT") setN((x) => x + 1); });
+    return () => data.subscription.unsubscribe();
+  }, []);
 
   // L'athlète ouvert (planning, progrès) : lu dans l'adresse sans useSearchParams,
   // qui imposerait un Suspense à chaque page.
@@ -193,14 +217,16 @@ export default function Coque({ children, plein, titre }: { children: React.Reac
   const menu = <Menu moi={moi} athletes={athletes} etats={etats} chemin={chemin} athleteActif={athleteActif} onDeconnexion={deconnexion} />;
 
   return (
-    <Contexte.Provider value={{ moi, athletes, etats, recharger, setEtroit }}>
+    <Contexte.Provider value={{ moi, athletes, etats, recharger, setEtroit, setSansMenu }}>
       <div className="min-h-screen bg-[#F8FAFC] text-slate-800 font-sans">
         {/* Grand écran : menu fixe de 240 px. */}
-        <aside className={`hidden lg:block fixed inset-y-0 left-0 bg-white border-r border-slate-200 z-30 transition-[width] ${etroit ? "w-[72px]" : "w-60"}`}>
+        {/* Le menu disparaît pendant qu'on roule, sans toucher à l'arbre de la page
+            (le home-trainer en cours ne doit jamais repartir de zéro). */}
+        <aside className={`${sansMenu ? "hidden" : "hidden lg:block"} fixed inset-y-0 left-0 bg-white border-r border-slate-200 z-30 transition-[width] ${etroit ? "w-[72px]" : "w-60"}`}>
           {etroit ? <Menu moi={moi} athletes={athletes} etats={etats} chemin={chemin} athleteActif={athleteActif} onDeconnexion={deconnexion} etroit /> : menu}
         </aside>
         {/* Petit écran : barre du haut et menu en tiroir. */}
-        <header className="lg:hidden sticky top-0 z-30 flex items-center gap-3 bg-white/95 backdrop-blur border-b border-slate-200 px-4 h-14">
+        <header className={`${sansMenu ? "hidden" : "lg:hidden"} sticky top-0 z-30 flex items-center gap-3 bg-white/95 backdrop-blur border-b border-slate-200 px-4 h-14`}>
           <button aria-label="Menu" onClick={() => setTiroir(true)} className="p-1.5 -ml-1.5 rounded-lg hover:bg-slate-100"><List size={22} weight="bold" /></button>
           <span className="font-extrabold truncate">{titre ?? "C'est Ludique"}</span>
         </header>
@@ -226,7 +252,7 @@ export default function Coque({ children, plein, titre }: { children: React.Reac
             </div>
           </div>
         )}
-        <div className={`transition-[padding] ${etroit ? "lg:pl-[72px]" : "lg:pl-60"}`}><div className={plein ? "" : "px-4 py-5 lg:px-8 lg:py-7"}>{children}</div></div>
+        <div className={sansMenu ? "" : `transition-[padding] ${etroit ? "lg:pl-[72px]" : "lg:pl-60"}`}><div className={plein || sansMenu ? "" : "px-4 py-5 lg:px-8 lg:py-7"}>{children}</div></div>
       </div>
     </Contexte.Provider>
   );

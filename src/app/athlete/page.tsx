@@ -35,7 +35,6 @@ import CarteBebe from "../CarteBebe";
 import GrossesseRdv, { IconeGenre } from "../GrossesseRdv";
 import { rdvDuPlanning, maGrossesse, superposerAdaptees, adapter, ROSE, ROSE_FOND, heureCourte, type RdvGrossesse, type Adaptable } from "../grossesse";
 import AdapterSeance from "../AdapterSeance";
-import Coque from "../Coque";
 import { ETAT, INTENSITE, IconeSport, SPORT_COULEUR, SPORT_NOM, alerteSeance, duree, etatSeance } from "../commun";
 
 // ---------- HELPERS & STYLES (COHÉRENCE COACH) ----------
@@ -1445,5 +1444,5 @@ function AthletePage() {
 // Dans la coque commune (05/11/2026) : le menu de gauche porte Progrès,
 // Home-trainer, Réglages et la déconnexion ; la semaine prend toute la largeur.
 export default function Page() {
-  return <Coque plein titre="Mon planning"><AthletePage /></Coque>;
+  return <AthletePage />;
 }

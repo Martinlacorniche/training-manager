@@ -10,7 +10,7 @@ import dayjs from "dayjs";
 import isoWeek from "dayjs/plugin/isoWeek";
 import "dayjs/locale/fr";
 import { supabase } from "@/lib/supabaseClient";
-import Coque, { useCoque, NIVEAU } from "../../Coque";
+import { useCoque, NIVEAU } from "../../Coque";
 import { Avatar, duree } from "../../commun";
 import VolumeAnnee from "../../VolumeAnnee";
 
@@ -99,5 +99,5 @@ function Equipe() {
 }
 
 export default function Page() {
-  return <Coque titre="Équipe"><Equipe /></Coque>;
+  return <Equipe />;
 }

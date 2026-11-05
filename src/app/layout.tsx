@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
+import Coque from "./Coque";
 
 // Une seule police pour tout le site, la même que l'app.
 const jakarta = Plus_Jakarta_Sans({
@@ -25,7 +26,8 @@ export default function RootLayout({
   return (
     <html lang="fr">
       <body className={`${jakarta.variable} antialiased`}>
-        {children}
+        {/* Le menu de l'espace connecté, posé une fois : il ne se recharge pas d'une page à l'autre. */}
+        <Coque>{children}</Coque>
       </body>
     </html>
   );

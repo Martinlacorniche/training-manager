@@ -6,13 +6,14 @@
 // Le coach ne saisit rien : tout vient des séances et des bilans des athlètes.
 // Pendant de l'accueil coach de l'app (App-Coach, app/coach/index.tsx).
 // ─────────────────────────────────────────────────────────────────────────
+import Link from "next/link";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import dayjs from "dayjs";
 import "dayjs/locale/fr";
 import isoWeek from "dayjs/plugin/isoWeek";
 import { Check, Flag, Copy, CaretRight, Plus } from "@phosphor-icons/react";
 import { supabase } from "@/lib/supabaseClient";
-import Coque, { useCoque, NIVEAU } from "../Coque";
+import { useCoque, NIVEAU } from "../Coque";
 import { Avatar, Bandeau, alerteSeance, etatSeance, duree, type Message } from "../commun";
 import { copierSemaine, annulerCopie } from "./copie";
 dayjs.locale("fr");
@@ -61,7 +62,7 @@ function Tuile({ chiffre, texte, ton, href }: { chiffre: string; texte: string; 
   );
   const cls = "bg-white rounded-2xl px-5 py-4 flex flex-col gap-0.5 border";
   return href
-    ? <a href={href} className={`${cls} hover:shadow-md transition`} style={{ borderColor: c[0] }}>{corps}</a>
+    ? <Link href={href} className={`${cls} hover:shadow-md transition`} style={{ borderColor: c[0] }}>{corps}</Link>
     : <div className={cls} style={{ borderColor: c[0] }}>{corps}</div>;
 }
 
@@ -203,8 +204,8 @@ function Accueil() {
           </p>
         </div>
         <div className="flex gap-2.5">
-          <a href="#semaine-prochaine" className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-extrabold text-slate-800 hover:bg-slate-50">Préparer la semaine prochaine</a>
-          <a href={`/coach/planning${autres[0] ? `?athlete=${autres[0].id_auth}` : ""}`} className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-extrabold text-white hover:bg-blue-700 inline-flex items-center gap-1.5"><Plus size={16} weight="bold" />Séance</a>
+          <Link href="#semaine-prochaine" className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-extrabold text-slate-800 hover:bg-slate-50">Préparer la semaine prochaine</Link>
+          <Link href={`/coach/planning${autres[0] ? `?athlete=${autres[0].id_auth}` : ""}`} className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-extrabold text-white hover:bg-blue-700 inline-flex items-center gap-1.5"><Plus size={16} weight="bold" />Séance</Link>
         </div>
       </header>
 
@@ -238,7 +239,7 @@ function Accueil() {
             const couleur = alerte ? (alerte.ton === "rouge" ? "#b91c1c" : "#b45309") : NIVEAU[signal?.niveau ?? g?.niveau ?? "inconnu"]?.couleur;
             const course = coursesAVenir.find((c) => c.user_id === a.id_auth);
             return (
-              <a key={a.id_auth} href={lien(a.id_auth)} className="grid grid-cols-1 md:grid-cols-[170px_220px_minmax(0,1fr)] items-center gap-x-4 gap-y-2 py-3 border-b border-slate-100 last:border-0 hover:bg-slate-50 -mx-2 px-2 rounded-xl">
+              <Link key={a.id_auth} href={lien(a.id_auth)} className="grid grid-cols-1 md:grid-cols-[170px_220px_minmax(0,1fr)] items-center gap-x-4 gap-y-2 py-3 border-b border-slate-100 last:border-0 hover:bg-slate-50 -mx-2 px-2 rounded-xl">
                 <span className="flex items-center gap-2.5 min-w-0">
                   <Avatar id={a.id_auth} nom={a.name} taille={34} />
                   <span className="min-w-0">
@@ -253,7 +254,7 @@ function Accueil() {
                   {!a.moi && <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: couleur }} />}
                   <span className="line-clamp-2">{phrase}</span>
                 </span>
-              </a>
+              </Link>
             );
           })}
           <div className="flex flex-wrap gap-x-5 gap-y-1 pt-3 text-xs font-bold text-slate-400">
@@ -286,7 +287,7 @@ function Accueil() {
                   {!siennes.length && cetteSemaine > 0 && (
                     <button onClick={() => copierVersProchaine(a.id_auth)} className="rounded-xl border border-slate-200 px-3 py-1.5 text-[13px] font-extrabold text-slate-700 hover:bg-slate-50 flex items-center gap-1.5 whitespace-nowrap"><Copy size={14} weight="bold" />Copier cette semaine</button>
                   )}
-                  <a href={`/coach/planning?athlete=${a.id_auth}&semaine=${lundiProchain}`} className="rounded-xl px-2.5 py-1.5 text-[13px] font-extrabold text-blue-600 hover:bg-blue-50 flex items-center">Ouvrir<CaretRight size={13} weight="bold" /></a>
+                  <Link href={`/coach/planning?athlete=${a.id_auth}&semaine=${lundiProchain}`} className="rounded-xl px-2.5 py-1.5 text-[13px] font-extrabold text-blue-600 hover:bg-blue-50 flex items-center">Ouvrir<CaretRight size={13} weight="bold" /></Link>
                 </div>
               );
             })}
@@ -299,10 +300,10 @@ function Accueil() {
             <h2 className="text-lg font-extrabold">À regarder</h2>
             {!aRegarder.length && <p className="text-sm font-semibold text-green-700">Rien d&apos;inquiétant cette semaine.</p>}
             {aRegarder.map((x) => (
-              <a key={x.cle} href={x.href} className={`block rounded-xl px-3 py-2.5 ${x.ton === "rouge" ? "bg-rose-50" : "bg-amber-50"} hover:brightness-95`}>
+              <Link key={x.cle} href={x.href} className={`block rounded-xl px-3 py-2.5 ${x.ton === "rouge" ? "bg-rose-50" : "bg-amber-50"} hover:brightness-95`}>
                 <span className="block text-sm font-extrabold text-slate-800 first-letter:uppercase">{x.titre}</span>
                 <span className={`block text-sm font-semibold ${x.ton === "rouge" ? "text-red-800" : "text-amber-800"}`}>{x.texte}</span>
-              </a>
+              </Link>
             ))}
           </section>
 
@@ -317,10 +318,10 @@ function Accueil() {
               return (
                 <div key={x.id} className={`flex gap-2.5 ${vu ? "opacity-55" : ""}`}>
                   <Avatar id={x.uid} nom={athletes.find((a) => a.id_auth === x.uid)?.name} taille={30} />
-                  <a href={lien(x.uid, x.date, x.objet === "seance" ? x.id : undefined)} className="flex-1 min-w-0">
+                  <Link href={lien(x.uid, x.date, x.objet === "seance" ? x.id : undefined)} className="flex-1 min-w-0">
                     <span className="block text-[13px] font-extrabold text-slate-800">{nom(x.uid)} · <span className="text-slate-500">{x.sous}</span></span>
                     <span className="block text-sm italic text-slate-600 line-clamp-3">« {x.texte} »</span>
-                  </a>
+                  </Link>
                   {vu
                     ? <span className="self-center text-[13px] font-extrabold text-green-600 flex items-center gap-1"><Check size={13} weight="bold" />Vu</span>
                     : <button onClick={() => marquerVu([x])} className="self-center rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[13px] font-extrabold text-slate-800 hover:bg-blue-50 hover:border-blue-200 flex items-center gap-1"><Check size={13} weight="bold" />Vu</button>}
@@ -338,9 +339,9 @@ function Accueil() {
           <h2 className="text-lg font-extrabold">Courses à venir</h2>
           <div className="flex flex-wrap gap-2">
             {coursesAVenir.map((c) => (
-              <a key={c.id} href={lien(c.user_id, c.date)} className="rounded-full bg-white border border-slate-200 px-3.5 py-2 text-[13px] font-bold text-slate-700 hover:border-amber-300 flex items-center gap-1.5">
+              <Link key={c.id} href={lien(c.user_id, c.date)} className="rounded-full bg-white border border-slate-200 px-3.5 py-2 text-[13px] font-bold text-slate-700 hover:border-amber-300 flex items-center gap-1.5">
                 <Flag size={13} weight="fill" color="#f59e0b" />{nom(c.user_id)} · {c.name ?? "Course"} · {dayjs(c.date).format("D MMM")} · <span className="text-slate-400">J-{dayjs(c.date).diff(dayjs().startOf("day"), "day")}</span>
-              </a>
+              </Link>
             ))}
           </div>
         </section>
@@ -351,5 +352,5 @@ function Accueil() {
 }
 
 export default function Page() {
-  return <Coque titre="Accueil"><Accueil /></Coque>;
+  return <Accueil />;
 }

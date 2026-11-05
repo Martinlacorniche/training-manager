@@ -36,7 +36,7 @@ import type { Col } from "./ht/cols";
 import { resultatRampe, type Famille } from "./ht/catalogue";
 import Catalogue from "./Catalogue";
 import { Bandeau, bandeauDispo, chrono, ouvrirFenetre, type Actions } from "./Bandeau";
-import Coque from "../Coque";
+import { useCoque } from "../Coque";
 import { demander } from "../fenetres";
 import { Bouton, Bulle, Carte, Ciel, degrade, Icone, Jauge, Onglets, Profil, profilDe, Sur } from "./ui";
 
@@ -423,6 +423,11 @@ function HomeTrainer() {
   const fond = `${jakarta.className} min-h-screen bg-[#F8FAFC] px-4 py-6 md:py-10`;
 
   // ─────────────────────────── Rouler un col ───────────────────────────
+  // Pendant qu'on roule et à la fin : plein écran, le menu de gauche se cache.
+  const sansMenu = (phase === "rouler" && !!etat && !!choix) || (phase === "fin" && !!moteur.current && !!choix);
+  const { setSansMenu } = useCoque();
+  useEffect(() => { setSansMenu(sansMenu); return () => setSansMenu(false); }, [sansMenu, setSansMenu]);
+
   if (phase === "rouler" && etat && choix?.col && etat.col) {
     const perdusCol = (["ht", "cardio", "pedales"] as Source[]).filter((x) => !simu && capteurs[x] && !capteurs[x]!.connecte);
     return (
@@ -723,7 +728,7 @@ function HomeTrainer() {
   // La préparation vit dans la coque commune (menu à gauche, 05/11/2026) ;
   // l'écran pendant qu'on roule, lui, reste en plein écran.
   return (
-    <Coque titre="Home-trainer">
+    <>
       <div className="max-w-[1400px] space-y-3.5">
         <div className="flex items-center gap-1.5">
           <h1 className="flex-1 text-[28px] font-extrabold text-slate-800">Home-trainer</h1>
@@ -941,7 +946,7 @@ function HomeTrainer() {
           </div>
         </div>
       )}
-    </Coque>
+    </>
   );
 }
 

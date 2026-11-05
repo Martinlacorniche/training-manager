@@ -11,7 +11,6 @@ import { Voyage } from "../Voyage";
 import { Chaleur } from "../Chaleur";
 import { MonMoteur } from "../MonMoteur";
 import { MeteoCorps } from "../MeteoCorps";
-import Coque from "../Coque";
 
 dayjs.locale("fr");
 
@@ -291,5 +290,5 @@ function Progres() {
 }
 
 export default function Page() {
-  return <Coque titre="Progrès"><Suspense><Progres /></Suspense></Coque>;
+  return <Suspense><Progres /></Suspense>;
 }

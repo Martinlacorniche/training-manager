@@ -4,7 +4,6 @@ import { ProfilPhysique } from "../../ProfilPhysique";
 import { ReglagesGrossesse } from "../../ReglagesGrossesse";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
-import Coque from "../../Coque";
 import { Watch, Robot, UserCircleGear } from "@phosphor-icons/react";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
@@ -289,5 +288,5 @@ function Reglages() {
 }
 
 export default function Page() {
-  return <Coque titre="Réglages"><Reglages /></Coque>;
+  return <Reglages />;
 }

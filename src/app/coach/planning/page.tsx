@@ -7,14 +7,16 @@
 // vers lui ou d'autres athlètes. L'adresse garde l'athlète, la semaine et la
 // séance ouverte (?athlete=…&semaine=…&seance=…), pour les liens de l'accueil.
 // ─────────────────────────────────────────────────────────────────────────
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
+import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import dayjs from "dayjs";
 import "dayjs/locale/fr";
 import isoWeek from "dayjs/plugin/isoWeek";
 import { DragDropContext, Droppable, Draggable, type DropResult } from "@hello-pangea/dnd";
 import { CaretLeft, CaretRight, CaretDown, Copy, Trash, BabyCarriage, Heartbeat } from "@phosphor-icons/react";
 import { supabase } from "@/lib/supabaseClient";
-import Coque, { useCoque, NIVEAU } from "../../Coque";
+import { useCoque, NIVEAU } from "../../Coque";
 import { Avatar, Bandeau, alerteSeance, duree, type Message } from "../../commun";
 import CarteCourse from "../../CarteCourse";
 import { creneauxCoach, heureCourte, ROSE } from "../../grossesse";
@@ -30,7 +32,7 @@ type Absence = Record<string, any> & { id: string; date: string; type: string };
 type Bilan = { id: string; rpe_life: number | null; comment: string | null; fatigue: number | null; sommeil: number | null; stress: number | null; jambes: number | null; douleur: boolean | null; douleur_zone: string | null };
 type Bande = { lundi: string; prevu: number; fait: number; theme: string | null; course: string | null };
 
-function Planning() {
+function Planning({ athleteDemande }: { athleteDemande: string | null }) {
   const { moi, athletes, etats, setEtroit } = useCoque();
   const [athleteId, setAthleteId] = useState<string | null>(null);
   const [lundi, setLundi] = useState(() => dayjs().startOf("isoWeek").format("YYYY-MM-DD"));
@@ -60,6 +62,8 @@ function Planning() {
     if (p.get("seance")) setVueBrute({ quoi: "seance", id: p.get("seance")! });
   }, []);
   useEffect(() => { if (!athleteId && athletes.length) setAthleteId((athletes.find((a) => !a.moi) ?? athletes[0]).id_auth); }, [athletes, athleteId]);
+  // Un autre athlète choisi dans le menu (la page reste montée) : on passe à sa semaine.
+  useEffect(() => { if (athleteDemande && athleteDemande !== athleteId) { setAthleteId(athleteDemande); setVueBrute(null); } }, [athleteDemande]); // eslint-disable-line react-hooks/exhaustive-deps
   // … et suit ce qu'on fait, sans recharger la page.
   useEffect(() => {
     if (!athleteId) return;
@@ -232,7 +236,7 @@ function Planning() {
             </p>
           </div>
           <Bascule equipe={false} lundi={lundi} athleteId={athlete.id_auth} />
-          <a href={`/progres?athlete=${athlete.id_auth}`} className="rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm font-extrabold text-slate-800 hover:bg-slate-50 flex items-center gap-1.5"><Heartbeat size={16} weight="bold" />Ses progrès</a>
+          <Link href={`/progres?athlete=${athlete.id_auth}`} className="rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm font-extrabold text-slate-800 hover:bg-slate-50 flex items-center gap-1.5"><Heartbeat size={16} weight="bold" />Ses progrès</Link>
           <div className="relative">
             <button onClick={() => setMenuCopie((v) => !v)} className={`rounded-xl px-3.5 py-2.5 text-sm font-extrabold flex items-center gap-1.5 ${menuCopie ? "border-2 border-blue-600 bg-blue-50 text-blue-600" : "border border-slate-200 bg-white text-slate-800 hover:bg-slate-50"}`}>
               <Copy size={16} weight="bold" />Copier la semaine<CaretDown size={13} weight="bold" />
@@ -356,13 +360,14 @@ function Planning() {
 }
 
 // ?vue=equipe : toute l'équipe sur la semaine ; sinon la semaine d'un athlète.
+// La navigation est instantanée (le menu ne se recharge plus) : un autre athlète
+// choisi dans le menu = une nouvelle semaine, d'où la clé sur l'athlète et la vue.
 function Aiguillage() {
-  const [equipe, setEquipe] = useState<boolean | null>(null);
-  useEffect(() => { setEquipe(new URLSearchParams(window.location.search).get("vue") === "equipe"); }, []);
-  if (equipe === null) return null;
-  return equipe ? <Equipe /> : <Planning />;
+  const p = useSearchParams();
+  const equipe = p.get("vue") === "equipe";
+  return equipe ? <Equipe /> : <Planning athleteDemande={p.get("athlete")} />;
 }
 
 export default function Page() {
-  return <Coque plein titre="Planning"><Aiguillage /></Coque>;
+  return <Suspense fallback={null}><Aiguillage /></Suspense>;
 }

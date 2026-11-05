@@ -1,6 +1,7 @@
 "use client";
 // Les cartes du planning coach, communes à la semaine d'un athlète et à la vue
 // de toute l'équipe : carte de séance, ajout rapide « Footing 1h facile ↵ ».
+import Link from "next/link";
 import React, { useState } from "react";
 import dayjs from "dayjs";
 import { WarningCircle } from "@phosphor-icons/react";
@@ -93,8 +94,8 @@ export function Bascule({ equipe, lundi, athleteId }: { equipe: boolean; lundi: 
   const cls = (on: boolean) => `px-3 py-[7px] rounded-[9px] ${on ? "bg-white text-slate-800 shadow-sm" : "text-slate-500 hover:text-slate-800"}`;
   return (
     <div className="flex rounded-xl bg-slate-200/70 p-[3px] text-[13px] font-extrabold">
-      <a href={un} className={cls(!equipe)}>Un athlète</a>
-      <a href={tous} className={cls(equipe)}>Toute l&apos;équipe</a>
+      <Link href={un} className={cls(!equipe)}>Un athlète</Link>
+      <Link href={tous} className={cls(equipe)}>Toute l&apos;équipe</Link>
     </div>
   );
 }

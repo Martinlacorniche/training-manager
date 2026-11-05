@@ -2,7 +2,7 @@
 // « Mes chiffres » (refonte du 05/11/2026) : l'année en heures faites par
 // sport. Plus de podiums « Record » : règle produit, pas de record, on se
 // compare à soi-même. Même graphique que la page Équipe du coach.
-import Coque, { useCoque } from "../../Coque";
+import { useCoque } from "../../Coque";
 import VolumeAnnee from "../../VolumeAnnee";
 
 function MesChiffres() {
@@ -20,5 +20,5 @@ function MesChiffres() {
 }
 
 export default function Page() {
-  return <Coque titre="Mes chiffres"><MesChiffres /></Coque>;
+  return <MesChiffres />;
 }

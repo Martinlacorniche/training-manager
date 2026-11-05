@@ -6,6 +6,7 @@
 // Un clic ouvre le même panneau que la semaine d'un athlète. C'est la vue que
 // les coachs réclament à intervals.icu.
 // ─────────────────────────────────────────────────────────────────────────
+import Link from "next/link";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import dayjs from "dayjs";
 import { DragDropContext, Droppable, Draggable, type DropResult } from "@hello-pangea/dnd";
@@ -145,13 +146,13 @@ export default function Equipe() {
                 const g = etats.get(a.id_auth)?.find((e) => e.domaine === "global");
                 return (
                   <React.Fragment key={a.id_auth}>
-                    <a href={`/coach/planning?athlete=${a.id_auth}&semaine=${lundi}`} className="flex items-center gap-2 py-1.5 pr-1 rounded-xl hover:bg-white min-w-0">
+                    <Link href={`/coach/planning?athlete=${a.id_auth}&semaine=${lundi}`} className="flex items-center gap-2 py-1.5 pr-1 rounded-xl hover:bg-white min-w-0">
                       <Avatar id={a.id_auth} nom={a.name} taille={30} />
                       <span className="min-w-0">
                         <span className="flex items-center gap-1.5 text-sm font-extrabold truncate">{a.moi ? "Moi" : a.name.split(" ")[0]}{!a.moi && <span className="w-2 h-2 rounded-full shrink-0" style={{ background: NIVEAU[g?.niveau ?? "inconnu"].couleur }} />}</span>
                         <span className="block text-[11.5px] font-bold text-slate-500">{duree(fait) || "0"} / {duree(prevu) || "0"}</span>
                       </span>
-                    </a>
+                    </Link>
                     {jours.map((j) => {
                       const cle = `${a.id_auth}|${j}`;
                       const ici = siennes.filter((s) => s.date === j);

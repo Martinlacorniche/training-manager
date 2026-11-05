@@ -9,7 +9,6 @@ import DemandeVsFait from "../../DemandeVsFait";
 import StravaMetrics from "../../StravaMetrics";
 import { ResultatTest } from "../../Tests";
 import SuiviSeance from "../../SuiviSeance";
-import Coque from "../../Coque";
 import { SPORT_NOM } from "../../commun";
 import { ROSE, superposerAdaptees } from "../../grossesse";
 
@@ -77,5 +76,5 @@ function Seance() {
 }
 
 export default function Page() {
-  return <Coque titre="Séance"><Seance /></Coque>;
+  return <Seance />;
 }

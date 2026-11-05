@@ -739,15 +739,16 @@ function HomeTrainer() {
 
         {/* Le matériel : affiché tant que le vélo n'est pas prêt, sinon à la demande (pastille). */}
         {(!avecPastille || !pret || materielOuvert || !ftpConnue) && (
-          <div className="grid md:grid-cols-[minmax(0,7fr)_minmax(0,5fr)] gap-3.5 items-start">
+          <>
+          <div className="grid md:grid-cols-[minmax(0,7fr)_minmax(0,5fr)] gap-3.5 items-stretch">
             {!bluetoothDispo() && !simu ? (
-              <Ciel couleurs={CIEL_ATTENTE} icone={mdiBike}>
+              <Ciel couleurs={CIEL_ATTENTE} icone={mdiBike} className="h-full">
                 <Sur>Mon matériel</Sur>
                 <div className="text-[26px] font-black mt-1.5 max-w-[72%]">Il faut Chrome</div>
                 <p className="font-semibold mt-1.5 max-w-[78%] leading-snug">Le Bluetooth marche dans Chrome (ou Edge) sur ordinateur. Sous Linux : ouvre <code className="rounded bg-white/25 px-1">chrome://flags</code>, active « Experimental Web Platform features », puis relance Chrome.</p>
               </Ciel>
             ) : (
-              <Ciel couleurs={pret ? CIEL_PRET : CIEL_ATTENTE} icone={mdiBikeFast}>
+              <Ciel couleurs={pret ? CIEL_PRET : CIEL_ATTENTE} icone={mdiBikeFast} className="h-full">
                 <Sur>Mon matériel</Sur>
                 <div className="text-[28px] font-black mt-1.5 max-w-[72%]">{pret ? "Prêt à rouler" : "On branche le vélo ?"}</div>
                 <p className="font-semibold mt-1 max-w-[75%]">{simu ? "Faux home-trainer : il suit la consigne tout seul." : pret ? `${connectes.length} appareil${connectes.length > 1 ? "s" : ""} connecté${connectes.length > 1 ? "s" : ""}` : "Clique sur « Home-trainer » pour le connecter."}</p>
@@ -773,9 +774,8 @@ function HomeTrainer() {
               </Ciel>
             )}
 
-            <div className="space-y-3.5">
-              {/* Mon profil : ce que l'écran utilise, pour que rien ne soit une boîte noire */}
-              <Carte className="space-y-3">
+            {/* Mon profil : ce que l'écran utilise, pour que rien ne soit une boîte noire */}
+              <Carte className="space-y-3 h-full flex flex-col justify-center">
                 <div className="flex items-center gap-1.5 text-[11px] font-extrabold uppercase tracking-[0.12em] text-slate-400"><Icone d={mdiAccountOutline} taille={15} coul="#94a3b8" />Mon profil</div>
                 <div className="grid grid-cols-3 gap-2">
                   {[
@@ -792,22 +792,22 @@ function HomeTrainer() {
                 </div>
               </Carte>
 
-              <Carte className="space-y-2.5 hidden lg:block">
-                <div className="flex items-center gap-1.5 text-[11px] font-extrabold uppercase tracking-[0.12em] text-slate-400"><Icone d={mdiKeyboardOutline} taille={15} coul="#94a3b8" />Pendant la séance</div>
-                {[
-                  [mdiPictureInPictureBottomRight, "Mode bandeau", "une fenêtre étroite, toujours au-dessus, à poser à côté de ton film"],
-                  [mdiKeyboardOutline, "Clavier", "espace = pause · ← → = étapes · ↑ ↓ = plus ou moins dur"],
-                  [mdiGamepadVariantOutline, "Guidon Zwift", "palettes = plus ou moins dur · A = pause · croix = étapes"],
-                  [mdiCloudUploadOutline, "À la fin", "ressenti, puis ta séance part sur Strava et intervals.icu"],
-                ].map(([d, t, x]) => (
-                  <div key={t} className="flex items-start gap-3">
-                    <div className="w-9 h-9 rounded-xl bg-blue-50 flex items-center justify-center shrink-0"><Icone d={d} taille={18} coul="#2563eb" /></div>
-                    <div className="min-w-0"><div className="font-black text-slate-800 text-sm">{t}</div><div className="text-[13px] font-semibold text-slate-500">{x}</div></div>
-                  </div>
-                ))}
-              </Carte>
-            </div>
           </div>
+          {/* Pendant la séance : quatre astuces en un bandeau fin (05/11), plus une colonne à part. */}
+          <div className="hidden lg:grid grid-cols-4 gap-2.5">
+            {[
+              [mdiPictureInPictureBottomRight, "Mode bandeau", "une fenêtre étroite, toujours au-dessus de ton film"],
+              [mdiKeyboardOutline, "Clavier", "espace = pause · ← → étapes · ↑ ↓ plus ou moins dur"],
+              [mdiGamepadVariantOutline, "Guidon Zwift", "palettes = plus ou moins dur · A = pause"],
+              [mdiCloudUploadOutline, "À la fin", "ton ressenti, puis la séance part sur Strava"],
+            ].map(([d, t, x]) => (
+              <div key={t} className="flex items-start gap-2.5 rounded-2xl bg-white border border-slate-200 px-3 py-2.5">
+                <div className="w-8 h-8 rounded-xl bg-blue-50 flex items-center justify-center shrink-0"><Icone d={d} taille={17} coul="#2563eb" /></div>
+                <div className="min-w-0"><div className="font-black text-slate-800 text-[13px]">{t}</div><div className="text-[12px] font-semibold text-slate-500 leading-snug">{x}</div></div>
+              </div>
+            ))}
+          </div>
+          </>
         )}
 
         {duJour && blocsJour.length > 0 && (

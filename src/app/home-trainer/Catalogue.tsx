@@ -86,8 +86,8 @@ export default function Catalogue({ duree, setDuree, famille, setFamille, ftp, p
       <div className="flex items-center justify-between gap-2.5">
         <p className="flex-1 text-[14.5px] font-bold text-slate-600">{fam.phrase}</p>
         {famille !== "test" && liste.length > 1 && (
-          <button type="button" onClick={surprise} className="inline-flex items-center gap-1.5 rounded-full border border-dashed border-violet-300 bg-violet-50 px-3 py-2 text-[13px] font-black text-violet-700 hover:bg-violet-100">
-            <Icone d={mdiDice5Outline} taille={16} /> Surprends-moi
+          <button type="button" onClick={surprise} className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3.5 py-2 text-[13.5px] font-extrabold text-slate-800 hover:bg-slate-50">
+            <Icone d={mdiDice5Outline} taille={17} coul="#7c3aed" /> Au hasard
           </button>
         )}
       </div>

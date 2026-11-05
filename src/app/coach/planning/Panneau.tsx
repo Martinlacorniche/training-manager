@@ -9,7 +9,7 @@
 // ─────────────────────────────────────────────────────────────────────────
 import React, { useEffect, useRef, useState } from "react";
 import dayjs from "dayjs";
-import { X, CaretLeft, Copy, Trash, Check, ArrowSquareOut, Flask } from "@phosphor-icons/react";
+import { X, CaretLeft, Copy, Trash, Check, ArrowSquareOut, Flask, Timer, Sparkle } from "@phosphor-icons/react";
 import { supabase } from "@/lib/supabaseClient";
 import { Avatar, ETAT, INTENSITE, IconeSport, SPORT_COULEUR, SPORT_NOM, SPORTS, duree, etatSeance, lireDuree } from "../../commun";
 import { useCoque } from "../../Coque";
@@ -31,6 +31,87 @@ export type Vue =
   | null;
 
 const DUREES = [0.5, 0.75, 1, 1.25, 1.5, 2];
+const FONCTIONS = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1`;
+const mmss = (sec: number) => { const m = Math.round(sec / 60); return m >= 60 ? duree(m / 60) : `${m} min`; };
+
+// ── Renfo / muscu : le chrono (comme l'app, components/coach/CoachSessionSheet.tsx) ──
+// Deux façons : l'IA met MES consignes en chrono sans les changer, ou l'IA compose
+// la séance et son chrono dans le cadre que je donne (semaine, prochaine course).
+// Claude, appelé par nos fonctions avec la clé de l'app.
+function Chrono({ s, pret, onMaj }: { s: Seance; pret: boolean; onMaj: (s: Seance) => void }) {
+  const [mode, setMode] = useState<"" | "compose">("");
+  const [cadre, setCadre] = useState("");
+  const [occupe, setOccupe] = useState<"" | "chrono" | "compose">("");
+  const [retour, setRetour] = useState<{ ok: boolean; texte: string; notes: string[] } | null>(null);
+  const seq = (s.timer_sequence ?? null) as { type?: string; duration?: number }[] | null;
+  const total = seq?.reduce((a, x) => a + (Number(x.duration) || 0), 0) ?? 0;
+  const efforts = seq?.filter((x) => x.type === "work").length ?? 0;
+
+  async function appeler(fn: "transcribe-renfo" | "generate-renfo", corps: Record<string, unknown>) {
+    const { data: { session } } = await supabase.auth.getSession();
+    const r = await fetch(`${FONCTIONS}/${fn}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${session?.access_token}` },
+      body: JSON.stringify({ session_id: s.id, user_id: s.user_id, ...corps }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || d.error) throw new Error(d.error || `Erreur ${r.status}`);
+    const { data: frais } = await supabase.from("sessions").select("*").eq("id", s.id).single();
+    if (frais) onMaj(frais as Seance);
+    return d as { notes?: string[]; text?: string };
+  }
+  async function faireChrono() {
+    setOccupe("chrono"); setRetour(null);
+    try { const d = await appeler("transcribe-renfo", {}); setRetour({ ok: true, texte: "Chrono prêt : l'athlète le lance depuis sa séance.", notes: d.notes?.filter(Boolean) ?? [] }); }
+    catch (e) { setRetour({ ok: false, texte: `Pas de chrono : ${(e as Error).message}`, notes: [] }); }
+    setOccupe("");
+  }
+  async function composer() {
+    setOccupe("compose"); setRetour(null);
+    try {
+      const d = await appeler("generate-renfo", { coach_brief: cadre.trim(), save: true });
+      setRetour({ ok: true, texte: "Séance écrite et chrono prêt. Tu peux retoucher les consignes : le chrono suivra.", notes: d.notes?.filter(Boolean) ?? [] });
+      setMode(""); setCadre("");
+    } catch (e) { setRetour({ ok: false, texte: `Pas générée : ${(e as Error).message}`, notes: [] }); }
+    setOccupe("");
+  }
+
+  return (
+    <div className="rounded-xl border border-slate-200 p-3 space-y-2.5">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-sm font-extrabold flex items-center gap-1.5"><Timer size={16} weight="bold" className="text-green-600" />Chrono</span>
+        <span className="text-xs font-bold text-slate-500">{seq?.length ? `${mmss(total)} · ${efforts} effort${efforts > 1 ? "s" : ""}` : "pas encore"}</span>
+      </div>
+      <div className="grid grid-cols-2 gap-1.5">
+        <button disabled={!pret || !!occupe || !(s.planned_inter ?? "").trim()} onClick={faireChrono} title={!(s.planned_inter ?? "").trim() ? "Écris d'abord les consignes" : undefined}
+          className="rounded-xl border border-green-200 bg-green-50 px-2.5 py-2 text-[12.5px] font-extrabold text-green-700 hover:bg-green-100 disabled:opacity-40">
+          {occupe === "chrono" ? "Je fais le chrono…" : seq?.length ? "Refaire le chrono" : "Chrono de mes consignes"}
+        </button>
+        <button disabled={!!occupe} onClick={() => setMode(mode ? "" : "compose")}
+          className={`rounded-xl px-2.5 py-2 text-[12.5px] font-extrabold flex items-center justify-center gap-1 ${mode ? "bg-violet-600 text-white" : "border border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-100"} disabled:opacity-40`}>
+          <Sparkle size={14} weight="fill" />L&apos;IA compose
+        </button>
+      </div>
+      {mode === "compose" && (
+        <div className="space-y-1.5">
+          <textarea value={cadre} onChange={(e) => setCadre(e.target.value)} rows={3}
+            placeholder={"Le cadre : objectif, exercices imposés ou interdits, matériel, tours…\nEx : spécifique trail, excentrique quadris, pas de saut (genou), élastique."}
+            className="w-full rounded-xl border border-violet-200 p-2.5 text-[13px] font-semibold focus:outline-none focus:border-violet-500 resize-none" />
+          <button disabled={!pret || !!occupe} onClick={composer} className="w-full rounded-xl bg-violet-600 py-2 text-sm font-extrabold text-white disabled:opacity-40">
+            {occupe === "compose" ? "L'IA compose… (environ 30 s)" : "Composer la séance"}
+          </button>
+          <p className="text-[11.5px] font-semibold text-slate-400">Elle tient compte de sa semaine et de sa prochaine course. Elle remplace les consignes.</p>
+        </div>
+      )}
+      {retour && (
+        <div className={`rounded-lg p-2.5 text-[12.5px] font-semibold ${retour.ok ? "bg-green-50 text-green-800" : "bg-red-50 text-red-700"}`}>
+          {retour.texte}
+          {retour.notes.length > 0 && <ul className="mt-1 list-disc pl-4 text-slate-600">{retour.notes.map((n) => <li key={n}>{n}</li>)}</ul>}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function Titre({ children, retour, onFermer }: { children: React.ReactNode; retour?: () => void; onFermer: () => void }) {
   return (
@@ -77,7 +158,7 @@ function Modifier({ s, jours, onChange, onDupliquer, onSupprimer, onFermer }: {
   const auj = dayjs().format("YYYY-MM-DD");
   const e = ETAT[etatSeance(f, auj)];
   return (
-    <div className="flex flex-col gap-4 h-full">
+    <div className="flex flex-col gap-4 min-h-full [&>*]:shrink-0">
       <Titre onFermer={onFermer}>
         <span className={`text-[13px] font-extrabold flex items-center gap-1 ${etat === "erreur" ? "text-red-600" : etat === "en_cours" ? "text-slate-400" : "text-green-600"}`}>
           {etat === "erreur" ? "Pas enregistré, réessaie" : etat === "en_cours" ? "Enregistrement…" : <><Check size={13} weight="bold" />Enregistré</>}
@@ -136,6 +217,9 @@ function Modifier({ s, jours, onChange, onDupliquer, onSupprimer, onFermer }: {
           className="flex-1 min-h-[140px] rounded-xl border border-slate-200 p-3 text-sm font-semibold text-slate-700 leading-relaxed focus:outline-none focus:border-blue-500 resize-none" />
         {s.workout_text && <p className="text-xs font-semibold text-slate-400 mt-1.5">Déjà prête pour la montre{s.intervals_pushed_at ? " et envoyée" : ""}. Si tu changes les consignes, l&apos;athlète la renverra.</p>}
       </div>
+      {(f.sport === "Renfo" || f.sport === "Muscu") && (
+        <Chrono s={f} pret={etat !== "en_cours"} onMaj={(n) => { setF(n); dernier.current = n; onChange(n); }} />
+      )}
       <div className="flex items-center gap-2 text-xs font-bold">
         <span className="rounded-full px-2.5 py-1" style={{ background: e.fond, color: e.couleur }}>{e.nom}</span>
         {f.test && <span className="rounded-full px-2.5 py-1 bg-violet-100 text-violet-700">Séance-test</span>}

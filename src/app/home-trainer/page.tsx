@@ -17,7 +17,7 @@ import dayjs from "dayjs";
 import "dayjs/locale/fr";
 import { Plus_Jakarta_Sans } from "next/font/google";
 import {
-  mdiAlertCircle, mdiBike, mdiChevronDown, mdiChevronUp, mdiTarget, mdiBikeFast, mdiCalendarBlankOutline, mdiCalendarMonth, mdiCheckCircle, mdiChevronLeft, mdiCloudUploadOutline,
+  mdiAlertCircle, mdiBike, mdiChevronDown, mdiChevronUp, mdiTarget, mdiBikeFast, mdiCalendarBlankOutline, mdiCalendarMonth, mdiCheckCircle, mdiCloudUploadOutline,
   mdiDownload, mdiFlagCheckered, mdiHeart, mdiHeartPulse, mdiLightningBolt, mdiMapMarkerDistance, mdiMinus, mdiPause, mdiPauseCircle,
   mdiPictureInPictureBottomRight, mdiPlay, mdiPlus, mdiSkipNext, mdiSkipPrevious, mdiStar,
   mdiStarOutline, mdiTimerOutline, mdiTrophyOutline, mdiFullscreen, mdiFullscreenExit, mdiScaleBathroom,
@@ -36,6 +36,7 @@ import type { Col } from "./ht/cols";
 import { resultatRampe, type Famille } from "./ht/catalogue";
 import Catalogue from "./Catalogue";
 import { Bandeau, bandeauDispo, chrono, ouvrirFenetre, type Actions } from "./Bandeau";
+import Coque from "../Coque";
 import { Bouton, Bulle, Carte, Ciel, degrade, Icone, Jauge, Onglets, Profil, profilDe, Sur } from "./ui";
 
 dayjs.locale("fr");
@@ -718,12 +719,13 @@ function HomeTrainer() {
   const blocsJour = duJour ? depuisIcu(duJour.workout_text!, ftp) : [];
   const avecPastille = simu || bluetoothDispo();
 
+  // La préparation vit dans la coque commune (menu à gauche, 05/11/2026) ;
+  // l'écran pendant qu'on roule, lui, reste en plein écran.
   return (
-    <main className={fond}>
-      <div className="max-w-[1100px] mx-auto space-y-3.5">
+    <Coque titre="Home-trainer">
+      <div className="max-w-[1400px] space-y-3.5">
         <div className="flex items-center gap-1.5">
-          <a href="/athlete" className="-ml-1 p-1 text-slate-800"><Icone d={mdiChevronLeft} taille={28} /></a>
-          <h1 className="flex-1 text-2xl font-extrabold text-slate-800">Home-trainer</h1>
+          <h1 className="flex-1 text-[28px] font-extrabold text-slate-800">Home-trainer</h1>
           {simu && <span className="rounded-full bg-violet-100 px-2 py-0.5 text-xs font-extrabold text-violet-700">simulateur</span>}
           {avecPastille && (
             <button type="button" onClick={() => setMaterielOuvert((x) => !x)}
@@ -938,7 +940,7 @@ function HomeTrainer() {
           </div>
         </div>
       )}
-    </main>
+    </Coque>
   );
 }
 

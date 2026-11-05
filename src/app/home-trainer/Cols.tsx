@@ -2,7 +2,7 @@
 // « Les grands cols » (31/10/2026) : la liste des montées et leur profil.
 // Le profil se dessine comme un vrai profil de col : l'altitude, colorée par
 // tranche de 1 km selon la pente (vert, bleu, rouge, noir, comme les bornes).
-import { mdiFlagCheckered, mdiHeart, mdiImageFilterHdr, mdiPause, mdiPlay, mdiRotateRight, mdiSpeedometer, mdiTimerOutline, mdiTrophyOutline } from "@mdi/js";
+import { mdiFlagCheckered, mdiHeart, mdiMinus, mdiPlus, mdiImageFilterHdr, mdiPause, mdiPlay, mdiRotateRight, mdiSpeedometer, mdiTimerOutline, mdiTrophyOutline } from "@mdi/js";
 import { tempsCol, type Etat } from "./ht/moteur";
 import { COLS, couleurPente, PAS_COL, portion, type Col } from "./ht/cols";
 import { Bouton, Bulle as Pastille, Carte, Icone, Sur, Titre } from "./ui";
@@ -145,8 +145,8 @@ export function ecartFantome(t: number, d: number, total: number, tempsRef: numb
   return dRef - d;   // > 0 : il est devant de tant de mètres
 }
 
-export function EcranCol({ etat, col, poids, zoneFc, record, onPause, onTerminer }: {
-  etat: Etat; col: Col; poids: number | null; zoneFc?: string | null; record: number | null; onPause: () => void; onTerminer: () => void;
+export function EcranCol({ etat, col, poids, zoneFc, record, onPause, onTerminer, onMoins, onPlus }: {
+  etat: Etat; col: Col; poids: number | null; zoneFc?: string | null; record: number | null; onPause: () => void; onTerminer: () => void; onMoins: () => void; onPlus: () => void;
 }) {
   const c = etat.col!;
   const p = c.pente, couleur = couleurPente(p);
@@ -219,12 +219,16 @@ export function EcranCol({ etat, col, poids, zoneFc, record, onPause, onTerminer
         </Carte>
       </div>
 
+      {/* − / + : des vitesses virtuelles ; le home-trainer reçoit la moitié de la pente, comme Zwift (05/11/2026). */}
       <div className="flex items-center justify-center gap-3 pt-1">
+        <button type="button" title="Plus facile" onClick={onMoins} className="w-14 h-14 rounded-full bg-white border border-slate-200 flex items-center justify-center shadow-sm active:scale-95"><Icone d={mdiMinus} taille={26} /></button>
         <button type="button" title="Pause" onClick={onPause} className="w-20 h-20 rounded-full text-white flex items-center justify-center active:scale-95" style={{ background: couleur, boxShadow: `0 6px 18px ${couleur}66` }}>
           <Icone d={etat.pause === "non" ? mdiPause : mdiPlay} taille={40} />
         </button>
+        <button type="button" title="Plus dur" onClick={onPlus} className="w-14 h-14 rounded-full bg-white border border-slate-200 flex items-center justify-center shadow-sm active:scale-95"><Icone d={mdiPlus} taille={26} /></button>
         <button type="button" onClick={onTerminer} className="flex items-center gap-1.5 rounded-full bg-rose-50 px-4 py-2.5 text-sm font-black text-rose-600 hover:bg-rose-100"><Icone d={mdiFlagCheckered} taille={16} /> Abandonner</button>
       </div>
+      <p className="text-center text-[13px] font-bold text-slate-500">Dans les jambes : comme {c.ressenti.toFixed(1).replace(".", ",")} %{c.cran ? ` (${c.cran > 0 ? "+" : "−"}${Math.abs(c.cran)})` : ""} · − plus facile, + plus dur (ou flèches ↓ ↑)</p>
     </div>
   );
 }

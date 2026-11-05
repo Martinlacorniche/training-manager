@@ -454,7 +454,7 @@ function HomeTrainer() {
           ))}
           {etat.pause !== "non" && <div className="flex items-center gap-2 rounded-2xl px-4 py-3 font-extrabold bg-sky-100 text-sky-800"><Icone d={mdiPauseCircle} taille={20} />{etat.pause === "auto" ? "En pause : repédale pour reprendre" : "Prêt ? Pédale pour attaquer la montée"}</div>}
           <EcranCol etat={etat} col={choix.col} poids={profil.poids ?? null} zoneFc={zoneCoeur(etat.bpm, zonesFc)?.texte ?? null} record={records.get(choix.col.id) ?? null}
-            onPause={actions.pause} onTerminer={async () => { if (await demander("Abandonner la montée ?", "Abandonner", true)) actions.terminer(); }} />
+            onPause={actions.pause} onMoins={actions.moins} onPlus={actions.plus} onTerminer={async () => { if (await demander("Abandonner la montée ?", "Abandonner", true)) actions.terminer(); }} />
         </div>
         {fenetre && <Bandeau fenetre={fenetre} zoneFc={zoneCoeur(etat.bpm, zonesFc)?.n ?? null} etat={etat} etapes={[]} ftp={ftp} position={0} police={jakarta.style.fontFamily} perdu={!simu && capteurs.ht && !capteurs.ht.connecte ? "Home-trainer perdu, je le rebranche…" : null} actions={actions} onFermer={() => { fenetre.close(); window.focus(); }} />}
       </main>

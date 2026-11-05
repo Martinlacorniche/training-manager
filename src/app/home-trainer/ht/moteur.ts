@@ -26,6 +26,9 @@
 import { aplatir, type Bloc, type Etape, wattsCibles, LIBRE_PCT } from "./seance";
 import { altitudeA, PAS_COL, penteA, type Col } from "./cols";
 
+/** Part de la pente réelle envoyée au home-trainer sur un col (Zwift : 50 % par défaut). */
+export const DIFFICULTE_COL = 0.5;
+
 export type Consigne = { type: "erg"; w: number } | { type: "pente"; pct: number };
 // c = watts visés ; x = position dans le dessin de la séance (s), pour y tracer les vrais watts
 export type Point = { ts: number; w: number | null; cad: number | null; bpm: number | null; kmh: number; m: number; c: number | null; x: number };
@@ -47,7 +50,7 @@ export type Etat = {
   tour: Moyennes;           // le tour (l'étape) en cours
   tourPrec: Moyennes | null;
   seance: { w: number | null; kj: number; km: number };
-  col: { d: number; total: number; pente: number; alt: number; kmh: number } | null;   // « Les grands cols »
+  col: { d: number; total: number; pente: number; alt: number; kmh: number; ressenti: number; cran: number } | null;   // « Les grands cols »
 };
 
 const PAS = 1000;
@@ -74,6 +77,11 @@ export class Moteur {
   private erg = true;
   private ajust = 1;            // −/+ 5 %
   private pente = 1;            // % en mode résistance
+  // Col (05/11/2026, Martin : « impossible de pédaler » sur le Faron) : comme Zwift,
+  // le home-trainer reçoit la moitié de la pente, et − / + font des vitesses
+  // virtuelles (un cran = 1 % de pente ressentie). La progression sur le col,
+  // elle, vient toujours de tes watts sur la vraie pente.
+  private cranCol = 0;
   private wBpm: number;         // watts tenus par la régulation cardio
   private derniereRegul = 0;
   private bas = 0;              // depuis quand la cadence est basse (ms), 0 = non
@@ -150,9 +158,14 @@ export class Moteur {
     // Au début d'une étape, revient à la précédente ; sinon recommence l'étape.
     this.passer(this.tEtape < 5 ? Math.max(0, this.i - 1) : this.i);
   }
-  plus() { if (this.erg) this.ajust = Math.min(1.5, Math.round((this.ajust + 0.05) * 100) / 100); else this.pente = Math.min(15, this.pente + 1); }
-  moins() { if (this.erg) this.ajust = Math.max(0.5, Math.round((this.ajust - 0.05) * 100) / 100); else this.pente = Math.max(-5, this.pente - 1); }
+  plus() { if (this.col) { this.cranCol = Math.min(6, this.cranCol + 1); return; } if (this.erg) this.ajust = Math.min(1.5, Math.round((this.ajust + 0.05) * 100) / 100); else this.pente = Math.min(15, this.pente + 1); }
+  moins() { if (this.col) { this.cranCol = Math.max(-8, this.cranCol - 1); return; } if (this.erg) this.ajust = Math.max(0.5, Math.round((this.ajust - 0.05) * 100) / 100); else this.pente = Math.max(-5, this.pente - 1); }
   basculerErg() { this.erg = !this.erg; }
+  /** Ce que le home-trainer fait sentir sur un col : la moitié de la pente, plus les crans. */
+  private penteRessentie(): number {
+    if (!this.col) return this.pente;
+    return Math.max(-5, Math.round((penteA(this.col, this.dCol) * DIFFICULTE_COL + this.cranCol) * 10) / 10);
+  }
   /** Toutes les étapes faites (et pas « Terminer » en cours de route). */
   get bouclee() { return this.etapes.length > 0 && this.i >= this.etapes.length; }
   terminer() { this.fermerTour(); this.fini = true; this.pause = "manuelle"; }
@@ -255,7 +268,7 @@ export class Moteur {
       }
       if (et.lap && this.tEtape >= et.s) alerte = "Appuie sur ⏭ quand tu es prêt";
     }
-    if (this.col) consigne = { type: "pente", pct: Math.round(penteA(this.col, this.dCol) * 10) / 10 };
+    if (this.col) consigne = { type: "pente", pct: this.penteRessentie() };
     if (this.pause !== "non" && !this.fini) consigne = { type: "pente", pct: 0 };
     if (this.sansPedaler(et) && !this.fini) { consigne = { type: "pente", pct: 0 }; alerte = "Arrête de pédaler, reste assis sans bouger"; }
     // Rampe : quand on ne suit plus, c'est fini — retour au calme.
@@ -300,7 +313,7 @@ export class Moteur {
       alerte, attendLap: !!(et?.lap && this.tEtape >= et.s),
       reserve: this.wBal != null && this.w0 ? Math.max(0, Math.min(1, this.wBal / this.w0)) : null,
       w3s,
-      col: this.col ? { d: this.dCol, total: this.col.km * 1000, pente: penteA(this.col, this.dCol), alt: altitudeA(this.col, this.dCol), kmh: this.kmh } : null,
+      col: this.col ? { d: this.dCol, total: this.col.km * 1000, pente: penteA(this.col, this.dCol), alt: altitudeA(this.col, this.dCol), kmh: this.kmh, ressenti: this.penteRessentie(), cran: this.cranCol } : null,
       // Des sommes tenues au fil de l'eau : rien n'est recalculé sur toute la séance à chaque image
       tour: this.sTour.moyennes(),
       tourPrec: this.tourPrec,

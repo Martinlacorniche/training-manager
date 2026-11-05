@@ -218,11 +218,11 @@ function CoqueEspace({ children, chemin }: { children: React.ReactNode; chemin: 
 
   return (
     <Contexte.Provider value={{ moi, athletes, etats, recharger, setEtroit, setSansMenu }}>
-      <div className="min-h-screen bg-[#F8FAFC] text-slate-800 font-sans">
+      <div className="min-h-screen text-slate-800 font-sans">
         {/* Grand écran : menu fixe de 240 px. */}
         {/* Le menu disparaît pendant qu'on roule, sans toucher à l'arbre de la page
             (le home-trainer en cours ne doit jamais repartir de zéro). */}
-        <aside className={`${sansMenu ? "hidden" : "hidden lg:block"} fixed inset-y-0 left-0 bg-white border-r border-slate-200 z-30 transition-[width] ${etroit ? "w-[72px]" : "w-60"}`}>
+        <aside className={`${sansMenu ? "hidden" : "hidden lg:block"} fixed inset-y-0 left-0 bg-white/70 backdrop-blur-xl border-r border-white/80 z-30 transition-[width] ${etroit ? "w-[72px]" : "w-60"}`}>
           {etroit ? <Menu moi={moi} athletes={athletes} etats={etats} chemin={chemin} athleteActif={athleteActif} onDeconnexion={deconnexion} etroit /> : menu}
         </aside>
         {/* Petit écran : barre du haut et menu en tiroir. */}

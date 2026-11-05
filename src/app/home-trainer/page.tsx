@@ -420,7 +420,7 @@ function HomeTrainer() {
   const etapes = useMemo(() => (choix ? aplatir(choix.blocs) : []), [choix]);
   const lecture = depuisCourt(texte, ftp);
   const pret = simu || !!capteurs.ht?.connecte;
-  const fond = `${jakarta.className} min-h-screen bg-[#F8FAFC] px-4 py-6 md:py-10`;
+  const fond = `${jakarta.className} min-h-screen px-4 py-6 md:py-10`;
 
   // ─────────────────────────── Rouler un col ───────────────────────────
   // Pendant qu'on roule et à la fin : plein écran, le menu de gauche se cache.

@@ -834,6 +834,7 @@ function AthleteMetrics({ athleteId }: { athleteId: string }) {
   const [vma, setVma] = React.useState<string>("");
   const [ftp, setFtp] = React.useState<string>("");
   const [loading, setLoading] = React.useState(false);
+  const [ouvert, setOuvert] = React.useState(false);
 
   useEffect(() => {
     (async () => {
@@ -853,7 +854,12 @@ function AthleteMetrics({ athleteId }: { athleteId: string }) {
   const ftpNum = ftp ? Number(ftp) : null;
 
   return (
-    <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-700 space-y-3 shadow-sm">
+    <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-700 space-y-3 shadow-sm">
+      <button onClick={() => setOuvert((o) => !o)} className="w-full flex items-center justify-between gap-2 text-left">
+        <span className="text-xs font-bold uppercase text-slate-400 tracking-wider">Mes repères</span>
+        <span className="text-sm font-extrabold text-slate-700">{[vmaNum ? `VMA ${String(vmaNum).replace(".", ",")}` : "", ftpNum ? `FTP ${ftpNum} W` : ""].filter(Boolean).join(" · ") || "À renseigner"} <span className="text-slate-400">{ouvert ? "▴" : "▾"}</span></span>
+      </button>
+      {ouvert && <>
       <div className="grid grid-cols-2 gap-2">
         <label className="text-[10px] uppercase font-bold text-slate-500">VMA (km/h)<input type="number" step="0.1" value={vma} onChange={e=>setVma(e.target.value)} className="mt-1 w-full rounded border border-slate-200 px-2 py-1 text-sm"/></label>
         <label className="text-[10px] uppercase font-bold text-slate-500">FTP (w)<input type="number" value={ftp} onChange={e=>setFtp(e.target.value)} className="mt-1 w-full rounded border border-slate-200 px-2 py-1 text-sm"/></label>
@@ -865,6 +871,7 @@ function AthleteMetrics({ athleteId }: { athleteId: string }) {
           <tbody>{PCTS.map(pct => { const frac = pct/100; return (<tr key={pct}><td className="py-0.5 font-bold text-slate-600">{pct}%</td><td className="py-0.5 text-center text-slate-500">{vmaNum ? paceFromKmh(vmaNum*frac) : "-"}</td><td className="py-0.5 text-center text-slate-500">{ftpNum ? Math.round(ftpNum*frac) + "w" : "-"}</td></tr>); })}</tbody>
         </table>
       )}
+      </>}
     </div>
   );
 }
@@ -1178,69 +1185,10 @@ function AthletePage() {
       <div className="px-4 lg:px-7 py-5 grid grid-cols-12 gap-5">
         
         {/* Sidebar */}
-        {/* Écran moyen : ces cartes en bandeau au-dessus de la semaine, qui garde toute la largeur. */}
-        <aside className="col-span-12 2xl:col-span-2 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-1 gap-4 items-start">
-          {/* Bilan Hebdo (Nouveau) */}
-          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-              <div className="flex justify-between items-center mb-3">
-                  <div className="text-xs font-bold uppercase text-slate-400 tracking-wider">Ma Semaine</div>
-                  <button onClick={()=>setReviewOpen(true)} className="text-emerald-600 hover:bg-emerald-50 p-1 rounded transition"><Notebook size={18}/></button>
-              </div>
-              
-              <div className="flex flex-col gap-2">
-                  {/* Charge Sport */}
-                  <div className="flex items-center justify-between p-2 bg-slate-50 rounded-lg">
-                      <div className="flex items-center gap-2 text-slate-600"><LoadIcon size={16} weight="duotone"/> <span className="text-xs font-bold">Effort de la semaine</span></div>
-                      <div className="text-sm font-bold text-slate-800">{stats.load.toFixed(0)}</div>
-                  </div>
-                  {/* Charge Vie */}
-                  <button onClick={()=>setReviewOpen(true)} className={`flex items-center justify-between p-2 rounded-lg border transition hover:shadow-md ${weeklyReview ? "bg-white border-emerald-200" : "bg-white border-dashed border-slate-300"}`}>
-                      <div className="flex items-center gap-2 text-slate-600"><Smiley size={16} weight="duotone"/> <span className="text-xs font-bold">Ma semaine hors sport</span></div>
-                      {weeklyReview ? (
-                          <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${weeklyReview.rpe_life <= 3 ? "bg-emerald-100 text-emerald-700" : weeklyReview.rpe_life <= 6 ? "bg-amber-100 text-amber-700" : "bg-rose-100 text-rose-700"}`}>
-                              {weeklyReview.rpe_life}/9
-                          </span>
-                      ) : (
-                          <span className="text-[10px] text-slate-400 italic">Noter</span>
-                      )}
-                  </button>
-              </div>
-          </div>
-
-          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="text-xs font-bold uppercase text-slate-400 tracking-wider mb-3">Progression</div>
-            <div className="flex items-center gap-4 text-sm text-slate-700 mb-2">
-              <div className="flex items-center gap-2"><Clock size={16} className="text-slate-400"/><span>{fmtTime(stats.time)}</span></div>
-              <div className="flex items-center gap-2"><span className={`inline-block w-2 h-2 rounded-full ${stats.validated === stats.total ? "bg-emerald-500" : "bg-slate-300"}`} /> <span>{stats.validated}/{stats.total} séances</span></div>
-            </div>
-            <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
-                <div className="h-full bg-blue-500 rounded-full transition-all duration-500" style={{width: `${stats.progress}%`}} />
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-700 shadow-sm">
-            <div className="text-xs font-bold uppercase text-slate-400 tracking-wider mb-2">Infos</div>
-            <div className="space-y-2 text-xs">
-              <div className="flex justify-between"><span>Prochaine course</span> <span className="font-bold text-slate-900">{nextRaceText}</span></div>
-            </div>
-          </div>
-
-          {athlete && <AthleteMetrics athleteId={athlete.id_auth} />}
-        </aside>
-
-        {/* Main Grid */}
         <section className="col-span-12 2xl:col-span-10">
           {/* Rien tant qu'il n'y a ni grossesse visible ni surprise déclenchée */}
           <CarteBebe userId={athlete?.id_auth} partnerId={(athlete as UserType & { partner_id?: string | null } | null)?.partner_id} />
-          {athlete && (
-            <AthleteThematicCalendar
-              athleteId={athlete.id_auth}
-              onWeekClick={(week_start) => {
-                const offset = dayjs(week_start).startOf("isoWeek").diff(dayjs().startOf("isoWeek"), "week");
-                setWeekOffset(offset);
-              }}
-            />
-          )} {/* <<< Calendrier Thématique : clic sur une semaine → planning ci-dessous */}
+
 
           <DragDropContext onDragEnd={onDragEnd}>
             <div className="grid grid-cols-1 md:grid-cols-7 gap-3">
@@ -1361,7 +1309,68 @@ function AthletePage() {
             </div>
           )}
 
+          <div className="mt-5">
+          {athlete && (
+            <AthleteThematicCalendar
+              athleteId={athlete.id_auth}
+              onWeekClick={(week_start) => {
+                const offset = dayjs(week_start).startOf("isoWeek").diff(dayjs().startOf("isoWeek"), "week");
+                setWeekOffset(offset);
+              }}
+            />
+          )}
+          </div>
         </section>
+
+        {/* La semaine d'abord (05/11) ; ces cartes en dessous, à gauche sur très grand écran. */}
+        <aside className="col-span-12 2xl:col-span-2 2xl:order-first grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-1 gap-4 items-start">
+          {/* Bilan Hebdo (Nouveau) */}
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+              <div className="flex justify-between items-center mb-3">
+                  <div className="text-xs font-bold uppercase text-slate-400 tracking-wider">Ma Semaine</div>
+                  <button onClick={()=>setReviewOpen(true)} className="text-emerald-600 hover:bg-emerald-50 p-1 rounded transition"><Notebook size={18}/></button>
+              </div>
+              
+              <div className="flex flex-col gap-2">
+                  {/* Charge Sport */}
+                  <div className="flex items-center justify-between p-2 bg-slate-50 rounded-lg">
+                      <div className="flex items-center gap-2 text-slate-600"><LoadIcon size={16} weight="duotone"/> <span className="text-xs font-bold">Effort de la semaine</span></div>
+                      <div className="text-sm font-bold text-slate-800">{stats.load.toFixed(0)}</div>
+                  </div>
+                  {/* Charge Vie */}
+                  <button onClick={()=>setReviewOpen(true)} className={`flex items-center justify-between p-2 rounded-lg border transition hover:shadow-md ${weeklyReview ? "bg-white border-emerald-200" : "bg-white border-dashed border-slate-300"}`}>
+                      <div className="flex items-center gap-2 text-slate-600"><Smiley size={16} weight="duotone"/> <span className="text-xs font-bold">Ma semaine hors sport</span></div>
+                      {weeklyReview ? (
+                          <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${weeklyReview.rpe_life <= 3 ? "bg-emerald-100 text-emerald-700" : weeklyReview.rpe_life <= 6 ? "bg-amber-100 text-amber-700" : "bg-rose-100 text-rose-700"}`}>
+                              {weeklyReview.rpe_life}/9
+                          </span>
+                      ) : (
+                          <span className="text-[10px] text-slate-400 italic">Noter</span>
+                      )}
+                  </button>
+              </div>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="text-xs font-bold uppercase text-slate-400 tracking-wider mb-3">Progression</div>
+            <div className="flex items-center gap-4 text-sm text-slate-700 mb-2">
+              <div className="flex items-center gap-2"><Clock size={16} className="text-slate-400"/><span>{fmtTime(stats.time)}</span></div>
+              <div className="flex items-center gap-2"><span className={`inline-block w-2 h-2 rounded-full ${stats.validated === stats.total ? "bg-emerald-500" : "bg-slate-300"}`} /> <span>{stats.validated}/{stats.total} séances</span></div>
+            </div>
+            <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
+                <div className="h-full bg-blue-500 rounded-full transition-all duration-500" style={{width: `${stats.progress}%`}} />
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-700 shadow-sm">
+            <div className="text-xs font-bold uppercase text-slate-400 tracking-wider mb-2">Infos</div>
+            <div className="space-y-2 text-xs">
+              <div className="flex justify-between"><span>Prochaine course</span> <span className="font-bold text-slate-900">{nextRaceText}</span></div>
+            </div>
+          </div>
+
+          {athlete && <AthleteMetrics athleteId={athlete.id_auth} />}
+        </aside>
       </div>
 
       {/* Modals */}

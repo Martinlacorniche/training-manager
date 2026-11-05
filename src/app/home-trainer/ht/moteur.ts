@@ -53,7 +53,7 @@ export type Etat = {
   tour: Moyennes;           // le tour (l'étape) en cours
   tourPrec: Moyennes | null;
   seance: { w: number | null; kj: number; km: number };
-  col: { d: number; total: number; pente: number; alt: number; kmh: number; pignon: number; pignons: number } | null;   // « Les grands cols »
+  col: { d: number; total: number; pente: number; alt: number; kmh: number; pignon: number; pignons: number; virtuels: boolean } | null;   // « Les grands cols »
 };
 
 const PAS = 1000;
@@ -85,6 +85,8 @@ export class Moteur {
   // le Zwift Ride. Au pignon neutre, le home-trainer reçoit la pente telle quelle
   // (un vrai vélo y passe ses vraies vitesses).
   private pignon = PIGNON_NEUTRE;
+  // Seulement avec un guidon branché (Martin : « sinon démerde-toi avec ta vraie cassette »).
+  private virtuels = false;
   private wBpm: number;         // watts tenus par la régulation cardio
   private derniereRegul = 0;
   private bas = 0;              // depuis quand la cadence est basse (ms), 0 = non
@@ -161,8 +163,10 @@ export class Moteur {
     // Au début d'une étape, revient à la précédente ; sinon recommence l'étape.
     this.passer(this.tEtape < 5 ? Math.max(0, this.i - 1) : this.i);
   }
-  plus() { if (this.col) { this.pignon = Math.min(PIGNONS.length - 1, this.pignon + 1); return; } if (this.erg) this.ajust = Math.min(1.5, Math.round((this.ajust + 0.05) * 100) / 100); else this.pente = Math.min(15, this.pente + 1); }
-  moins() { if (this.col) { this.pignon = Math.max(0, this.pignon - 1); return; } if (this.erg) this.ajust = Math.max(0.5, Math.round((this.ajust - 0.05) * 100) / 100); else this.pente = Math.max(-5, this.pente - 1); }
+  /** Guidon branché ou non : sans lui, pas de pignons virtuels, la pente part telle quelle. */
+  pignonsVirtuels(oui: boolean) { this.virtuels = oui; if (!oui) this.pignon = PIGNON_NEUTRE; }
+  plus() { if (this.col) { if (!this.virtuels) return; this.pignon = Math.min(PIGNONS.length - 1, this.pignon + 1); return; } if (this.erg) this.ajust = Math.min(1.5, Math.round((this.ajust + 0.05) * 100) / 100); else this.pente = Math.min(15, this.pente + 1); }
+  moins() { if (this.col) { if (!this.virtuels) return; this.pignon = Math.max(0, this.pignon - 1); return; } if (this.erg) this.ajust = Math.max(0.5, Math.round((this.ajust - 0.05) * 100) / 100); else this.pente = Math.max(-5, this.pente - 1); }
   basculerErg() { this.erg = !this.erg; }
   /**
    * La pente à envoyer pour faire sentir le pignon virtuel. Le couple aux
@@ -324,7 +328,7 @@ export class Moteur {
       alerte, attendLap: !!(et?.lap && this.tEtape >= et.s),
       reserve: this.wBal != null && this.w0 ? Math.max(0, Math.min(1, this.wBal / this.w0)) : null,
       w3s,
-      col: this.col ? { d: this.dCol, total: this.col.km * 1000, pente: penteA(this.col, this.dCol), alt: altitudeA(this.col, this.dCol), kmh: this.kmh, pignon: this.pignon + 1, pignons: PIGNONS.length } : null,
+      col: this.col ? { d: this.dCol, total: this.col.km * 1000, pente: penteA(this.col, this.dCol), alt: altitudeA(this.col, this.dCol), kmh: this.kmh, pignon: this.pignon + 1, pignons: PIGNONS.length, virtuels: this.virtuels } : null,
       // Des sommes tenues au fil de l'eau : rien n'est recalculé sur toute la séance à chaque image
       tour: this.sTour.moyennes(),
       tourPrec: this.tourPrec,

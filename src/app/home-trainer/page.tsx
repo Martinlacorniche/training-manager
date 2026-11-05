@@ -427,6 +427,9 @@ function HomeTrainer() {
   const sansMenu = (phase === "rouler" && !!etat && !!choix) || (phase === "fin" && !!moteur.current && !!choix);
   const { setSansMenu } = useCoque();
   useEffect(() => { setSansMenu(sansMenu); return () => setSansMenu(false); }, [sansMenu, setSansMenu]);
+  // Pignons virtuels des cols : seulement quand le guidon est branché.
+  const guidonBranche = !!capteurs.guidon?.connecte;
+  useEffect(() => { moteur.current?.pignonsVirtuels(guidonBranche); }, [guidonBranche, phase]);
 
   if (phase === "rouler" && etat && choix?.col && etat.col) {
     const perdusCol = (["ht", "cardio", "pedales"] as Source[]).filter((x) => !simu && capteurs[x] && !capteurs[x]!.connecte);

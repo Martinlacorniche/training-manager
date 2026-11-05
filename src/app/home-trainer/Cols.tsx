@@ -221,14 +221,24 @@ export function EcranCol({ etat, col, poids, zoneFc, record, onPause, onTerminer
 
       {/* − / + : des pignons virtuels, comme le Zwift Ride ; la pente reste la vraie (05/11/2026). */}
       <div className="flex items-center justify-center gap-3 pt-1">
-        <button type="button" title="Pignon plus souple" onClick={onMoins} className="w-14 h-14 rounded-full bg-white border border-slate-200 flex items-center justify-center shadow-sm active:scale-95"><Icone d={mdiMinus} taille={26} /></button>
+        {c.virtuels && <button type="button" title="Pignon plus souple" onClick={onMoins} className="w-14 h-14 rounded-full bg-white border border-slate-200 flex items-center justify-center shadow-sm active:scale-95"><Icone d={mdiMinus} taille={26} /></button>}
         <button type="button" title="Pause" onClick={onPause} className="w-20 h-20 rounded-full text-white flex items-center justify-center active:scale-95" style={{ background: couleur, boxShadow: `0 6px 18px ${couleur}66` }}>
           <Icone d={etat.pause === "non" ? mdiPause : mdiPlay} taille={40} />
         </button>
-        <button type="button" title="Pignon plus dur" onClick={onPlus} className="w-14 h-14 rounded-full bg-white border border-slate-200 flex items-center justify-center shadow-sm active:scale-95"><Icone d={mdiPlus} taille={26} /></button>
+        {c.virtuels && <button type="button" title="Pignon plus dur" onClick={onPlus} className="w-14 h-14 rounded-full bg-white border border-slate-200 flex items-center justify-center shadow-sm active:scale-95"><Icone d={mdiPlus} taille={26} /></button>}
         <button type="button" onClick={onTerminer} className="flex items-center gap-1.5 rounded-full bg-rose-50 px-4 py-2.5 text-sm font-black text-rose-600 hover:bg-rose-100"><Icone d={mdiFlagCheckered} taille={16} /> Abandonner</button>
       </div>
-      <p className="text-center text-[13px] font-bold text-slate-500">Pignon {c.pignon} / {c.pignons} · − plus souple, + plus dur (ou flèches ↓ ↑) · la pente reste la vraie</p>
+      {c.virtuels && (
+        // La cassette : plus souple à gauche, plus dur à droite, le pignon en cours en bleu.
+        <div className="flex flex-col items-center gap-1.5">
+          <div className="flex items-end gap-[3px] h-11">
+            {Array.from({ length: c.pignons }, (_, i) => (
+              <span key={i} className="rounded-[3px]" style={{ width: i + 1 === c.pignon ? 9 : 6, height: 44 - i * 1.3, background: i + 1 === c.pignon ? "#2563eb" : i + 1 < c.pignon ? "#93c5fd" : "#e2e8f0" }} />
+            ))}
+          </div>
+          <p className="text-[14px] font-black text-slate-800">Pignon {c.pignon} <span className="font-bold text-slate-400">/ {c.pignons} · palettes du guidon ou flèches ↓ ↑ · la pente reste la vraie</span></p>
+        </div>
+      )}
     </div>
   );
 }

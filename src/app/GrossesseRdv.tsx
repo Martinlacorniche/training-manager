@@ -1,4 +1,5 @@
 "use client";
+import { demander, prevenir } from "./fenetres";
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { BabyCarriage, FlowerLotus, HandHeart, Stethoscope, X } from "@phosphor-icons/react";
@@ -53,18 +54,18 @@ export default function GrossesseRdv({ open, rdv, jourInitial, userId, lectureSe
 
   const enregistrer = async () => {
     const h = lireHeure(heure);
-    if (h === false) return alert("Écris l'heure comme 10h30.");
-    if (!titre.trim()) return alert("Donne un nom au rendez-vous (ex. : Écho du 1er trimestre).");
-    if (!jour) return alert("Choisis le jour.");
+    if (h === false) return prevenir("Écris l'heure comme 10h30.");
+    if (!titre.trim()) return prevenir("Donne un nom au rendez-vous (ex. : Écho du 1er trimestre).");
+    if (!jour) return prevenir("Choisis le jour.");
     setEnvoi(true);
     const ligne = { user_id: userId, jour, heure: h, genre, titre: titre.trim(), lieu: lieu.trim() || null, note: note.trim() || null };
     const { error } = rdv ? await supabase.from("grossesse_rdv").update(ligne).eq("id", rdv.id) : await supabase.from("grossesse_rdv").insert(ligne);
     setEnvoi(false);
-    if (error) return alert(error.message);
+    if (error) return prevenir(error.message);
     onSaved(); onClose();
   };
   const supprimer = async () => {
-    if (!rdv || !confirm("Supprimer ce rendez-vous ?")) return;
+    if (!rdv || !await demander("Supprimer ce rendez-vous ?")) return;
     await supabase.from("grossesse_rdv").delete().eq("id", rdv.id);
     onSaved(); onClose();
   };

@@ -1,4 +1,5 @@
 "use client";
+import { demander, prevenir } from "../fenetres";
 import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import StravaSyncDialog from "../StravaSyncDialog";
@@ -159,7 +160,7 @@ function WeeklyReviewModal({ open, onClose, weekStart, userId, initial, onSaved 
         };
         const { error } = await supabase.from("weekly_reviews").upsert(payload, { onConflict: "user_id, week_start" });
         setLoading(false);
-        if(error) alert(error.message);
+        if(error) prevenir(error.message);
         else {
             onSaved(payload as WeeklyReviewType);
             onClose();
@@ -271,9 +272,9 @@ function ValidateModal({ open, onClose, onSaved, initial, stravaConnected, onSyn
   const isDone = initial.status === "valide";
 
   async function revenir() {
-    if (!initial || !confirm("Revenir à la séance du coach ?")) return;
+    if (!initial || !await demander("Revenir à la séance du coach ?")) return;
     try { await adapter(initial.id, "retirer"); onAdaptee?.(); }
-    catch (e) { alert("Oups : " + (e as Error).message); }
+    catch (e) { prevenir("Oups : " + (e as Error).message); }
   }
 
   async function submit(e: React.FormEvent) {
@@ -297,7 +298,7 @@ function ValidateModal({ open, onClose, onSaved, initial, stravaConnected, onSyn
       if (error) throw error;
       if (data) onSaved(data as SessionType);
     } catch (err:any) {
-      alert("Erreur: " + (err?.message || "inconnue"));
+      prevenir("Erreur: " + (err?.message || "inconnue"));
     } finally {
       setLoading(false);
     }
@@ -454,8 +455,11 @@ const chronoChamps = (heures?: number | null) => {
   const t = Math.round(heures * 3600);
   return { h: String(Math.floor(t / 3600)), m: String(Math.floor((t % 3600) / 60)), s: String(t % 60).padStart(2, "0") };
 };
-function AbsenceModal({ open, onClose, onSaved, initial, athleteId, date }:{ open: boolean; onClose: ()=>void; onSaved: (a: AbsenceType, isEdit: boolean)=>void; initial?: AbsenceType | null; athleteId: string; date: string; }) {
+function AbsenceModal({ open, onClose, onSaved, onDeleted, initial, athleteId, date }:{ open: boolean; onClose: ()=>void; onSaved: (a: AbsenceType, isEdit: boolean)=>void; onDeleted: (id: string)=>void; initial?: AbsenceType | null; athleteId: string; date: string; }) {
   const isEdit = !!initial;
+  // Supprimer en deux touches dans la fenêtre, sans la boîte grise du navigateur.
+  const [confirmer, setConfirmer] = useState(false);
+  const [erreurSuppr, setErreurSuppr] = useState("");
   const [type, setType] = useState<string>(initial?.type || "off");
   const [name, setName] = useState<string>(initial?.name || "");
   const [distance, setDistance] = useState<string>(initial?.distance_km?.toString() || "");
@@ -517,13 +521,16 @@ function AbsenceModal({ open, onClose, onSaved, initial, athleteId, date }:{ ope
       else ({ data, error } = await supabase.from("absences_competitions").insert(payload).select().single());
       if (error) throw error;
       if (data) onSaved(data as AbsenceType, isEdit);
-    } catch (err: any) { alert("Erreur: " + (err?.message || "inconnue")); } finally { setLoading(false); }
+    } catch (err: any) { prevenir("Erreur: " + (err?.message || "inconnue")); } finally { setLoading(false); }
   }
 
   async function del() {
-    if (!isEdit || !confirm("Supprimer ?")) return;
-    await supabase.from("absences_competitions").delete().eq("id", initial!.id);
-    onClose();
+    if (!isEdit) return;
+    if (!confirmer) { setConfirmer(true); return; }
+    const { error } = await supabase.from("absences_competitions").delete().eq("id", initial!.id);
+    if (error) { setErreurSuppr(`Pas supprimée : ${error.message}`); return; }
+    setConfirmer(false);
+    onDeleted(initial!.id);
   }
 
   return (
@@ -592,7 +599,13 @@ function AbsenceModal({ open, onClose, onSaved, initial, athleteId, date }:{ ope
           <label className="block text-sm font-bold text-slate-700">Pourquoi ? <textarea value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Ex : vacances, fatigue (facultatif)" className="mt-1 w-full rounded-lg border border-slate-200 p-2 bg-slate-50 min-h-[60px]" /></label>
         )}
         <div className="flex justify-between pt-2">
-          {isEdit ? <button type="button" onClick={del} className="px-3 py-2 rounded-lg text-rose-600 border border-rose-100 hover:bg-rose-50"><Trash size={18}/></button> : <span/>}
+          {isEdit ? (
+            <span className="flex items-center gap-2">
+              <button type="button" onClick={del} className={`px-3 py-2 rounded-lg font-bold text-sm flex items-center gap-1.5 ${confirmer ? "bg-rose-600 text-white" : "text-rose-600 border border-rose-100 hover:bg-rose-50"}`}><Trash size={18}/>{confirmer ? "Oui, supprimer" : null}</button>
+              {confirmer && <button type="button" onClick={() => setConfirmer(false)} className="text-sm font-bold text-slate-500">Non</button>}
+              {erreurSuppr && <span className="text-xs font-bold text-rose-600">{erreurSuppr}</span>}
+            </span>
+          ) : <span/>}
           <div className="flex gap-2">
             <button type="button" onClick={onClose} className="px-4 py-2 rounded-lg bg-white border border-slate-200 text-slate-700">Annuler</button>
             <button disabled={loading} className="px-4 py-2 rounded-lg text-white bg-emerald-600 hover:bg-emerald-700 font-bold">{loading?"...":isEdit?"Sauver":"Créer"}</button>
@@ -848,7 +861,7 @@ function AthleteMetrics({ athleteId }: { athleteId: string }) {
     const payload = { user_id: athleteId, vma_kmh: vma ? Number(vma) : null, ftp_w: ftp ? Number(ftp) : null, updated_at: new Date().toISOString() };
     const { error } = await supabase.from("athlete_metrics").upsert(payload, { onConflict: "user_id" });
     setLoading(false);
-    if (error) alert(error.message);
+    if (error) prevenir(error.message);
   }
   const vmaNum = vma ? Number(vma) : null;
   const ftpNum = ftp ? Number(ftp) : null;
@@ -1021,13 +1034,13 @@ function AthletePage() {
     // L'URL vient du serveur : il y signe le `state` qui dit à quel compte
     // rattacher Strava (App-Coach, supabase/functions/_shared/strava-state.ts).
     const { data, error } = await supabase.functions.invoke("strava-connect", { body: { web: true } });
-    if (error || !data?.url) { alert("La connexion Strava a échoué, réessaie."); return; }
+    if (error || !data?.url) { prevenir("La connexion Strava a échoué, réessaie."); return; }
     window.location.href = data.url;
   }
 
   async function disconnectStrava() {
     if (!athlete?.id_auth) return;
-    if (!confirm("Déconnecter Strava ? La synchronisation automatique sera désactivée.")) return;
+    if (!await demander("Déconnecter Strava ? La synchronisation automatique sera désactivée.")) return;
     await supabase.from("users").update({
       strava_athlete_id: null,
       strava_access_token: null,
@@ -1045,15 +1058,15 @@ function AthletePage() {
     if (!strava) return;
     if (strava === "success") {
       const name = params.get("athlete") || "";
-      alert(name ? `Strava connecté ✅\nCompte lié : ${name}\n\nSi ce n'est pas ton compte, déconnecte Strava et reconnecte-toi.` : "Strava connecté ✅");
+      prevenir(name ? `Strava connecté ✅\nCompte lié : ${name}\n\nSi ce n'est pas ton compte, déconnecte Strava et reconnecte-toi.` : "Strava connecté ✅");
     } else {
       const reason = params.get("reason");
       if (reason === "athlete_taken") {
-        alert("Ce compte Strava est déjà associé à un autre utilisateur de l'app.");
+        prevenir("Ce compte Strava est déjà associé à un autre utilisateur de l'app.");
       } else if (reason === "access_denied") {
-        alert("Connexion Strava annulée.");
+        prevenir("Connexion Strava annulée.");
       } else {
-        alert("La connexion Strava a échoué, réessaie.");
+        prevenir("La connexion Strava a échoué, réessaie.");
       }
     }
     // Nettoie l'URL pour éviter re-trigger au refresh
@@ -1249,7 +1262,7 @@ function AthletePage() {
                                     s={s}
                                     onEdit={()=>{ setCurrentSession(s); setValidateOpen(true); }}
                                     onDelete={async ()=>{
-                                      if (confirm("Supprimer cette séance ?")) {
+                                      if (await demander("Supprimer cette séance ?")) {
                                         await supabase.from("sessions").delete().eq("id", s.id);
                                         setSessions(prev => prev.filter(x => x.id !== s.id));
                                       }
@@ -1299,7 +1312,7 @@ function AthletePage() {
                           // Séance adaptée du duo (grossesse, 15/10/2026) : on copie la version de SON coach, pour ne rien trahir.
                           const src = pe.original ? { ...pe, ...pe.original } : pe;
                           const { error } = await supabase.from("sessions").insert({ user_id: athlete!.id_auth, date: src.date, sport: src.sport || "Vélo", title: src.title || "", planned_hour: src.planned_hour ?? null, intensity: src.intensity || "basse", planned_inter: src.planned_inter || "", status: "planned" });
-                          if (error) alert(error.message); else setRefreshTick((t) => t + 1);
+                          if (error) prevenir(error.message); else setRefreshTick((t) => t + 1);
                         }} className="w-7 h-6 rounded-md bg-slate-200 text-blue-600 font-black text-sm hover:bg-slate-300">+</button>
                       )}
                     </div>
@@ -1312,6 +1325,7 @@ function AthletePage() {
           <div className="mt-5">
           {athlete && (
             <AthleteThematicCalendar
+              key={refreshTick}
               athleteId={athlete.id_auth}
               onWeekClick={(week_start) => {
                 const offset = dayjs(week_start).startOf("isoWeek").diff(dayjs().startOf("isoWeek"), "week");
@@ -1394,6 +1408,7 @@ function AthletePage() {
             <AbsenceModal
                 open={absenceOpen}
                 onClose={()=>{ setAbsenceOpen(false); }}
+                onDeleted={(id) => { setAbsenceOpen(false); setAbsences(prev => prev.filter(x => x.id !== id)); setRefreshTick((t) => t + 1); }}
                 onSaved={(aa, isEdit)=>{
                     setAbsenceOpen(false);
                     if (isEdit) setAbsences(prev => prev.map(x => x.id === aa.id ? aa : x));

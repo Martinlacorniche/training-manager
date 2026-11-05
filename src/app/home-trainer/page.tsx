@@ -37,6 +37,7 @@ import { resultatRampe, type Famille } from "./ht/catalogue";
 import Catalogue from "./Catalogue";
 import { Bandeau, bandeauDispo, chrono, ouvrirFenetre, type Actions } from "./Bandeau";
 import Coque from "../Coque";
+import { demander } from "../fenetres";
 import { Bouton, Bulle, Carte, Ciel, degrade, Icone, Jauge, Onglets, Profil, profilDe, Sur } from "./ui";
 
 dayjs.locale("fr");
@@ -448,7 +449,7 @@ function HomeTrainer() {
           ))}
           {etat.pause !== "non" && <div className="flex items-center gap-2 rounded-2xl px-4 py-3 font-extrabold bg-sky-100 text-sky-800"><Icone d={mdiPauseCircle} taille={20} />{etat.pause === "auto" ? "En pause : repédale pour reprendre" : "Prêt ? Pédale pour attaquer la montée"}</div>}
           <EcranCol etat={etat} col={choix.col} poids={profil.poids ?? null} zoneFc={zoneCoeur(etat.bpm, zonesFc)?.texte ?? null} record={records.get(choix.col.id) ?? null}
-            onPause={actions.pause} onTerminer={() => { if (confirm("Abandonner la montée ?")) actions.terminer(); }} />
+            onPause={actions.pause} onTerminer={async () => { if (await demander("Abandonner la montée ?", "Abandonner", true)) actions.terminer(); }} />
         </div>
         {fenetre && <Bandeau fenetre={fenetre} zoneFc={zoneCoeur(etat.bpm, zonesFc)?.n ?? null} etat={etat} etapes={[]} ftp={ftp} position={0} police={jakarta.style.fontFamily} perdu={!simu && capteurs.ht && !capteurs.ht.connecte ? "Home-trainer perdu, je le rebranche…" : null} actions={actions} onFermer={() => { fenetre.close(); window.focus(); }} />}
       </main>
@@ -578,7 +579,7 @@ function HomeTrainer() {
               {etapes.length > 0 && <Carte className="!p-2.5"><Profil etapes={etapes} ftp={ftp} ecoule={position(etapes, etat)} hauteur={90} trace={m?.trace} /></Carte>}
               <div className="flex items-center justify-center gap-2.5 pt-1">
                 {etapes.length > 0 && <button type="button" onClick={() => moteur.current?.basculerErg()} className="rounded-full bg-white border border-[#eef2f7] px-4 py-2.5 text-sm font-extrabold text-slate-700 hover:bg-slate-50">{etat.erg ? "Passer en résistance" : "Repasser en ERG"}</button>}
-                <button type="button" onClick={() => { if (confirm("Terminer la séance ?")) actions.terminer(); }} className="flex items-center gap-1.5 rounded-full bg-rose-50 px-4 py-2.5 text-sm font-black text-rose-600 hover:bg-rose-100"><Icone d={mdiFlagCheckered} taille={16} /> Terminer</button>
+                <button type="button" onClick={async () => { if (await demander("Terminer la séance ?", "Terminer")) actions.terminer(); }} className="flex items-center gap-1.5 rounded-full bg-rose-50 px-4 py-2.5 text-sm font-black text-rose-600 hover:bg-rose-100"><Icone d={mdiFlagCheckered} taille={16} /> Terminer</button>
               </div>
               <p className="text-center text-xs text-slate-400 hidden md:block">Clavier : espace = pause · ← → = étapes · ↑ ↓ = plus ou moins dur</p>
             </div>

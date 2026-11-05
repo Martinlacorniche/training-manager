@@ -1,4 +1,5 @@
 "use client";
+import { demander, prevenir } from "./fenetres";
 import { useEffect, useState, type ReactNode } from "react";
 import { motion } from "framer-motion";
 import { supabase } from "@/lib/supabaseClient";
@@ -64,7 +65,7 @@ export default function MaGrossesse({ open, g, moi, onClose, onChange }: { open:
 
   const ecrire = async (ligne: Partial<Journal>) => {
     const { error } = await supabase.from("grossesse_journal").insert({ user_id: g.user_id, ...ligne });
-    if (error) alert("Oups : " + error.message); else chargerJournal();
+    if (error) prevenir("Oups : " + error.message); else chargerJournal();
   };
   const finirCompte = async () => {
     if (!compte) return;
@@ -77,7 +78,7 @@ export default function MaGrossesse({ open, g, moi, onClose, onChange }: { open:
     setContraction(null);
   };
   const naissance = async () => {
-    if (!confirm("Bébé est né ? 💗\nOn passe en mode reprise.")) return;
+    if (!await demander("Bébé est né ? 💗\nOn passe en mode reprise.")) return;
     await supabase.from("grossesse").update({ naissance: new Date().toLocaleDateString("sv-SE") }).eq("user_id", g.user_id);
     onChange();
   };

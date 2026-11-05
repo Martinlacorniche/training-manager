@@ -182,8 +182,10 @@ export default function Coque({ children, plein, titre }: { children: React.Reac
     return () => { window.removeEventListener("popstate", lire); window.removeEventListener("coque:athlete", lire); };
   }, [chemin]);
 
-  async function deconnexion() {
-    if (!confirm("Te déconnecter ?")) return;
+  // Se déconnecter : une petite fenêtre de la page, pas la boîte grise du navigateur.
+  const [quitter, setQuitter] = useState(false);
+  function deconnexion() { setQuitter(true); }
+  async function confirmerDeconnexion() {
     await supabase.auth.signOut();
     router.push("/login");
   }
@@ -209,6 +211,19 @@ export default function Coque({ children, plein, titre }: { children: React.Reac
               <button aria-label="Fermer" onClick={() => setTiroir(false)} className="absolute top-3 right-3 p-1.5 rounded-full bg-slate-100"><X size={16} weight="bold" /></button>
               {menu}
             </aside>
+          </div>
+        )}
+        {quitter && (
+          <div className="fixed inset-0 z-[70] grid place-items-center p-4" onClick={() => setQuitter(false)}>
+            <div className="absolute inset-0 bg-slate-900/40" />
+            <div className="relative w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl space-y-4" onClick={(e) => e.stopPropagation()}>
+              <h3 className="text-lg font-extrabold text-slate-800">Te déconnecter ?</h3>
+              <p className="text-sm font-semibold text-slate-500">Tu pourras revenir avec ton e-mail et ton mot de passe.</p>
+              <div className="flex gap-2.5">
+                <button onClick={() => setQuitter(false)} className="flex-1 rounded-xl bg-slate-100 py-2.5 font-extrabold text-slate-600 hover:bg-slate-200">Rester</button>
+                <button onClick={confirmerDeconnexion} className="flex-1 rounded-xl bg-rose-600 py-2.5 font-extrabold text-white hover:bg-rose-700">Se déconnecter</button>
+              </div>
+            </div>
           </div>
         )}
         <div className={`transition-[padding] ${etroit ? "lg:pl-[72px]" : "lg:pl-60"}`}><div className={plein ? "" : "px-4 py-5 lg:px-8 lg:py-7"}>{children}</div></div>

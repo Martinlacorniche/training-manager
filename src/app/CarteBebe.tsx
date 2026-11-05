@@ -1,4 +1,5 @@
 "use client";
+import { demander } from "./fenetres";
 import { useCallback, useEffect, useState, type MouseEvent } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { X } from "@phosphor-icons/react";
@@ -44,7 +45,7 @@ export default function CarteBebe({ userId, partnerId }: { userId?: string; part
   // Seule la carte de la surprise se masque (dans l'app : appui long).
   const masquer = async (e: MouseEvent) => {
     e.stopPropagation();
-    if (!c.id || !confirm("Masquer la carte ? Elle disparaîtra de ton planning.")) return;
+    if (!c.id || !await demander("Masquer la carte ? Elle disparaîtra de ton planning.")) return;
     await supabase.from("surprises").update({ carte_masquee: true }).eq("id", c.id);
     setC(null);
   };

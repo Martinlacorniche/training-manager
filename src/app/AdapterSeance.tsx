@@ -1,4 +1,5 @@
 "use client";
+import { prevenir } from "./fenetres";
 import { useEffect, useState, type ReactNode } from "react";
 import { motion } from "framer-motion";
 import { ArrowClockwise, ArrowsLeftRight, Baby, Check, Clock, Gauge, Heartbeat, MagicWand, X } from "@phosphor-icons/react";
@@ -23,7 +24,7 @@ export default function AdapterSeance({ open, sessionId, onClose, onFait }: { op
     try {
       const r = await adapter(sessionId, "proposer");
       setP(r.proposition ?? null); setPlafond(r.plafond ?? null);
-    } catch (e) { alert("Oups : " + (e as Error).message); onClose(); }
+    } catch (e) { prevenir("Oups : " + (e as Error).message); onClose(); }
     finally { setCharge(false); }
   };
   useEffect(() => { if (open && sessionId) proposer(); }, [open, sessionId]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -32,7 +33,7 @@ export default function AdapterSeance({ open, sessionId, onClose, onFait }: { op
     if (!p || !sessionId) return;
     setCharge(true);
     try { await adapter(sessionId, "enregistrer", p); onFait(); onClose(); }
-    catch (e) { alert("Oups : " + (e as Error).message); }
+    catch (e) { prevenir("Oups : " + (e as Error).message); }
     finally { setCharge(false); }
   };
 

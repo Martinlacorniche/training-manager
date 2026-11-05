@@ -55,7 +55,8 @@ function getTotem(uid: string) {
 }
 
 function getSessionAlert(s: SessionType): string | null {
-  if (s.athlete_comment && /(mal|douleur|blessure|gêne|bob)/i.test(s.athlete_comment)) return "douleur";
+  // Mot entier seulement (« normal », « animal » ne sont pas des douleurs) — même règle que l'app (lib/coachHelpers.ts).
+  if (s.athlete_comment && /(^|[^a-zà-ÿ])(mal|douleur|bless|gên|gene|bobo)/i.test(s.athlete_comment)) return "douleur";
   if (s.status === "valide" && s.intensity === "basse" && (s.rpe || 0) > 8) return "surmenage";
   return null;
 }
@@ -861,7 +862,7 @@ export default function CoachAthleteFocusV13() {
             .gte("date", sevenDaysAgo)
             .or("athlete_comment.ilike.%mal%,athlete_comment.ilike.%douleur%,athlete_comment.ilike.%blessure%,athlete_comment.ilike.%gêne%");
          
-         if (badSess && badSess.length > 0) alertsMap[ath.id_auth] = true;
+         if (badSess?.some((b: { athlete_comment: string | null }) => b.athlete_comment && /(^|[^a-zà-ÿ])(mal|douleur|bless|gên|gene|bobo)/i.test(b.athlete_comment))) alertsMap[ath.id_auth] = true;
       }));
       
       const listWithAlerts = list.map(a => ({ ...a, alert: alertsMap[a.id_auth] || false }));
@@ -1277,7 +1278,7 @@ export default function CoachAthleteFocusV13() {
                         // Logique de Statut (Sécurisée)
                         const status = s.status ? s.status.toLowerCase() : "";
                         const isValid = status === "valide";
-                        const isMissed = ["rate", "raté", "echec", "annule"].includes(status); 
+                        const isMissed = ["non_valide", "rate", "raté", "echec", "annule"].includes(status);   // le vrai statut est « non_valide » 
                         const isSelected = s.user_id === selectedAthleteId;
                         const name = getAthleteName(s.user_id);
 

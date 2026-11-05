@@ -654,7 +654,7 @@ const SessionCard = React.memo(function SessionCard({ s, onEdit, onDelete }:{ s:
 
   // Logique Bordure/Alerte
   let borderClass = "border border-transparent";
-  const hasPain = s.athlete_comment && /(mal|douleur|blessure|gêne|bob)/i.test(s.athlete_comment);
+  const hasPain = s.athlete_comment && /(^|[^a-zà-ÿ])(mal|douleur|bless|gên|gene|bobo)/i.test(s.athlete_comment);
   const hasBadRpe = s.status === "valide" && s.intensity === "basse" && (s.rpe || 0) > 8;
   
   if (hasPain || hasBadRpe) {

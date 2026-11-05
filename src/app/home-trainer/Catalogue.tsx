@@ -7,8 +7,10 @@
 // griser. Écran large : deux colonnes.
 // Pendant de l'app : App-Coach/components/ht/Catalogue.tsx.
 // ─────────────────────────────────────────────────────────────────────────
-import { mdiDice5Outline, mdiHeartPulse, mdiRoadVariant, mdiStairsUp } from "@mdi/js";
-import { aplatir, depuisCourt, type Bloc } from "./ht/seance";
+import { useState } from "react";
+import { mdiClose, mdiDice5Outline, mdiHeartPulse, mdiPlay, mdiRoadVariant, mdiStairsUp } from "@mdi/js";
+import { aplatir, depuisCourt, dureeTotale, type Bloc } from "./ht/seance";
+import { apercu } from "./ht/apercu";
 import { auHasard, DUREES, FAMILLES, INTENSITES, seancesDe, type Famille, type Intensite, type SeanceCatalogue } from "./ht/catalogue";
 import { Icone, Profil } from "./ui";
 
@@ -52,6 +54,53 @@ export function CarteSeance({ s, ftp, onClick }: { s: SeanceCatalogue; ftp: numb
   );
 }
 
+/** Le détail avant de lancer (05/11/2026) : chaque étape, ses watts, sa cadence. */
+export function Apercu({ s, ftp, pret, onGo, onFermer }: { s: SeanceCatalogue; ftp: number; pret: boolean; onGo: () => void; onFermer: () => void }) {
+  const blocs = depuisCourt(s.texte!, ftp).blocs;
+  const lignes = apercu(blocs, ftp);
+  const t = TEINTES[s.intensite];
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center p-4" onClick={onFermer}>
+      <div className="absolute inset-0 bg-slate-900/45" />
+      <div className="relative w-full max-w-xl max-h-[90vh] overflow-y-auto rounded-[26px] bg-white p-6 space-y-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-start gap-3">
+          <div className="flex-1 min-w-0">
+            <h3 className="text-[24px] font-black text-slate-800 leading-tight">{s.nom}</h3>
+            <p className="text-[14.5px] font-semibold text-slate-600 mt-1">Tu vas sentir : {minuscule(s.sentir)}</p>
+          </div>
+          <button type="button" aria-label="Fermer" onClick={onFermer} className="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center shrink-0 hover:bg-slate-200"><Icone d={mdiClose} taille={18} coul="#64748b" /></button>
+        </div>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
+          <PastillesIntensite n={s.intensite} />
+          <span className="text-[14px] font-extrabold text-slate-600">{Math.round(dureeTotale(blocs) / 60)} min</span>
+          <span className="text-[13px] font-bold text-slate-400">Watts calés sur ta FTP {ftp} W</span>
+        </div>
+        <div className="rounded-2xl p-2.5" style={{ background: t.fond }}><Profil etapes={aplatir(blocs)} ftp={ftp} hauteur={64} /></div>
+        <ol className="space-y-2">
+          {lignes.map((l, i) => (
+            <li key={i} className={l.fois > 1 ? "rounded-2xl border border-slate-200 p-2.5 space-y-1.5" : ""}>
+              {l.fois > 1 && <div className="text-[13px] font-black text-slate-500 px-1">{l.fois} fois :</div>}
+              {l.etapes.map((e, k) => (
+                <div key={k} className="flex items-center gap-3 rounded-xl bg-slate-50 px-3 py-2">
+                  <span className="w-1.5 self-stretch rounded-full shrink-0" style={{ background: e.couleur }} />
+                  <span className="w-14 shrink-0 text-[15px] font-black text-slate-800 tabular-nums">{e.duree}</span>
+                  <span className="flex-1 min-w-0 text-[15px] font-extrabold text-slate-800">{e.watts}{e.cadence && <span className="font-bold text-slate-500"> · {e.cadence}</span>}</span>
+                  <span className="text-[12.5px] font-bold shrink-0" style={{ color: e.couleur }}>{e.mot}</span>
+                </div>
+              ))}
+            </li>
+          ))}
+        </ol>
+        <div className="sticky bottom-0 -mx-6 -mb-6 px-6 pb-6 pt-3 bg-white">
+        <button type="button" onClick={onGo} className="w-full flex items-center justify-center gap-2 rounded-full bg-blue-600 py-3.5 text-[17px] font-black text-white hover:bg-blue-700">
+          <Icone d={mdiPlay} taille={20} coul="#fff" />{pret ? "C'est parti" : "Brancher le vélo"}
+        </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const puce = (actif: boolean) => `shrink-0 rounded-full border px-[15px] py-2.5 text-[14.5px] font-extrabold transition ${actif ? "bg-slate-800 border-slate-800 text-white" : "bg-white border-slate-200 text-slate-800 hover:bg-slate-50"}`;
 
 export default function Catalogue({ duree, setDuree, famille, setFamille, ftp, pret, occupe, onGo, onTest, onPasPret }: {
@@ -59,6 +108,7 @@ export default function Catalogue({ duree, setDuree, famille, setFamille, ftp, p
   onGo: (c: ChoixCatalogue) => void; onTest: (p: "rampe" | "lsct") => void; onPasPret: () => void;
 }) {
   const liste = seancesDe(famille, duree, { avecLsct: true, graine: new Date().getDate() });
+  const [vue, setVue] = useState<SeanceCatalogue | null>(null);
   const fam = FAMILLES.find((x) => x.id === famille)!;
   const lancer = (s: SeanceCatalogue) => {
     if (!pret) return onPasPret();
@@ -66,7 +116,9 @@ export default function Catalogue({ duree, setDuree, famille, setFamille, ftp, p
     const blocs = depuisCourt(s.texte!, ftp).blocs;
     onGo({ titre: s.nom, blocs, sessionId: null, texteCourt: null });
   };
-  const surprise = () => { const s = auHasard(liste.filter((x) => !x.test)); if (s) lancer(s); };
+  // Une séance : on montre d'abord son détail ; le test se lance directement.
+  const ouvrir = (s: SeanceCatalogue) => (s.test ? lancer(s) : setVue(s));
+  const surprise = () => { const s = auHasard(liste.filter((x) => !x.test)); if (s) ouvrir(s); };
 
   return (
     <div className="space-y-3.5">
@@ -119,9 +171,10 @@ export default function Catalogue({ duree, setDuree, famille, setFamille, ftp, p
         </button>
       )) : (
         <div className="grid min-[700px]:grid-cols-2 gap-3">
-          {liste.map((x) => <CarteSeance key={x.id} s={x} ftp={ftp} onClick={() => lancer(x)} />)}
+          {liste.map((x) => <CarteSeance key={x.id} s={x} ftp={ftp} onClick={() => ouvrir(x)} />)}
         </div>
       )}
+      {vue && <Apercu s={vue} ftp={ftp} pret={pret} onFermer={() => setVue(null)} onGo={() => { const s = vue; setVue(null); lancer(s); }} />}
     </div>
   );
 }

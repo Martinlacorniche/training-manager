@@ -2,6 +2,7 @@
 // Les pièces du home-trainer, dans le design de l'app (Météo du corps,
 // Progression) : icônes Material Design de l'app, cartes blanches, grandes
 // cartes en dégradé, petites étiquettes en capitales.
+import { bulleEtape } from "./ht/apercu";
 import { useMemo, type CSSProperties, type ReactNode } from "react";
 import { aplatir, LIBRE_PCT, type Bloc, type Etape } from "./ht/seance";
 import { zoneEtape } from "./ht/zones";
@@ -81,7 +82,7 @@ export function Profil({ etapes, ftp, ecoule, hauteur = 64, trace }: { etapes: E
   return (
     <div className="relative">
       {blocs}
-      <svg viewBox={`0 0 1000 ${hauteur}`} preserveAspectRatio="none" className="w-full block absolute inset-0" style={{ height: hauteur }}>
+      <svg viewBox={`0 0 1000 ${hauteur}`} preserveAspectRatio="none" className="w-full block absolute inset-0 pointer-events-none" style={{ height: hauteur }}>
         {ligne && <polyline points={ligne} fill="none" stroke={C.text} strokeWidth={2} strokeLinejoin="round" vectorEffect="non-scaling-stroke" opacity={0.85} />}
         {curseur != null && <rect x={Math.min(996, curseur) - 2} y={0} width={4} height={hauteur} rx={2} fill={C.text} />}
       </svg>
@@ -105,8 +106,8 @@ function Blocs({ etapes, ftp, ecoule, hauteur, estompe }: { etapes: Etape[]; ftp
         const passe = estompe && curseur != null && x0 + larg <= curseur;
         const coul = zoneEtape(e, ftp).plein, g = larg > 6 ? 2 : 0;
         return e.rampe
-          ? <path key={k} d={`M${x0 + g / 2},${hauteur} L${x0 + g / 2},${hauteur - h(de)} L${x0 + larg - g / 2},${hauteur - h(a)} L${x0 + larg - g / 2},${hauteur} Z`} fill={coul} opacity={passe ? 0.35 : 1} />
-          : <rect key={k} x={x0 + g / 2} y={hauteur - h(de)} width={Math.max(1, larg - g)} height={h(de)} rx={larg > 12 ? 5 : 1} fill={coul} opacity={passe ? 0.35 : 1} />;
+          ? <path key={k} d={`M${x0 + g / 2},${hauteur} L${x0 + g / 2},${hauteur - h(de)} L${x0 + larg - g / 2},${hauteur - h(a)} L${x0 + larg - g / 2},${hauteur} Z`} fill={coul} opacity={passe ? 0.35 : 1}><title>{bulleEtape(e)}</title></path>
+          : <rect key={k} x={x0 + g / 2} y={hauteur - h(de)} width={Math.max(1, larg - g)} height={h(de)} rx={larg > 12 ? 5 : 1} fill={coul} opacity={passe ? 0.35 : 1}><title>{bulleEtape(e)}</title></rect>;
       })}
     </svg>
   );

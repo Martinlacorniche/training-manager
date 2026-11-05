@@ -125,7 +125,9 @@ export class Capteur {
       });
       await c.startNotifications();
       try { await (await s.getCharacteristic(GUIDON.reponses)).startNotifications(); } catch { /* pas indispensable */ }
-      await (await s.getCharacteristic(GUIDON.ecrire)).writeValueWithResponse(GUIDON.rideOn);   // « RideOn »
+      // « RideOn » : sans accusé de réception d'abord (ce que le guidon attend), avec sinon.
+      const ecrire = await s.getCharacteristic(GUIDON.ecrire);
+      await ecrire.writeValueWithoutResponse(GUIDON.rideOn).catch(() => ecrire.writeValueWithResponse(GUIDON.rideOn));
     } else {
       const s = await gatt.getPrimaryService(UUID.hr);
       const c = await s.getCharacteristic(UUID.hrMeasurement);

@@ -564,7 +564,13 @@ function HomeTrainer() {
 
             <div className="space-y-2">
               <div className="flex gap-2">
-                <Case titre="Cadence" valeur={etat.cadence ?? "—"} sous="tr/min" />
+                {/* La cadence visée de l'étape (06/11, comme l'app) : verte dans les ±5 tr/min, orange sinon. */}
+                {(() => {
+                  const vise = etat.etape?.cadence;
+                  if (!vise) return <Case titre="Cadence" valeur={etat.cadence ?? "—"} sous="tr/min" />;
+                  const ok = etat.cadence != null && Math.abs(etat.cadence - vise) <= 5;
+                  return <Case titre="Cadence" valeur={etat.cadence ?? "—"} sous={`vise ${vise} tr/min`} sousCoul={etat.cadence == null ? "#2563eb" : ok ? "#059669" : "#d97706"} coul={etat.cadence != null && !ok ? "#d97706" : undefined} />;
+                })()}
                 <Case titre="Cœur" valeur={etat.bpm ?? "—"} sous={zc ? zc.texte : "bpm"} sousCoul={zc?.coul} />
                 <Case titre="Réserve" valeur={etat.reserve != null ? `${Math.round(etat.reserve * 100)}%` : "—"} sous={etat.reserve != null ? undefined : "à mesurer"} />
               </div>

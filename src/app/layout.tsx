@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
 import Coque from "./Coque";
+import CapteurErreurs from "./CapteurErreurs";
 
 // Une seule police pour tout le site, la même que l'app.
 const jakarta = Plus_Jakarta_Sans({
@@ -28,6 +29,8 @@ export default function RootLayout({
       <body className={`${jakarta.variable} antialiased`}>
         {/* Le menu de l'espace connecté, posé une fois : il ne se recharge pas d'une page à l'autre. */}
         <Coque>{children}</Coque>
+        {/* Remonte les erreurs que React ne voit pas (voir CapteurErreurs). */}
+        <CapteurErreurs />
       </body>
     </html>
   );

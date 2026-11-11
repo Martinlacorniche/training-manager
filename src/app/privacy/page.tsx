@@ -19,7 +19,7 @@ export default function Privacy() {
 
         <h1 className="text-3xl font-extrabold text-gray-800 mb-2">Politique de confidentialité</h1>
         <p className="text-emerald-600 font-bold text-base mb-1">C&apos;est Ludique · NG Sport Coaching</p>
-        <p className="text-gray-400 text-sm mb-8">Développé par Martin Vitté — Dernière mise à jour : 19 octobre 2026</p>
+        <p className="text-gray-400 text-sm mb-8">Développé par Martin Vitté — Dernière mise à jour : 11 novembre 2026</p>
         <hr className="border-gray-200 mb-8" />
 
         <S titre="1. Quelles données sont collectées ?">
@@ -29,6 +29,7 @@ export default function Privacy() {
             <li><strong>Activités</strong> reçues de Strava ou d&apos;intervals.icu, si vous les connectez : durée, distance, fréquence cardiaque, allure, puissance, tracé GPS.</li>
             <li><strong>Santé et bien-être</strong>, si votre montre les envoie à intervals.icu : variabilité cardiaque nocturne, fréquence cardiaque de repos, sommeil.</li>
             <li><strong>Profil physique</strong> facultatif : année de naissance, sexe, poids.</li>
+            <li><strong>Journaux d&apos;erreurs</strong> : quand l&apos;application ou le site rencontre une erreur inattendue, un court rapport technique est enregistré pour nous permettre de la corriger (message d&apos;erreur, écran affiché, version et type d&apos;appareil, et votre identifiant de compte si vous êtes connecté). Il ne contient ni votre e-mail ni le contenu de vos séances.</li>
           </ul>
         </S>
 

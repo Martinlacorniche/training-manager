@@ -46,13 +46,15 @@ export function wattsCibles(e: Etape, t: number, ftp: number): number {
 
 // ─── Lecture commune d'une cible ───
 
-// « 4m », « 1m30s », « 1h10m » (icu) ; « 4' », « 1'30 », « 30" », « 30s », « 10min », « 1h » (court).
+// « 4m », « 1m30s », « 1h10m » (icu) ; « 4' », « 1'30 », « 30" », « 30s », « 10min », « 1h », « 1h30 » (court).
 export function lireDuree(j: string): number | null {
   const t = j.toLowerCase().replace(/’/g, "'").replace(/″|''/g, '"');
-  let m = /^(?:(\d+)h)?(?:(\d+)(?:m(?!tr)|min|'))?(?:(\d+)(?:s|"|sec)?)?$/.exec(t);
+  let m = /^(?:(\d+)h)?(?:(\d+)(?:m(?!tr)|min|'))?(?:(\d+)(s|"|sec)?)?$/.exec(t);
   if (m && (m[1] || m[2] || m[3])) {
     // « 30 » tout seul n'est pas une durée ; « 1'30 » oui.
     if (!m[1] && !m[2] && !/s|"|sec$/.test(t)) return null;
+    // « 1h30 » : après des heures, un nombre nu compte des minutes (11/11/2026 : il était lu 30 s).
+    if (m[1] && !m[2] && m[3] && !m[4]) return Number(m[1]) * 3600 + Number(m[3]) * 60;
     return Number(m[1] ?? 0) * 3600 + Number(m[2] ?? 0) * 60 + Number(m[3] ?? 0);
   }
   m = /^(\d+(?:[.,]\d+)?)h$/.exec(t);
@@ -193,7 +195,9 @@ export function depuisCourt(texte: string, ftp: number): Lecture {
   }
   morceaux.push(cur);
   for (const brut of morceaux.map((x) => x.trim()).filter(Boolean)) {
-    const rep = /^(\d+)\s*[x×]\s*\((.*)\)\s*(!)?$/i.exec(brut);   // « ! » : sans la dernière récup
+    // « ! » : sans la dernière récup. Les parenthèses sont facultatives (11/11/2026 :
+    // « 5x 4' 300W » donnait une seule étape, le « 5x » se perdait sans rien dire).
+    const rep = /^(\d+)\s*[x×]\s*\((.*)\)\s*(!)?$/i.exec(brut) ?? /^(\d+)\s*[x×]\s+([^!]+?)\s*(!)?$/i.exec(brut);
     const fois = rep ? Number(rep[1]) : 1;
     const parties = rep ? rep[2].split(/[/+,]/) : [brut];
     const etapes: Etape[] = [];
@@ -214,5 +218,9 @@ function etapeDepuisCourt(p: string, ftp: number): Etape | null {
   if (i < 0) return null;
   const s = lireDuree(jetons[i])!;
   if (s <= 0) return null;
-  return { s, ...lireCible(jetons.filter((_, k) => k !== i), ftp), ...(lap ? { lap: true } : {}) };
+  // Un nombre sans unité vise des watts : « 250 », « 200-250 », « 100>200 »
+  // (11/11/2026 : la cible se perdait sans rien dire). Trois chiffres au moins,
+  // sauf pour une rampe : « 4' 30 » est plus sûrement un « 4'30 » mal collé.
+  const reste = jetons.filter((_, k) => k !== i).map((j) => (/^(?:\d{3,4}(?:-\d{3,4})?|\d{2,4}>\d{2,4})$/.test(j) ? `${j}w` : j));
+  return { s, ...lireCible(reste, ftp), ...(lap ? { lap: true } : {}) };
 }

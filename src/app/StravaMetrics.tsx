@@ -21,9 +21,8 @@ type Data = {
 };
 
 function fmtPace(sec: number) {
-  const m = Math.floor(sec / 60);
-  const s = Math.round(sec % 60);
-  return `${m}:${String(s).padStart(2, "0")}`;
+  const t = Math.round(sec);   // arrondi AVANT de découper : jamais « 5:60 »
+  return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`;
 }
 
 const ZONE_COLORS = ["#94a3b8", "#38bdf8", "#22c55e", "#f59e0b", "#ef4444"];

@@ -18,8 +18,8 @@ const allure = (v: unknown) => {
 const n1 = (v: unknown) => (v == null ? "—" : (Math.round(Number(v) * 10) / 10).toString().replace(".", ","));
 const n0 = (v: unknown) => (v == null ? "—" : Math.round(Number(v)).toString());
 const duree = (s: unknown) => {
-  const x = Number(s);
-  return Number.isFinite(x) && x > 0 ? `${Math.floor(x / 60)}'${String(Math.round(x % 60)).padStart(2, "0")}` : "—";
+  const x = Math.round(Number(s));   // arrondi AVANT de découper : jamais « 5'60 »
+  return Number.isFinite(x) && x > 0 ? `${Math.floor(x / 60)}'${String(x % 60).padStart(2, "0")}` : "—";
 };
 
 function Carte({ titre, children }: { titre: string; children: React.ReactNode }) {

@@ -12,7 +12,8 @@ export type EtapeApercu = { duree: string; watts: string; cadence: string | null
 export type LigneApercu = { fois: number; etapes: EtapeApercu[] };
 
 export function dureeLisible(s: number): string {
-  const m = Math.floor(s / 60), r = Math.round(s % 60);
+  const t = Math.round(s);   // arrondi AVANT de découper : jamais « 1′60 »
+  const m = Math.floor(t / 60), r = t % 60;
   if (!m) return `${r}″`;
   return r ? `${m}′${String(r).padStart(2, "0")}` : `${m}′`;
 }

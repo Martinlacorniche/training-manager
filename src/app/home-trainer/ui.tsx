@@ -3,7 +3,7 @@
 // Progression) : icônes Material Design de l'app, cartes blanches, grandes
 // cartes en dégradé, petites étiquettes en capitales.
 import { bulleEtape } from "./ht/apercu";
-import { useMemo, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { aplatir, LIBRE_PCT, type Bloc, type Etape } from "./ht/seance";
 import { zoneEtape } from "./ht/zones";
 
@@ -138,19 +138,35 @@ export function Pas({ moins, plus, children }: { moins: () => void; plus: () => 
 }
 
 /** Où l'on est par rapport aux watts visés, d'un coup d'œil (Chloé, 01/11) :
- *  la bande claire = la plage visée, le repère = la puissance 3 s. */
+ *  la bande claire = la plage visée, le repère = la puissance.
+ *  Trop nerveuse pour tenir « dans le mille » (Brune, 11/11) : bande à ±6 %
+ *  (10 W au moins), repère lissé sur 5 s qui glisse, et 2 % de marge avant de
+ *  sortir de la bande. Le chiffre des watts, lui, reste la puissance 3 s. */
 export function Jauge({ w, cible }: { w: number | null; cible: number | null }) {
+  const recents = useRef<number[]>([]);
+  // Le repère lissé et son état « dans la bande », calculés ensemble à chaque mesure.
+  const [lu, setLu] = useState<{ wl: number | null; dedans: boolean }>({ wl: null, dedans: false });
+  const cibleVue = useRef(cible);
+  useEffect(() => {
+    // Nouvelle étape : on repart de zéro, l'ancienne puissance ne compte plus.
+    if (cibleVue.current !== cible) { cibleVue.current = cible; recents.current = []; }
+    if (w != null) recents.current = [...recents.current, w].slice(-5);
+    if (!recents.current.length || !cible) return;
+    const m = Math.round(recents.current.reduce((x, y) => x + y, 0) / recents.current.length);
+    const tolB = Math.max(10, cible * 0.06), ec = Math.abs(m - cible);
+    setLu((avant) => ({ wl: m, dedans: avant.wl != null && avant.dedans ? ec <= tolB + cible * 0.02 : ec <= tolB }));
+  }, [w, cible]);
+  const wl = w == null ? null : lu.wl, dedans = lu.dedans;
   if (!cible) return null;
-  const tol = Math.max(5, cible * 0.04), bas = cible * 0.7, haut = cible * 1.3;
+  const tol = Math.max(10, cible * 0.06), bas = cible * 0.7, haut = cible * 1.3;
   const x = (v: number) => ((Math.min(haut, Math.max(bas, v)) - bas) / (haut - bas)) * 100;
-  const dedans = w != null && Math.abs(w - cible) <= tol;
   return (
     <div className="relative h-7 mt-3 mx-3 flex items-center">
       <div className="absolute inset-x-0 h-3.5 rounded-full bg-white/20" />
       <div className="absolute h-3.5 rounded-full bg-white/60" style={{ left: `${x(cible - tol)}%`, width: `${x(cible + tol) - x(cible - tol)}%` }} />
-      {w != null && (
-        <div className={`absolute w-7 h-7 -ml-3.5 rounded-full border-[3px] border-white flex items-center justify-center text-white text-sm font-black transition-[left] duration-500 ${dedans ? "bg-white" : "bg-slate-900"}`} style={{ left: `${x(w)}%` }}>
-          {!dedans && (w < cible ? "▲" : "▼")}
+      {wl != null && (
+        <div className={`absolute w-7 h-7 -ml-3.5 rounded-full border-[3px] border-white flex items-center justify-center text-white text-sm font-black transition-[left] duration-700 ease-out ${dedans ? "bg-white" : "bg-slate-900"}`} style={{ left: `${x(wl)}%` }}>
+          {!dedans && (wl < cible ? "▲" : "▼")}
         </div>
       )}
     </div>

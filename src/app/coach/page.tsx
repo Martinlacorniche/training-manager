@@ -34,7 +34,7 @@ function quand(date: string): string {
 }
 
 // La pastille d'un jour : faite, pas faite, pas renseignée, prévue, repos, course.
-function Pastille({ seances, course, aujourdhui, jour }: { seances: Seance[]; course?: Course; aujourdhui: string; jour: string }) {
+function Pastille({ seances, course, aujourdhui, jour, uid }: { seances: Seance[]; course?: Course; aujourdhui: string; jour: string; uid: string }) {
   const etats = seances.map((s) => etatSeance(s, aujourdhui));
   const titre = [dayjs(jour).format("ddd D"), ...seances.map((s) => `${s.title || s.sport || "Séance"}${s.planned_hour ? ` ${duree(s.planned_hour)}` : ""}`), course ? `Course : ${course.name ?? ""}` : ""].filter(Boolean).join(" · ");
   let style: React.CSSProperties = { background: "#f8fafc", border: "1.5px dashed #cbd5e1" };
@@ -45,10 +45,12 @@ function Pastille({ seances, course, aujourdhui, jour }: { seances: Seance[]; co
   else if (etats.length) style = { background: "#e2e8f0" };
   const ajd = jour === aujourdhui;
   return (
-    <span title={titre} className="w-7 h-7 rounded-full box-border shrink-0 flex items-center justify-center"
+    // Une seule séance ce jour-là : la pastille ouvre directement sa feuille ; sinon, le planning de la semaine.
+    <Link href={lien(uid, jour, seances.length === 1 ? seances[0].id : undefined)} title={titre} aria-label={titre}
+      className="w-7 h-7 rounded-full box-border shrink-0 flex items-center justify-center focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 hover:brightness-95"
       style={{ ...style, boxShadow: ajd ? "0 0 0 2px #fff, 0 0 0 4px #2563eb" : undefined }}>
       {course ? <Flag size={12} weight="fill" color="#92400e" /> : null}
-    </span>
+    </Link>
   );
 }
 
@@ -239,22 +241,22 @@ function Accueil() {
             const couleur = alerte ? (alerte.ton === "rouge" ? "#b91c1c" : "#b45309") : NIVEAU[signal?.niveau ?? g?.niveau ?? "inconnu"]?.couleur;
             const course = coursesAVenir.find((c) => c.user_id === a.id_auth);
             return (
-              <Link key={a.id_auth} href={lien(a.id_auth)} className="grid grid-cols-1 md:grid-cols-[170px_220px_minmax(0,1fr)] items-center gap-x-4 gap-y-2 py-3 border-b border-slate-100 last:border-0 hover:bg-slate-50 -mx-2 px-2 rounded-xl">
-                <span className="flex items-center gap-2.5 min-w-0">
+              <div key={a.id_auth} className="grid grid-cols-1 md:grid-cols-[170px_220px_minmax(0,1fr)] items-center gap-x-4 gap-y-2 py-3 border-b border-slate-100 last:border-0 hover:bg-slate-50 -mx-2 px-2 rounded-xl">
+                <Link href={lien(a.id_auth)} className="flex items-center gap-2.5 min-w-0 rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600">
                   <Avatar id={a.id_auth} nom={a.name} taille={34} />
                   <span className="min-w-0">
                     <span className="block font-extrabold truncate">{a.moi ? "Moi" : a.name.split(" ")[0]}</span>
                     {course && <span className="block text-xs font-bold text-slate-400 truncate">{course.name ?? "Course"} · J-{dayjs(course.date).diff(dayjs().startOf("day"), "day")}</span>}
                   </span>
-                </span>
+                </Link>
                 <span className="flex gap-1">
-                  {jours.map((j) => <Pastille key={j} jour={j} aujourdhui={aujourdhui} seances={deLaSemaine.filter((s) => s.user_id === a.id_auth && s.date === j)} course={courses.find((c) => c.user_id === a.id_auth && c.date === j)} />)}
+                  {jours.map((j) => <Pastille key={j} uid={a.id_auth} jour={j} aujourdhui={aujourdhui} seances={deLaSemaine.filter((s) => s.user_id === a.id_auth && s.date === j)} course={courses.find((c) => c.user_id === a.id_auth && c.date === j)} />)}
                 </span>
-                <span className="text-sm font-semibold min-w-0 flex items-center gap-2" style={{ color: a.moi ? "#64748b" : couleur === "#cbd5e1" ? "#64748b" : couleur }}>
+                <Link href={lien(a.id_auth)} className="text-sm font-semibold min-w-0 flex items-center gap-2 rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600" style={{ color: a.moi ? "#64748b" : couleur === "#cbd5e1" ? "#64748b" : couleur }}>
                   {!a.moi && <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: couleur }} />}
                   <span className="line-clamp-2">{phrase}</span>
-                </span>
-              </Link>
+                </Link>
+              </div>
             );
           })}
           <div className="flex flex-wrap gap-x-5 gap-y-1 pt-3 text-xs font-bold text-slate-400">

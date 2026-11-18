@@ -1,10 +1,9 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import dayjs from "dayjs";
-import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid } from "recharts";
 import { supabase } from "@/lib/supabaseClient";
-import { aUnePage } from "./resultatTest";
-import { allure, apercuTest, CONSIGNES, programmerTest, Protocole, PROTOCOLES, VERDICTS } from "./tests";
+import { dateCarte, parcours, prochainTestConseille, reperesDe, reperesVides, REPERES, texteValeur, type CleRepere, type ResTest } from "./resultatTest";
+import { allure, apercuTest, CONSIGNES, programmerTest, Protocole, VERDICTS } from "./tests";
 
 // ─────────────────────────────────────────────────────────────────────────
 // Les tests de forme sur le site : consignes, résultat d'une séance-test,
@@ -142,8 +141,8 @@ const MENU: { p: Protocole; titre: string; ligne: string }[] = [
   { p: "defi", titre: "Test allure 10 km", ligne: "Optionnel, si pas de course récente." },
 ];
 
-export function ProgrammerTest({ athleteId, coach, onFait, onFermer }: { athleteId: string; coach: boolean; onFait: () => void; onFermer: () => void }) {
-  const [protocole, setProtocole] = useState<Protocole | null>(null);
+export function ProgrammerTest({ athleteId, coach, onFait, onFermer, protocoleInitial = null }: { athleteId: string; coach: boolean; onFait: () => void; onFermer: () => void; protocoleInitial?: Protocole | null }) {
+  const [protocole, setProtocole] = useState<Protocole | null>(protocoleInitial);
   const [vmaFait, setVmaFait] = useState(false);
   const [apercu, setApercu] = useState<Record<string, any> | null>(null);
   const [date, setDate] = useState(dayjs().add(1, "day").format("YYYY-MM-DD"));
@@ -223,43 +222,38 @@ export function ProgrammerTest({ athleteId, coach, onFait, onFermer }: { athlete
   );
 }
 
-const QUOI: Record<string, string> = {
-  progressif: "Ta VMA, calibrage après calibrage.",
-  tranquille: "Ton cœur à la 2ᵉ allure. Plus il descend, plus tu es en forme.",
-  lsct: "Ta puissance au 3ᵉ palier. Plus elle monte, plus tu es en forme.",
-  defi: "Ton allure 10 km mesurée par le test. Plus elle est rapide, mieux c'est.",
-  rampe: "Ta meilleure minute sur la rampe. Plus elle monte, plus tu es en forme.",
-};
-const valeur = (p: string, x: number) => (p === "progressif" ? `${(x * 3.6).toFixed(1).replace(".", ",")} km/h` : p === "tranquille" ? `${Math.round(x)} bpm` : p === "lsct" || p === "rampe" ? `${Math.round(x)} W` : `${allure(x)}/km`);
+const couleurSport = (cle: CleRepere) => (REPERES[cle].sport === "velo" ? "text-violet-600" : "text-blue-600");
 
-const etiquette = (p: string) => (p === "rampe" || p === "lsct" ? "TEST VÉLO" : p === "defi" ? "TEST 10 KM" : "TEST COURSE");
-type Ligne = { session_id: string; verdict: string; jour: string; valide: boolean; indicateur: number | null; detail?: { ftp?: number; vma_kmh?: number } | null };
-const valeurDetail = (p: string, x: Ligne): number | null => {
-  const n = Number(p === "rampe" ? x.detail?.ftp : p === "progressif" ? x.detail?.vma_kmh : x.indicateur);
-  return Number.isFinite(n) && n > 0 ? n : null;
-};
-const grand = (p: string, x: Ligne) => {
-  const n = valeurDetail(p, x);
-  if (n == null) return "—";
-  if (p === "rampe") return `${Math.round(n)} W`;
-  if (p === "progressif") return `${n.toFixed(1).replace(".", ",")} km/h`;
-  return valeur(p, n);
-};
-const sous = (p: string, titre: string) => (p === "rampe" ? "Ta FTP" : p === "progressif" ? "Ta VMA" : titre);
-// « 1er test » ou l'écart avec le test d'avant, en gris, sans verdict ni couleur.
-const ecartCarte = (p: string, liste: Ligne[], dernier: Ligne, libelle: string) => {
-  const avant = liste.filter((r) => r.jour < dernier.jour && r.valide && valeurDetail(p, r) != null);
-  if (!avant.length) return "1er test";
-  if (!aUnePage(p)) return libelle;
-  const e = (valeurDetail(p, dernier) ?? 0) - (valeurDetail(p, avant[avant.length - 1]) ?? 0);
-  const f = (x: number) => (p === "rampe" ? String(Math.round(Math.abs(x))) : Math.abs(x).toFixed(1).replace(".", ","));
-  return Math.abs(e) < 0.05 ? "pareil qu'avant" : `${e > 0 ? "+" : "−"}${f(e)}${p === "rampe" ? " W" : " km/h"}`;
-};
+function Titre({ children }: { children: string }) {
+  return <h3 className="pt-2 text-[13px] font-extrabold uppercase tracking-[0.12em] text-slate-500">{children}</h3>;
+}
+
+// Mini-marches (vélo) ou petite piste vectorielle (course).
+function Vignette({ cle }: { cle: CleRepere }) {
+  if (REPERES[cle].sport === "velo") {
+    const n = 6;
+    return (
+      <span className="flex h-[26px] w-11 shrink-0 items-end gap-[2px]" aria-hidden>
+        {Array.from({ length: n }, (_, i) => (
+          <span key={i} className={`flex-1 rounded-sm ${i === n - 1 ? "bg-violet-600" : "bg-violet-200"}`} style={{ height: 6 + (i * 20) / (n - 1) }} />
+        ))}
+      </span>
+    );
+  }
+  return (
+    <svg width="40" height="26" viewBox="0 0 40 26" aria-hidden className="shrink-0">
+      <rect x="2" y="2" width="36" height="22" rx="11" fill="none" stroke="#bfdbfe" strokeWidth="3" />
+      <rect x="9" y="9" width="22" height="8" rx="4" fill="none" stroke="#2563eb" strokeWidth="2" />
+    </svg>
+  );
+}
 
 export function SuiviTests({ userId, soi }: { userId: string; soi: boolean }) {
   const [resultats, setResultats] = useState<Record<string, any>[]>([]);
   const [prevus, setPrevus] = useState<Record<string, any>[]>([]);
   const [ouvert, setOuvert] = useState(false);
+  const [protocoleInitial, setProtocoleInitial] = useState<Protocole | null>(null);
+  const [toutVoir, setToutVoir] = useState(false);
   const charger = useCallback(async () => {
     const [{ data: r }, { data: p }] = await Promise.all([
       supabase.from("test_resultats").select("session_id, jour, protocole, valide, indicateur, verdict, phrase, detail").eq("user_id", userId).order("jour"),
@@ -269,70 +263,91 @@ export function SuiviTests({ userId, soi }: { userId: string; soi: boolean }) {
     setPrevus((p ?? []).filter((s) => s.status !== "valide"));
   }, [userId]);
   useEffect(() => { charger(); }, [charger]);
-  const protocoles = (["tranquille", "lsct", "rampe", "progressif", "defi"] as Protocole[]).filter((p) => resultats.some((r) => r.protocole === p));
-  const preTestFait = resultats.some((r) => r.protocole === "progressif" && r.valide);
-  const preTestPrevu = prevus.some((s) => s.test === "progressif");
-  const carte = "rounded-3xl border border-white/90 bg-white/70 shadow-sm backdrop-blur p-5 space-y-3";
+  const reperes = useMemo(() => reperesDe(resultats as unknown as ResTest[]), [resultats]);
+  const vides = useMemo(() => reperesVides(reperes), [reperes]);
+  const prochain = useMemo(() => prochainTestConseille(reperes), [reperes]);
+  const historique = useMemo(() => parcours(resultats as unknown as ResTest[]), [resultats]);
+  const ouvrir = (p: Protocole | null) => { setProtocoleInitial(p); setOuvert(true); };
+  const carte = "rounded-3xl border border-white/90 bg-white/70 shadow-sm backdrop-blur";
+  const tuile = `${carte} flex flex-col gap-1 p-4 text-left`;
 
   return (
     <div className="space-y-4">
-      <button onClick={() => setOuvert(true)} className="w-full py-3.5 rounded-2xl bg-slate-900 text-white font-bold hover:bg-slate-800">Programmer un test</button>
       {prevus.map((s) => (
         <a key={s.id} href={`/seance/${s.id}`} className="block rounded-xl bg-violet-50 p-3 text-sm font-semibold text-slate-700">{s.title} · {dayjs(s.date).format("dddd D MMMM")}</a>
       ))}
-      {!resultats.length ? (
-        <section className="rounded-2xl bg-violet-50 p-4">
-          <p className="font-bold text-slate-800">{preTestFait || preTestPrevu ? "Ton calibrage est prévu" : "Commence par le calibrage"}</p>
-          <p className="text-sm text-slate-600">Au stade, une fois. Ensuite, un test par mois.</p>
-        </section>
-      ) : protocoles.map((p) => {
-        const liste = resultats.filter((r) => r.protocole === p) as unknown as Ligne[];
-        const pts = liste.filter((r) => r.valide && r.indicateur != null).map((r) => ({ jour: dayjs(r.jour).format("DD/MM"), v: Number(r.indicateur) }));
-        const dernier = liste[liste.length - 1];
-        const v = VERDICTS[dernier.verdict] ?? VERDICTS.stable;
-        return (
-          <section key={p} className={carte}>
-            <a href={`/seance/${dernier.session_id}`} className="flex items-center gap-3">
-              <span className="flex-1">
-                <span className="block text-[11px] font-extrabold tracking-[0.12em] text-violet-600">{etiquette(p)}</span>
-                <span className="block text-3xl font-extrabold text-slate-900">{grand(p, dernier)}</span>
-                <span className="block text-sm text-slate-600">{sous(p, PROTOCOLES[p].titre)}</span>
-                <span className="mt-1 block text-[13px] text-slate-400">{dayjs(dernier.jour).format("DD/MM")} · {ecartCarte(p, liste, dernier, v.libelle)}</span>
-              </span>
-              <span className="text-2xl text-slate-400" aria-hidden>›</span>
-            </a>
-            {pts.length >= 2 && (
+
+      <Titre>Tes repères</Titre>
+      <div className="grid grid-cols-2 gap-3">
+        {reperes.map((r) => (
+          <a key={r.cle} href={`/seance/${r.session_id}`} className={`${tuile} hover:bg-white/90`}>
+            <span className={`text-[11px] font-extrabold tracking-[0.12em] ${couleurSport(r.cle)}`}>{REPERES[r.cle].sport === "velo" ? "VÉLO" : "COURSE"}</span>
+            <span className="flex items-baseline gap-1">
+              <span className="text-[30px] font-extrabold leading-tight text-slate-900">{texteValeur(r.cle, r.valeur)}</span>
+              <span className="text-[13px] text-slate-500">{REPERES[r.cle].unite}</span>
+            </span>
+            <span className="text-[13.5px] font-bold text-slate-800">{REPERES[r.cle].mot}</span>
+            <span className="text-[12.5px] text-slate-400">{dateCarte(r.jour)}</span>
+            <span className="mt-1 flex items-center justify-between">
+              <span className={`rounded-[10px] px-2 py-0.5 text-[11.5px] font-bold ${r.aJour ? "bg-green-100 text-green-800" : "bg-amber-100 text-amber-800"}`}>{r.aJour ? "à jour" : "à refaire"}</span>
+              <Vignette cle={r.cle} />
+            </span>
+          </a>
+        ))}
+        {vides.map((cle) => (
+          <button key={cle} onClick={() => ouvrir(REPERES[cle].protocole as Protocole)} className="flex flex-col gap-1 rounded-3xl border-[1.5px] border-dashed border-slate-300 bg-white/40 p-4 text-left hover:bg-white/60">
+            <span className={`text-[11px] font-extrabold tracking-[0.12em] ${couleurSport(cle)}`}>{REPERES[cle].sport === "velo" ? "VÉLO" : "COURSE"}</span>
+            <span className="mt-1 text-[15px] font-extrabold text-slate-800">{REPERES[cle].mot}</span>
+            <span className="text-[13px] text-slate-400">pas encore {cle === "dix_km" ? "testé" : "testée"}</span>
+            <span className="mt-1.5 text-[13.5px] font-extrabold text-violet-700">+ Programmer</span>
+          </button>
+        ))}
+      </div>
+
+      {prochain && (
+        <>
+          <Titre>Ton prochain test</Titre>
+          <section className={`${carte} space-y-2 p-5`}>
+            {prochain.cle ? (
               <>
-                <p className="text-sm text-slate-500">{QUOI[p]}</p>
-                <div className="h-40">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={pts} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
-                      <CartesianGrid stroke="#f1f5f9" vertical={false} />
-                      <XAxis dataKey="jour" tick={{ fontSize: 11, fill: "#94a3b8" }} />
-                      <YAxis hide domain={["dataMin - 5", "dataMax + 5"]} />
-                      <Line type="monotone" dataKey="v" stroke="#7c3aed" strokeWidth={2.5} dot={{ r: 4 }} />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
+                <p className="text-[22px] font-extrabold leading-tight text-slate-900">{prochain.titre}</p>
+                <p className="text-[14.5px] leading-snug text-slate-500">{prochain.phrase}</p>
+                <button onClick={() => ouvrir(prochain.protocole as Protocole)} className="w-full py-3.5 rounded-2xl bg-slate-900 text-white font-bold hover:bg-slate-800">Programmer ce test</button>
               </>
+            ) : (
+              <p className="font-bold leading-snug text-slate-800">{prochain.phrase}</p>
             )}
-            <ul className="divide-y divide-slate-100">
-              {[...liste].reverse().map((r) => {
-                const vv = VERDICTS[r.verdict] ?? VERDICTS.stable;
-                return (
-                  <li key={r.session_id} className={`flex items-center gap-3 py-2 text-sm ${r.valide ? "" : "opacity-50"}`}>
-                    <a href={`/seance/${r.session_id}`} className="w-12 text-slate-500 hover:underline">{dayjs(r.jour).format("DD/MM")}</a>
-                    <span className="w-24 font-bold text-slate-800">{r.indicateur != null ? valeur(p, Number(r.indicateur)) : "—"}</span>
-                    <span className={`font-semibold ${vv.couleur}`}>{vv.libelle}</span>
-                  </li>
-                );
-              })}
-            </ul>
+            <div className="text-center">
+              <button onClick={() => ouvrir(null)} className="text-[13.5px] text-slate-500 underline">Programmer un autre test</button>
+            </div>
           </section>
-        );
-      })}
-      {resultats.length >= 2 && <p className="text-xs text-slate-400">On ne dit « tu progresses » que quand l&apos;écart est net.</p>}
-      {ouvert && <ProgrammerTest athleteId={userId} coach={!soi} onFait={charger} onFermer={() => setOuvert(false)} />}
+        </>
+      )}
+
+      {historique.length > 0 && (
+        <>
+          <Titre>Ton parcours</Titre>
+          <section className={`${carte} px-4 py-1.5`}>
+            <ul className="divide-y divide-slate-100">
+              {(toutVoir ? historique : historique.slice(0, 6)).map((l) => (
+                <li key={l.session_id}>
+                  <a href={`/seance/${l.session_id}`} className="flex items-center gap-3 py-2.5 text-sm hover:bg-white/50">
+                    <span className="w-16 text-slate-500">{dateCarte(l.jour)}</span>
+                    <span className="flex-1 font-bold text-slate-800">{l.nom}</span>
+                    <span className="font-extrabold text-slate-800">{l.valeur}</span>
+                    <span className="w-16 text-right text-[12.5px] text-slate-400">{l.ecart}</span>
+                  </a>
+                </li>
+              ))}
+            </ul>
+            {historique.length > 6 && (
+              <button onClick={() => setToutVoir((v) => !v)} className="w-full border-t border-slate-100 py-3 text-[13.5px] font-extrabold text-violet-700">{toutVoir ? "Voir moins" : "Voir tout"}</button>
+            )}
+          </section>
+        </>
+      )}
+
+      {ouvert && <ProgrammerTest athleteId={userId} coach={!soi} onFait={charger} onFermer={() => setOuvert(false)} protocoleInitial={protocoleInitial} />}
     </div>
   );
 }

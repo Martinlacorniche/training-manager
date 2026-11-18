@@ -28,6 +28,7 @@ import { depuisCourt, depuisIcu, versCourt, versIcu, aplatir, dureeTotale, type 
 import { Moteur, type Etat, type Profil as ProfilCycliste } from "./ht/moteur";
 import { compliment } from "./ht/compliment";
 import { fichierFit } from "./ht/fit";
+import { fluxDesPoints } from "./ht/flux";
 import { ecart, zoneCoeur, zoneEtape, ZONE_PAUSE } from "./ht/zones";
 import { Capteur, Simulateur, bluetoothDispo, messageConnexion, type EtatCapteur, type Source } from "./capteurs";
 import { Editeur } from "./Editeur";
@@ -400,9 +401,9 @@ function HomeTrainer() {
       const fit = fichierFit(m.points, m.tours, m.rr);
       const colFait = !!choix.col && (m.points[m.points.length - 1]?.m ?? 0) >= choix.col.km * 1000 - 5;
       const bravo = colFait ? `⛰️ ${choix.col!.nom} : montée en ${chrono(m.points.length)}${nouveauRecord ? ", nouveau record !" : ""}` : compliment(m.points, m.tours, m.etapes, ftp, m.bouclee);
-      const { data: r, error } = await supabase.functions.invoke("ht-envoi", { body: { fit: versBase64(fit), session_id: sessionId, compliment: bravo } });
+      const { data: r, error } = await supabase.functions.invoke("ht-envoi", { body: { fit: versBase64(fit), flux: fluxDesPoints(m.points, m.tours), session_id: sessionId, compliment: bravo } });
       if (error) throw new Error(error.message);
-      if (r?.status === "not_connected") { setEnvoi({ etat: "ok", texte: "Séance enregistrée. Strava n'est pas connecté : tu peux télécharger le fichier." }); return; }
+      if (r?.status === "not_connected") { setEnvoi({ etat: "ok", texte: "Séance enregistrée : ton coach la voit." }); return; }
       if (r?.error) throw new Error(r.error);
       if (r?.status === "en_cours") { setEnvoi({ etat: "ok", texte: "Séance enregistrée, Strava finit de traiter le fichier : elle arrivera dans quelques minutes." }); return; }
       if (r?.activity_id) {

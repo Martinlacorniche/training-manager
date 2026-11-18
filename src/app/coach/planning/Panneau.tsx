@@ -10,7 +10,7 @@
 import Link from "next/link";
 import React, { useEffect, useRef, useState } from "react";
 import dayjs from "dayjs";
-import { X, CaretLeft, Copy, Trash, Check, ArrowSquareOut, Flask, Timer, Sparkle } from "@phosphor-icons/react";
+import { X, CaretLeft, Copy, Trash, Check, ArrowSquareOut, ChartLine, Flask, Timer, Sparkle } from "@phosphor-icons/react";
 import { supabase } from "@/lib/supabaseClient";
 import { Avatar, ETAT, INTENSITE, IconeSport, SPORT_COULEUR, SPORT_NOM, SPORTS, duree, etatSeance, lireDuree } from "../../commun";
 import { useCoque } from "../../Coque";
@@ -238,6 +238,15 @@ function Modifier({ s, jours, onChange, onDupliquer, onSupprimer, onFermer }: {
 // ── Séance faite : lecture seule ──
 function Lire({ s, onDupliquer, onFermer }: { s: Seance; onDupliquer: () => void; onFermer: () => void }) {
   const e = ETAT[etatSeance(s, dayjs().format("YYYY-MM-DD"))];
+  // Même condition que dans l'app : une activité rattachée (Strava ou montre) ouvre l'analyse.
+  const [activiteDe, setActiviteDe] = useState<string | null>(null);
+  useEffect(() => {
+    if (s.strava_activity_id) return;
+    let vivant = true;
+    supabase.from("activites").select("id").eq("session_id", s.id).limit(1).then(({ data }) => { if (vivant) setActiviteDe(data?.length ? s.id : null); });
+    return () => { vivant = false; };
+  }, [s.id, s.strava_activity_id]);
+  const analysable = !!s.strava_activity_id || activiteDe === s.id;
   return (
     <div className="flex flex-col gap-4">
       <Titre onFermer={onFermer}>
@@ -268,7 +277,9 @@ function Lire({ s, onDupliquer, onFermer }: { s: Seance; onDupliquer: () => void
       )}
       <div className="flex gap-2">
         <button onClick={onDupliquer} className="flex-1 h-11 rounded-xl border border-slate-200 text-sm font-extrabold text-slate-800 hover:bg-slate-50 flex items-center justify-center gap-1.5"><Copy size={16} weight="bold" />Dupliquer</button>
-        <Link href={`/seance/${s.id}`} className="flex-1 h-11 rounded-xl bg-blue-600 text-sm font-extrabold text-white hover:bg-blue-700 flex items-center justify-center gap-1.5"><ArrowSquareOut size={16} weight="bold" />Voir en grand</Link>
+        <Link href={`/seance/${s.id}`} className="flex-1 h-11 rounded-xl bg-blue-600 text-sm font-extrabold text-white hover:bg-blue-700 flex items-center justify-center gap-1.5">
+          {analysable ? <ChartLine size={16} weight="bold" /> : <ArrowSquareOut size={16} weight="bold" />}{analysable ? "Analyser la séance" : "Voir en grand"}
+        </Link>
       </div>
     </div>
   );

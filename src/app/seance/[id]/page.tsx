@@ -9,6 +9,7 @@ import DemandeVsFait from "../../DemandeVsFait";
 import StravaMetrics from "../../StravaMetrics";
 import { ResultatTest } from "../../Tests";
 import SuiviSeance from "../../SuiviSeance";
+import ResultatTestPage, { useResultatPage } from "../../ResultatTestPage";
 import { SPORT_NOM } from "../../commun";
 import { ROSE, superposerAdaptees } from "../../grossesse";
 
@@ -23,6 +24,9 @@ function Seance() {
   const [s, setS] = useState<any | null>(null);
   const [coachView, setCoachView] = useState(false);
   const [introuvable, setIntrouvable] = useState(false);
+  // Un test mesuré (rampe, calibrage) : sa page de résultat remplace l'analyse, qui reste sous « Pour les curieux ».
+  const pageTest = useResultatPage(s?.id, s?.test, s?.status === "valide");
+  const [curieux, setCurieux] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -43,7 +47,8 @@ function Seance() {
           <ArrowLeft size={16} /> Retour
         </button>
         {introuvable && <p className="text-slate-500">Séance introuvable, ou tu n&apos;y as pas accès.</p>}
-        {s && (
+        {s && pageTest && <ResultatTestPage r={pageTest} soi={!coachView} ouvert={curieux} onToggle={() => setCurieux((x) => !x)} />}
+        {s && (!pageTest || curieux) && (
           <>
             <header>
               <p className="text-sm font-bold text-slate-500 first-letter:uppercase">{dayjs(s.date).format("dddd D MMMM YYYY")} · {SPORT_NOM[s.sport] ?? s.sport}</p>

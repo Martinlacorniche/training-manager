@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import dayjs from "dayjs";
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid } from "recharts";
 import { supabase } from "@/lib/supabaseClient";
+import { aUnePage } from "./resultatTest";
 import { allure, apercuTest, CONSIGNES, programmerTest, Protocole, PROTOCOLES, VERDICTS } from "./tests";
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -231,13 +232,37 @@ const QUOI: Record<string, string> = {
 };
 const valeur = (p: string, x: number) => (p === "progressif" ? `${(x * 3.6).toFixed(1).replace(".", ",")} km/h` : p === "tranquille" ? `${Math.round(x)} bpm` : p === "lsct" || p === "rampe" ? `${Math.round(x)} W` : `${allure(x)}/km`);
 
+const etiquette = (p: string) => (p === "rampe" || p === "lsct" ? "TEST VÉLO" : p === "defi" ? "TEST 10 KM" : "TEST COURSE");
+type Ligne = { session_id: string; verdict: string; jour: string; valide: boolean; indicateur: number | null; detail?: { ftp?: number; vma_kmh?: number } | null };
+const valeurDetail = (p: string, x: Ligne): number | null => {
+  const n = Number(p === "rampe" ? x.detail?.ftp : p === "progressif" ? x.detail?.vma_kmh : x.indicateur);
+  return Number.isFinite(n) && n > 0 ? n : null;
+};
+const grand = (p: string, x: Ligne) => {
+  const n = valeurDetail(p, x);
+  if (n == null) return "—";
+  if (p === "rampe") return `${Math.round(n)} W`;
+  if (p === "progressif") return `${n.toFixed(1).replace(".", ",")} km/h`;
+  return valeur(p, n);
+};
+const sous = (p: string, titre: string) => (p === "rampe" ? "Ta FTP" : p === "progressif" ? "Ta VMA" : titre);
+// « 1er test » ou l'écart avec le test d'avant, en gris, sans verdict ni couleur.
+const ecartCarte = (p: string, liste: Ligne[], dernier: Ligne, libelle: string) => {
+  const avant = liste.filter((r) => r.jour < dernier.jour && r.valide && valeurDetail(p, r) != null);
+  if (!avant.length) return "1er test";
+  if (!aUnePage(p)) return libelle;
+  const e = (valeurDetail(p, dernier) ?? 0) - (valeurDetail(p, avant[avant.length - 1]) ?? 0);
+  const f = (x: number) => (p === "rampe" ? String(Math.round(Math.abs(x))) : Math.abs(x).toFixed(1).replace(".", ","));
+  return Math.abs(e) < 0.05 ? "pareil qu'avant" : `${e > 0 ? "+" : "−"}${f(e)}${p === "rampe" ? " W" : " km/h"}`;
+};
+
 export function SuiviTests({ userId, soi }: { userId: string; soi: boolean }) {
   const [resultats, setResultats] = useState<Record<string, any>[]>([]);
   const [prevus, setPrevus] = useState<Record<string, any>[]>([]);
   const [ouvert, setOuvert] = useState(false);
   const charger = useCallback(async () => {
     const [{ data: r }, { data: p }] = await Promise.all([
-      supabase.from("test_resultats").select("session_id, jour, protocole, valide, indicateur, verdict, phrase").eq("user_id", userId).order("jour"),
+      supabase.from("test_resultats").select("session_id, jour, protocole, valide, indicateur, verdict, phrase, detail").eq("user_id", userId).order("jour"),
       supabase.from("sessions").select("id, date, title, status, test").eq("user_id", userId).not("test", "is", null).gte("date", dayjs().format("YYYY-MM-DD")).order("date"),
     ]);
     setResultats(r ?? []);
@@ -247,11 +272,11 @@ export function SuiviTests({ userId, soi }: { userId: string; soi: boolean }) {
   const protocoles = (["tranquille", "lsct", "rampe", "progressif", "defi"] as Protocole[]).filter((p) => resultats.some((r) => r.protocole === p));
   const preTestFait = resultats.some((r) => r.protocole === "progressif" && r.valide);
   const preTestPrevu = prevus.some((s) => s.test === "progressif");
-  const carte = "bg-white rounded-2xl border border-slate-200 p-5 space-y-3";
+  const carte = "rounded-3xl border border-white/90 bg-white/70 shadow-sm backdrop-blur p-5 space-y-3";
 
   return (
     <div className="space-y-4">
-      <button onClick={() => setOuvert(true)} className="w-full py-3 rounded-xl bg-violet-600 text-white font-bold hover:bg-violet-700">+ Programmer un test</button>
+      <button onClick={() => setOuvert(true)} className="w-full py-3.5 rounded-2xl bg-slate-900 text-white font-bold hover:bg-slate-800">Programmer un test</button>
       {prevus.map((s) => (
         <a key={s.id} href={`/seance/${s.id}`} className="block rounded-xl bg-violet-50 p-3 text-sm font-semibold text-slate-700">{s.title} · {dayjs(s.date).format("dddd D MMMM")}</a>
       ))}
@@ -261,15 +286,21 @@ export function SuiviTests({ userId, soi }: { userId: string; soi: boolean }) {
           <p className="text-sm text-slate-600">Au stade, une fois. Ensuite, un test par mois.</p>
         </section>
       ) : protocoles.map((p) => {
-        const liste = resultats.filter((r) => r.protocole === p);
+        const liste = resultats.filter((r) => r.protocole === p) as unknown as Ligne[];
         const pts = liste.filter((r) => r.valide && r.indicateur != null).map((r) => ({ jour: dayjs(r.jour).format("DD/MM"), v: Number(r.indicateur) }));
         const dernier = liste[liste.length - 1];
         const v = VERDICTS[dernier.verdict] ?? VERDICTS.stable;
         return (
           <section key={p} className={carte}>
-            <h2 className="font-bold text-slate-800">{PROTOCOLES[p].titre}</h2>
-            <p className={`text-sm font-bold ${v.couleur}`}>{v.libelle} · {dayjs(dernier.jour).format("DD/MM")}</p>
-            <p className="font-semibold text-slate-800">{dernier.phrase}</p>
+            <a href={`/seance/${dernier.session_id}`} className="flex items-center gap-3">
+              <span className="flex-1">
+                <span className="block text-[11px] font-extrabold tracking-[0.12em] text-violet-600">{etiquette(p)}</span>
+                <span className="block text-3xl font-extrabold text-slate-900">{grand(p, dernier)}</span>
+                <span className="block text-sm text-slate-600">{sous(p, PROTOCOLES[p].titre)}</span>
+                <span className="mt-1 block text-[13px] text-slate-400">{dayjs(dernier.jour).format("DD/MM")} · {ecartCarte(p, liste, dernier, v.libelle)}</span>
+              </span>
+              <span className="text-2xl text-slate-400" aria-hidden>›</span>
+            </a>
             {pts.length >= 2 && (
               <>
                 <p className="text-sm text-slate-500">{QUOI[p]}</p>

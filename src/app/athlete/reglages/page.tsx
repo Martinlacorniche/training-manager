@@ -19,7 +19,7 @@ const LIEN_MCP = "https://ngsportcoaching.com/mcp";
 type Bouton = { texte: string; valeur: string; genre?: "annuler" | "danger" | "principal" };
 type Dialogue = { titre: string; texte: string[]; boutons: Bouton[]; couleur: string; resolve: (v: string | null) => void };
 
-type Moi = { id_auth: string; coach_id: string | null; strava_athlete_id: number | null; partage_etat_coach: boolean | null; partage_informe_le: string | null; consentement_ia_le: string | null };
+type Moi = { id_auth: string; coach_id: string | null; strava_athlete_id: string | number | null; partage_etat_coach: boolean | null; partage_informe_le: string | null; consentement_ia_le: string | null };
 
 function Reglages() {
   const router = useRouter();
@@ -47,7 +47,7 @@ function Reglages() {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) { router.push("/login"); return; }
     const [{ data: u }, { data: secret }, { data: m }] = await Promise.all([
-      supabase.from("users").select("id_auth, coach_id, strava_athlete_id, partage_etat_coach, partage_informe_le, consentement_ia_le").eq("id_auth", session.user.id).single(),
+      supabase.from("users").select("id_auth, coach_id, strava_athlete_id:strava_athlete_id::text, partage_etat_coach, partage_informe_le, consentement_ia_le").eq("id_auth", session.user.id).single(),
       supabase.rpc("intervals_est_connecte"),
       supabase.rpc("mcp_token_status"),
     ]);

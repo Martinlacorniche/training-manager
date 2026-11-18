@@ -7,7 +7,7 @@ import React from "react";
 // Toute la logique de calcul vit côté edge functions ; ici on ne fait qu'afficher.
 
 type Data = {
-  strava_activity_id?: number | null;
+  strava_activity_id?: string | number | null;
   strava_distance?: number | null;
   strava_elevation?: number | null;
   strava_avg_hr?: number | null;

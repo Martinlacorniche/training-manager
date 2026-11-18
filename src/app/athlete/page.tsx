@@ -48,17 +48,17 @@ function fmtTime(h?: number | null) {
 
 // ---------- TYPES ----------
 type UserType = {
-  id_auth: string; name: string; coach_code?: string; coach_id?: string; ordre: number | null; strava_athlete_id?: number | null;
+  id_auth: string; name: string; coach_code?: string; coach_id?: string; ordre: number | null; strava_athlete_id?: string | number | null; strava_athlete_id_txt?: string | null;
   partage_etat_coach?: boolean | null; partage_informe_le?: string | null;
 };
-type SessionType = { id: string; user_id: string; sport?: string; title?: string; planned_hour?: number; planned_inter?: string; intensity?: string; status?: string; rpe?: number | null; athlete_comment?: string | null; date: string; strava_activity_id?: number | null; strava_imported?: boolean | null; strava_distance?: number | null; strava_elevation?: number | null; strava_avg_hr?: number | null; strava_avg_watts?: number | null; strava_tss?: number | null; strava_trimp?: number | null; strava_hr_drift?: number | null; strava_time_in_zone?: number[] | null; strava_pace_100?: number | null; strava_swolf?: number | null; vu_coach?: boolean;
+type SessionType = { id: string; user_id: string; sport?: string; title?: string; planned_hour?: number; planned_inter?: string; intensity?: string; status?: string; rpe?: number | null; athlete_comment?: string | null; date: string; strava_activity_id?: string | number | null; strava_imported?: boolean | null; strava_distance?: number | null; strava_elevation?: number | null; strava_avg_hr?: number | null; strava_avg_watts?: number | null; strava_tss?: number | null; strava_trimp?: number | null; strava_hr_drift?: number | null; strava_time_in_zone?: number[] | null; strava_pace_100?: number | null; strava_swolf?: number | null; vu_coach?: boolean;
   // Mode grossesse (15/10/2026) : sa version adaptée, superposée à l'affichage (jamais écrite dans sessions).
   test?: string | null; timer_sequence?: unknown; } & Adaptable;
 type AbsenceType = {
   id: string; user_id: string; date: string; type: string; name?: string | null;
   distance_km?: number | null; elevation_d_plus?: number | null; comment?: string | null; lieu_nom?: string | null; heure_depart?: string | null;
   rpe?: number | null; duration_hour?: number | null; status?: string | null;
-  strava_activity_id?: number | null; strava_distance?: number | null; strava_elevation?: number | null; strava_avg_hr?: number | null; strava_avg_watts?: number | null;
+  strava_activity_id?: string | number | null; strava_distance?: number | null; strava_elevation?: number | null; strava_avg_hr?: number | null; strava_avg_watts?: number | null;
   strava_tss?: number | null; strava_trimp?: number | null; strava_hr_drift?: number | null; strava_time_in_zone?: number[] | null; strava_pace_100?: number | null; strava_swolf?: number | null;
  temps_vise_h?: number | null; classement?: number | null; participants?: number | null; };
 type WeeklyReviewType = {
@@ -957,7 +957,7 @@ function AthletePage() {
     (async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.user?.id) { router.push("/login"); return; }
-      const { data: user } = await supabase.from("users").select("*").eq("id_auth", session.user.id).single();
+      const { data: user } = await supabase.from("users").select("*, strava_athlete_id_txt:strava_athlete_id::text").eq("id_auth", session.user.id).single();
       setAthlete(user as UserType);
     })();
   }, [router]);
@@ -1074,7 +1074,7 @@ function AthletePage() {
     (async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.user?.id) return;
-      const { data: user } = await supabase.from("users").select("*").eq("id_auth", session.user.id).single();
+      const { data: user } = await supabase.from("users").select("*, strava_athlete_id_txt:strava_athlete_id::text").eq("id_auth", session.user.id).single();
       if (user) setAthlete(user as UserType);
     })();
   }, []);
@@ -1163,7 +1163,7 @@ function AthletePage() {
               <>
                 <button
                   onClick={disconnectStrava}
-                  title={`Strava lié (athlete ${athlete.strava_athlete_id}) — cliquer pour déconnecter`}
+                  title={`Strava lié (athlete ${athlete.strava_athlete_id_txt ?? athlete.strava_athlete_id}) — cliquer pour déconnecter`}
                   className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 text-xs font-bold"
                 >
                   <span className="inline-block w-2 h-2 rounded-full bg-emerald-500"/> Strava

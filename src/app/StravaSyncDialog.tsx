@@ -6,7 +6,7 @@ import { Lightning, X, CheckCircle, ArrowsClockwise, WarningCircle, MagnifyingGl
 const SUPABASE_FUNCTIONS_URL = "https://ihigmlpgliasczlvxttd.supabase.co/functions/v1";
 
 type Candidate = {
-  activity_id: number; name: string; sport_app: string; strava_type: string;
+  activity_id: string | number; name: string; sport_app: string; strava_type: string;
   start_time: string | null; distance_km: number | null; duration_min: number | null;
   elevation_m: number | null; avg_hr: number | null;
 };

@@ -9,7 +9,7 @@
 // ─────────────────────────────────────────────────────────────────────────
 
 type Seance = { status?: string | null; rpe?: number | string | null; planned_hour?: number | string | null; intensity?: string | null };
-type Course = { status?: string | null; rpe?: number | string | null; duration_hour?: number | string | null; strava_activity_id?: number | null };
+type Course = { status?: string | null; rpe?: number | string | null; duration_hour?: number | string | null; strava_activity_id?: string | number | null };
 
 export const chargeSeance = (s: Seance) =>
   s.status === "valide" && s.rpe ? Number(s.rpe) * (Number(s.planned_hour) || 0) : 0;

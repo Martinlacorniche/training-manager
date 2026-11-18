@@ -18,7 +18,7 @@ export type Intensity = "basse" | "moyenne" | "haute";
 
 export type SessionLike = {
   status?: string | null;
-  strava_activity_id?: number | null;
+  strava_activity_id?: string | number | null;
   prescribed_hour?: number | null;
   planned_hour?: number | null;       // = durée réalisée après synchro
   intensity?: string | null;          // intensité prescrite

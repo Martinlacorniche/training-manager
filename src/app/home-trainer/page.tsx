@@ -133,7 +133,24 @@ function HomeTrainer() {
   // Ouverte depuis une séance du planning (?seance=) : l'onglet Planning, sauf si c'est celle du jour.
   useEffect(() => {
     const x = seanceChoisie ? seances.find((y) => y.id === seanceChoisie) : null;
-    if (x && x.date !== dayjs().format("YYYY-MM-DD")) setOnglet("plan");
+    // Sans étapes, elle n'est pas en tête du catalogue : on ouvre aussi le Planning (18/11).
+    if (x && (x.date !== dayjs().format("YYYY-MM-DD") || !x.workout_text)) setOnglet("plan");
+  }, [seanceChoisie, seances]);
+  // Pas encore d'étapes : on traduit la séance ici, comme pour la montre, pour la
+  // piloter sans détour (Martin, 18/11). Une seule tentative.
+  const [traduction, setTraduction] = useState<string | null>(null);
+  const traduiteUneFois = useRef(false);
+  useEffect(() => {
+    const x = seanceChoisie ? seances.find((y) => y.id === seanceChoisie) : null;
+    if (!x || x.workout_text || traduiteUneFois.current) return;
+    traduiteUneFois.current = true;
+    supabase.functions.invoke("generate-workout", { body: { sessionId: x.id } })
+      .then(({ data }) => {
+        if (data?.workout) setSeances((l) => l.map((y) => (y.id === x.id ? { ...y, workout_text: data.workout } : y)));
+      })
+      .catch(() => {})
+      .finally(() => setTraduction(null));
+    setTraduction(x.id);
   }, [seanceChoisie, seances]);
   const [materielOuvert, setMaterielOuvert] = useState(false);
   const [pasPretOuvert, setPasPretOuvert] = useState(false);   // « Le vélo n'est pas connecté »
@@ -860,12 +877,13 @@ function HomeTrainer() {
                       <div className={`text-[11px] font-extrabold uppercase tracking-[0.12em] ${auj ? "text-blue-600" : "text-slate-400"}`}>{auj ? "Aujourd'hui" : dayjs(s.date).format("dddd D MMM")}{s.status === "valide" ? " · faite ✓" : ""}</div>
                       <div className="font-black text-slate-800 text-base truncate mt-0.5">{s.title || "Vélo"}</div>
                       {blocs.length ? <div className="text-[13px] font-semibold text-slate-500">{Math.round(dureeTotale(blocs) / 60)} min</div>
+                        : traduction === s.id ? <div className="text-[13px] font-bold text-slate-500">Je prépare les étapes…</div>
                         : <div className="text-[13px] font-extrabold text-amber-700">Pas d&apos;étapes : l&apos;app ne peut pas piloter l&apos;ERG</div>}
                     </div>
                     <Bouton petit desactive={!pret} icone={mdiPlay} onClick={() => demarrer({ titre: s.title || "Vélo", blocs, sessionId: s.id, texteCourt: null, test: s.test === "rampe" || s.test === "lsct" ? s.test : null })}>Go</Bouton>
                   </div>
                   {blocs.length > 0 && profilDe(blocs, ftp, 40)}
-                  {!blocs.length && (
+                  {!blocs.length && traduction !== s.id && (
                     <button type="button" onClick={() => { setCible({ id: s.id, titre: s.title || "Vélo" }); setTexte(""); setOnglet("main"); }}
                       className="rounded-full bg-amber-100 px-3 py-1.5 text-[13px] font-black text-amber-800 hover:bg-amber-200">✏️ Écrire ses étapes</button>
                   )}

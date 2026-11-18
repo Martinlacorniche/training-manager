@@ -12,6 +12,8 @@ import SuiviSeance from "../../SuiviSeance";
 import ResultatTestPage, { useResultatPage } from "../../ResultatTestPage";
 import { SPORT_NOM } from "../../commun";
 import { ROSE, superposerAdaptees } from "../../grossesse";
+import DessinSeance, { useFtp } from "../../DessinSeance";
+import { lireDessin } from "../../dessin-seance";
 
 dayjs.locale("fr");
 
@@ -27,6 +29,7 @@ function Seance() {
   // Un test mesuré (rampe, calibrage) : sa page de résultat remplace l'analyse, qui reste sous « Pour les curieux ».
   const pageTest = useResultatPage(s?.id, s?.test, s?.status === "valide");
   const [curieux, setCurieux] = useState(false);
+  const ftpDessin = useFtp(s?.user_id, s?.sport);
 
   useEffect(() => {
     (async () => {
@@ -64,7 +67,9 @@ function Seance() {
             {s.planned_inter && !(s.test && s.status !== "valide") && (
               <section className="bg-white rounded-2xl border border-slate-200 p-4">
                 <h3 className="font-bold mb-1" style={{ color: s.adaptee ? ROSE : "#1e293b" }}>{s.adaptee ? "Ta version" : "Consignes"}</h3>
-                <p className="text-sm text-slate-600 whitespace-pre-line">{s.planned_inter}</p>
+                {!coachView && s.status !== "valide" && !s.adaptee && lireDessin(s.workout_text).length >= 2
+                  ? <DessinSeance texte={s.planned_inter} workoutText={s.workout_text} ftp={ftpDessin} />
+                  : <p className="text-sm text-slate-600 whitespace-pre-line">{s.planned_inter}</p>}
               </section>
             )}
             <section className="bg-white rounded-2xl border border-slate-200 p-4 space-y-3">

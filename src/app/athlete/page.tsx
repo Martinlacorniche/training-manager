@@ -35,6 +35,8 @@ import CarteBebe from "../CarteBebe";
 import GrossesseRdv, { IconeGenre } from "../GrossesseRdv";
 import { rdvDuPlanning, maGrossesse, superposerAdaptees, adapter, ROSE, ROSE_FOND, heureCourte, type RdvGrossesse, type Adaptable } from "../grossesse";
 import AdapterSeance from "../AdapterSeance";
+import DessinSeance, { useFtp } from "../DessinSeance";
+import { lireDessin } from "../dessin-seance";
 import { ETAT, INTENSITE, IconeSport, SPORT_COULEUR, SPORT_NOM, alerteSeance, duree, etatSeance } from "../commun";
 
 // ---------- HELPERS & STYLES (COHÉRENCE COACH) ----------
@@ -267,6 +269,7 @@ function ValidateModal({ open, onClose, onSaved, initial, stravaConnected, onSyn
     setVoirOriginal(false);
   }, [open, initial]);
 
+  const ftpDessin = useFtp(initial?.user_id, initial?.sport);
   if (!open || !initial) return null;
   const isDone = initial.status === "valide";
 
@@ -350,6 +353,11 @@ function ValidateModal({ open, onClose, onSaved, initial, stravaConnected, onSyn
                 </div>
               );
             })()}
+            {!isDone && !initial.adaptee && !initial.test && lireDessin((initial as { workout_text?: string | null }).workout_text).length >= 2 && (
+              <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                <DessinSeance texte={initial.planned_inter || ""} workoutText={(initial as { workout_text?: string | null }).workout_text} ftp={ftpDessin} />
+              </div>
+            )}
             {grossesse && !isDone && !initial.adaptee && !initial.test && (
               <div className="flex justify-center">
                 <button type="button" onClick={() => setAdapterOuvert(true)}

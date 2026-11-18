@@ -15,6 +15,8 @@ import { supabase } from "@/lib/supabaseClient";
 import { Avatar, ETAT, INTENSITE, IconeSport, SPORT_COULEUR, SPORT_NOM, SPORTS, duree, etatSeance, lireDuree } from "../../commun";
 import { useCoque } from "../../Coque";
 import DemandeVsFait from "../../DemandeVsFait";
+import DessinSeance, { useFtp } from "../../DessinSeance";
+import { lireDessin } from "../../dessin-seance";
 import SuiviSeance from "../../SuiviSeance";
 import { ResultatTest, ProgrammerTest } from "../../Tests";
 import { copierSemaine, dupliquerSeance, type Copie } from "../copie";
@@ -133,9 +135,12 @@ function Modifier({ s, jours, onChange, onDupliquer, onSupprimer, onFermer }: {
   const [etat, setEtat] = useState<"" | "en_cours" | "ok" | "erreur">("");
   const [autreDuree, setAutreDuree] = useState("");
   const [test, setTest] = useState(false);
+  const ftpAthlete = useFtp(s.user_id, s.sport);
+  // Les consignes telles qu'à l'ouverture : le dessin ne vaut que tant qu'elles n'ont pas changé.
+  const texteOuverture = useRef(s.planned_inter ?? "");
   const minuteur = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dernier = useRef(s);
-  useEffect(() => { setF(s); dernier.current = s; setAutreDuree(""); }, [s.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { setF(s); dernier.current = s; texteOuverture.current = s.planned_inter ?? ""; setAutreDuree(""); }, [s.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function changer(p: Partial<Seance>) {
     const n = { ...f, ...p };
@@ -212,6 +217,12 @@ function Modifier({ s, jours, onChange, onDupliquer, onSupprimer, onFermer }: {
           })}
         </div>
       </div>
+      {s.workout_text && (f.planned_inter ?? "") === texteOuverture.current && lireDessin(s.workout_text).length >= 2 && (
+        <div className="rounded-2xl border border-slate-200 bg-white p-4">
+          <div className="mb-2 text-[11px] font-extrabold uppercase tracking-wide text-blue-600">Ce que ton athlète verra</div>
+          <DessinSeance texte={f.planned_inter ?? ""} workoutText={s.workout_text} ftp={ftpAthlete} />
+        </div>
+      )}
       <div className="flex-1 flex flex-col min-h-[140px]">
         <Etiquette>CE QU&apos;IL FAUT FAIRE</Etiquette>
         <textarea value={f.planned_inter ?? ""} onChange={(ev) => changer({ planned_inter: ev.target.value })} placeholder={"20′ tranquille\n3 × 10′ allure semi, 3′ trot entre\nLe reste tranquille"}

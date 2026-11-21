@@ -154,7 +154,19 @@ export function minutesALarret(paliers: Palier[]): number | null {
 // L'onglet « Mes tests » en 3 étages : tes repères, ton prochain test, ton parcours.
 // ─────────────────────────────────────────────────────────────────────────
 
-export type ResTest = { session_id: string; jour: string; protocole: string; valide?: boolean | null; indicateur?: number | null; detail?: Record<string, number | null | undefined> | null };
+export type ResTest = {
+  session_id: string; jour: string; protocole: string; valide?: boolean | null; indicateur?: number | null;
+  detail?: Record<string, number | null | undefined> | null;
+  verdict?: string | null; phrase?: string | null; raisons?: string[] | string | null;
+};
+/** Une ligne de test_references (la VMA connue, même si le dernier calibrage ne compte pas). */
+export type RefTest = { protocole?: string | null; vma_kmh?: number | null; fixe_le?: string | null; session_id?: string | null };
+/** Une ligne de athlete_metrics. */
+export type Metriques = { vma_kmh?: number | null; ftp_w?: number | null; fc_max_velo?: number | null; fc_max_velo_le?: string | null };
+export type Sources = { refs?: RefTest[] | null; metriques?: Metriques | null };
+
+/** Un essai qui ne compte pas (calibrage écarté). */
+export const estEcarte = (r: ResTest): boolean => r.valide === false || r.verdict === "ecarte";
 export type CleRepere = "ftp" | "fcvelo" | "vma" | "dix_km" | "checkup_velo" | "checkup_course";
 export type Unite = "W" | "km/h" | "bpm" | "/km";
 type Def = { protocole: string; sport: "velo" | "course"; unite: Unite; mot: string; court: string; principal: boolean };
@@ -171,7 +183,7 @@ export const PRINCIPAUX: CleRepere[] = ["vma", "ftp", "dix_km"];
 
 /** Valeur chiffrée d'un test pour un repère, ou null si le test n'a rien donné. */
 export function valeurRepere(cle: CleRepere, r: ResTest): number | null {
-  if (r.protocole !== REPERES[cle].protocole || r.valide === false) return null;
+  if (r.protocole !== REPERES[cle].protocole || estEcarte(r)) return null;
   const brut = cle === "ftp" ? r.detail?.ftp : cle === "fcvelo" ? r.detail?.fc_max : cle === "vma" ? r.detail?.vma_kmh : r.indicateur;
   const n = Number(brut);
   return brut != null && Number.isFinite(n) && n > 0 ? n : null;
@@ -202,17 +214,52 @@ export function ecartLigne(cle: CleRepere, actuel: number, precedent: number | n
   return `${e > 0 ? "+" : "−"}${abs}${suffixe}`;
 }
 
-export type Repere = { cle: CleRepere; valeur: number; jour: string; session_id: string; aJour: boolean };
+export type Repere = { cle: CleRepere; valeur: number; jour: string | null; session_id: string | null; aJour: boolean | null };
 
-/** Le dernier résultat de chaque repère qui existe dans les données. */
-export function reperesDe(resultats: ResTest[], aujourdhui: Date = new Date()): Repere[] {
+const positif = (x: unknown): number | null => { const n = Number(x); return x != null && Number.isFinite(n) && n > 0 ? n : null; };
+const jourDe = (j: string | null | undefined): string | null => (j ? j.slice(0, 10) : null);
+
+/**
+ * Le dernier repère de chaque grandeur. Sans `sources` : le dernier test qui compte.
+ * Avec `sources` : la VMA vient de test_references (la plus récente par fixe_le) puis de
+ * athlete_metrics, la FTP et le cœur max vélo de athlete_metrics, même si le dernier test
+ * est écarté. `jour` null = pas de date connue (pas de pastille) ; `session_id` null =
+ * pas de résultat valide à ouvrir.
+ */
+export function reperesDe(resultats: ResTest[], aujourdhui: Date = new Date(), sources: Sources = {}): Repere[] {
   const tri = [...resultats].sort((a, b) => a.jour.localeCompare(b.jour));
+  const valides = new Set(tri.filter((r) => !estEcarte(r)).map((r) => r.session_id));
   const sortie: Repere[] = [];
+  const ajoute = (cle: CleRepere, valeur: number, jour: string | null, session_id: string | null) =>
+    sortie.push({ cle, valeur, jour, session_id: session_id && valides.has(session_id) ? session_id : null, aJour: jour ? estAJour(jour, aujourdhui) : null });
+  const m = sources.metriques ?? null;
   for (const cle of Object.keys(REPERES) as CleRepere[]) {
-    for (let i = tri.length - 1; i >= 0; i--) {
+    let test: { valeur: number; jour: string; session_id: string } | null = null;
+    for (let i = tri.length - 1; i >= 0 && !test; i--) {
       const v = valeurRepere(cle, tri[i]);
-      if (v != null) { sortie.push({ cle, valeur: v, jour: tri[i].jour, session_id: tri[i].session_id, aJour: estAJour(tri[i].jour, aujourdhui) }); break; }
+      if (v != null) test = { valeur: v, jour: tri[i].jour, session_id: tri[i].session_id };
     }
+    if (cle === "ftp" || cle === "fcvelo") {
+      const dispo = positif(cle === "ftp" ? m?.ftp_w : m?.fc_max_velo);
+      if (dispo != null) {
+        const le = cle === "fcvelo" ? jourDe(m?.fc_max_velo_le) : null;
+        const lie = test && (!le || jourDe(test.jour) === le);
+        ajoute(cle, dispo, le ?? test?.jour ?? null, lie ? test!.session_id : null);
+      } else if (test) ajoute(cle, test.valeur, test.jour, test.session_id);
+      continue;
+    }
+    if (cle === "vma") {
+      const jourSeance = (id?: string | null) => (id ? tri.find((r) => r.session_id === id)?.jour ?? null : null);
+      const refs = (sources.refs ?? []).map((r) => ({ v: positif(r.vma_kmh), jour: jourDe(r.fixe_le) ?? jourDe(jourSeance(r.session_id)), id: r.session_id ?? null }))
+        .filter((r): r is { v: number; jour: string | null; id: string | null } => r.v != null)
+        .sort((a, b) => (a.jour ?? "").localeCompare(b.jour ?? ""));
+      const ref = refs[refs.length - 1] ?? null;
+      if (test && (!ref || !ref.jour || jourDe(test.jour)! >= ref.jour)) ajoute(cle, test.valeur, test.jour, test.session_id);
+      else if (ref) ajoute(cle, ref.v, ref.jour, ref.id);
+      else if (positif(m?.vma_kmh) != null) ajoute(cle, positif(m?.vma_kmh)!, null, null);
+      continue;
+    }
+    if (test) ajoute(cle, test.valeur, test.jour, test.session_id);
   }
   return sortie;
 }
@@ -221,10 +268,30 @@ export const reperesVides = (reperes: Repere[]): CleRepere[] => PRINCIPAUX.filte
 
 export type Prochain = { cle: CleRepere; protocole: string; manque: boolean; titre: string; phrase: string } | { cle: null; tout_a_jour: true; phrase: string };
 
-/** Le test à proposer : un principal qui manque d'abord, sinon le plus ancien ; « tout est à jour » sinon. */
-export function prochainTestConseille(reperes: Repere[], aujourdhui: Date = new Date()): Prochain | null {
+const PREFIXE_ECARTE = /^\s*ce calibrage ne compte pas\s*:\s*/i;
+/** La raison d'un test écarté, en mots simples et sans le préfixe « Ce calibrage ne compte pas : ». */
+export function raisonCourte(r: ResTest): string | null {
+  const brut = Array.isArray(r.raisons) ? r.raisons.find((x) => typeof x === "string" && x.trim()) : typeof r.raisons === "string" && r.raisons.trim() ? r.raisons : null;
+  const t = (brut ?? r.phrase ?? "").replace(PREFIXE_ECARTE, "").trim();
+  return t ? t.replace(/\.$/, "") : null;
+}
+
+const TITRES: Record<CleRepere, string> = { ftp: "Mesurer ta FTP", vma: "Mesurer ta VMA", dix_km: "Tester ton 10 km", fcvelo: "Mesurer ton cœur max à vélo", checkup_velo: "Faire un check-up vélo", checkup_course: "Faire un check-up course" };
+
+/** Le test à proposer : un dernier essai écarté d'abord, puis un principal qui manque, sinon le plus ancien ; « tout est à jour » sinon. */
+export function prochainTestConseille(reperes: Repere[], aujourdhui: Date = new Date(), resultats: ResTest[] = []): Prochain | null {
   const vides = reperesVides(reperes);
-  const titres: Record<CleRepere, string> = { ftp: "Mesurer ta FTP", vma: "Mesurer ta VMA", dix_km: "Tester ton 10 km", fcvelo: "Mesurer ton cœur max à vélo", checkup_velo: "Faire un check-up vélo", checkup_course: "Faire un check-up course" };
+  const titres = TITRES;
+  // Le dernier essai de chaque test : s'il ne compte pas, on le propose en premier (le plus récent d'abord).
+  const dernierParProtocole = new Map<string, ResTest>();
+  for (const r of [...resultats].sort((a, b) => a.jour.localeCompare(b.jour))) if (clesDe(r.protocole)[0]) dernierParProtocole.set(r.protocole, r);
+  const rate = [...dernierParProtocole.values()].filter(estEcarte).sort((a, b) => b.jour.localeCompare(a.jour))[0];
+  if (rate) {
+    const cle = clesDe(rate.protocole)[0];
+    const montre = /montre/i.test(raisonCourte(rate) ?? "");
+    const phrase = montre ? "Le dernier n'a pas compté : lance-le depuis ta montre, en suivant la séance envoyée." : "Le dernier n'a pas compté : refais-le pour avoir un repère juste.";
+    return { cle, protocole: REPERES[cle].protocole, manque: !reperes.some((r) => r.cle === cle), titre: titres[cle], phrase };
+  }
   if (vides.length) {
     const cle = vides[0];
     const phrase = cle === "vma" ? "Pas encore testée : c'est le bon moment pour connaître tes allures de course."
@@ -232,17 +299,17 @@ export function prochainTestConseille(reperes: Repere[], aujourdhui: Date = new 
       : "Pas encore testé : c'est le bon moment pour connaître ton allure sur 10 km.";
     return { cle, protocole: REPERES[cle].protocole, manque: true, titre: titres[cle], phrase };
   }
-  const candidats = reperes.filter((r) => r.cle !== "fcvelo").sort((a, b) => a.jour.localeCompare(b.jour));
+  const candidats = reperes.filter((r) => r.cle !== "fcvelo" && r.jour).sort((a, b) => a.jour!.localeCompare(b.jour!));
   if (!candidats.length) return null;
   const vieux = candidats[0];
-  if (!estAJour(vieux.jour, aujourdhui)) {
-    return { cle: vieux.cle, protocole: REPERES[vieux.cle].protocole, manque: false, titre: titres[vieux.cle], phrase: `Le dernier date du ${jourLong(vieux.jour)} : refais-le pour garder tes allures justes.` };
+  if (!estAJour(vieux.jour!, aujourdhui)) {
+    return { cle: vieux.cle, protocole: REPERES[vieux.cle].protocole, manque: false, titre: titres[vieux.cle], phrase: `Le dernier date du ${jourLong(vieux.jour!)} : refais-le pour garder tes allures justes.` };
   }
-  return { cle: null, tout_a_jour: true, phrase: `Tout est à jour. Prochain test conseillé : ${quandProchainTest(vieux.jour, aujourdhui) ?? "dès que tu peux"}.` };
+  return { cle: null, tout_a_jour: true, phrase: `Tout est à jour. Prochain test conseillé : ${quandProchainTest(vieux.jour!, aujourdhui) ?? "dès que tu peux"}.` };
 }
 
-export type LigneParcours = { session_id: string; jour: string; cle: CleRepere; nom: string; valeur: string; ecart: string };
-/** Tous les tests qui ont donné un chiffre, du plus récent au plus ancien, avec l'écart au test d'avant. */
+export type LigneParcours = { session_id: string; jour: string; cle: CleRepere; nom: string; valeur: string; ecart: string; ecarte: boolean; raison: string | null };
+/** Tous les tests, du plus récent au plus ancien : ceux qui ont donné un chiffre (avec l'écart au test d'avant) et ceux qui ne comptent pas (« ne compte pas » + la raison). */
 export function parcours(resultats: ResTest[]): LigneParcours[] {
   const tri = [...resultats].sort((a, b) => a.jour.localeCompare(b.jour));
   const lignes: LigneParcours[] = [];
@@ -250,9 +317,13 @@ export function parcours(resultats: ResTest[]): LigneParcours[] {
   for (const r of tri) {
     const cle = clesDe(r.protocole)[0];
     if (!cle) continue;
+    if (estEcarte(r)) {
+      lignes.push({ session_id: r.session_id, jour: r.jour, cle, nom: REPERES[cle].court, valeur: "ne compte pas", ecart: "", ecarte: true, raison: raisonCourte(r) });
+      continue;
+    }
     const v = valeurRepere(cle, r);
     if (v == null) continue;
-    lignes.push({ session_id: r.session_id, jour: r.jour, cle, nom: REPERES[cle].court, valeur: `${texteValeur(cle, v)}${REPERES[cle].unite === "km/h" ? " km/h" : REPERES[cle].unite === "/km" ? " /km" : ` ${REPERES[cle].unite}`}`, ecart: ecartLigne(cle, v, dernier[cle] ?? null) });
+    lignes.push({ session_id: r.session_id, jour: r.jour, cle, nom: REPERES[cle].court, valeur: `${texteValeur(cle, v)}${REPERES[cle].unite === "km/h" ? " km/h" : REPERES[cle].unite === "/km" ? " /km" : ` ${REPERES[cle].unite}`}`, ecart: ecartLigne(cle, v, dernier[cle] ?? null), ecarte: false, raison: null });
     dernier[cle] = v;
   }
   return lignes.reverse();

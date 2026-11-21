@@ -1,8 +1,8 @@
 "use client";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import dayjs from "dayjs";
 import { supabase } from "@/lib/supabaseClient";
-import { dateCarte, parcours, prochainTestConseille, reperesDe, reperesVides, REPERES, texteValeur, type CleRepere, type ResTest } from "./resultatTest";
+import { dateCarte, parcours, prochainTestConseille, reperesDe, reperesVides, REPERES, texteValeur, type CleRepere, type Metriques, type RefTest, type ResTest } from "./resultatTest";
 import { allure, apercuTest, CONSIGNES, programmerTest, Protocole, VERDICTS } from "./tests";
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -248,24 +248,35 @@ function Vignette({ cle }: { cle: CleRepere }) {
   );
 }
 
+// Une tuile qui ouvre le résultat si on en a un, sinon un simple bloc (pas de lien vide).
+function Tuile({ href, className, children }: { href: string | null; className: string; children: ReactNode }) {
+  return href ? <a href={href} className={className}>{children}</a> : <div className={className}>{children}</div>;
+}
+
 export function SuiviTests({ userId, soi }: { userId: string; soi: boolean }) {
   const [resultats, setResultats] = useState<Record<string, any>[]>([]);
   const [prevus, setPrevus] = useState<Record<string, any>[]>([]);
+  const [refs, setRefs] = useState<RefTest[]>([]);
+  const [metriques, setMetriques] = useState<Metriques | null>(null);
   const [ouvert, setOuvert] = useState(false);
   const [protocoleInitial, setProtocoleInitial] = useState<Protocole | null>(null);
   const [toutVoir, setToutVoir] = useState(false);
   const charger = useCallback(async () => {
-    const [{ data: r }, { data: p }] = await Promise.all([
-      supabase.from("test_resultats").select("session_id, jour, protocole, valide, indicateur, verdict, phrase, detail").eq("user_id", userId).order("jour"),
+    const [{ data: r }, { data: p }, { data: rf }, { data: mt }] = await Promise.all([
+      supabase.from("test_resultats").select("session_id, jour, protocole, valide, indicateur, verdict, phrase, raisons, detail").eq("user_id", userId).order("jour"),
       supabase.from("sessions").select("id, date, title, status, test").eq("user_id", userId).not("test", "is", null).gte("date", dayjs().format("YYYY-MM-DD")).order("date"),
+      supabase.from("test_references").select("protocole, vma_kmh, fixe_le, session_id").eq("user_id", userId),
+      supabase.from("athlete_metrics").select("vma_kmh, ftp_w, fc_max_velo, fc_max_velo_le").eq("user_id", userId).maybeSingle(),
     ]);
     setResultats(r ?? []);
+    setRefs((rf ?? []) as RefTest[]);
+    setMetriques((mt ?? null) as Metriques | null);
     setPrevus((p ?? []).filter((s) => s.status !== "valide"));
   }, [userId]);
   useEffect(() => { charger(); }, [charger]);
-  const reperes = useMemo(() => reperesDe(resultats as unknown as ResTest[]), [resultats]);
+  const reperes = useMemo(() => reperesDe(resultats as unknown as ResTest[], new Date(), { refs, metriques }), [resultats, refs, metriques]);
   const vides = useMemo(() => reperesVides(reperes), [reperes]);
-  const prochain = useMemo(() => prochainTestConseille(reperes), [reperes]);
+  const prochain = useMemo(() => prochainTestConseille(reperes, new Date(), resultats as unknown as ResTest[]), [reperes, resultats]);
   const historique = useMemo(() => parcours(resultats as unknown as ResTest[]), [resultats]);
   const ouvrir = (p: Protocole | null) => { setProtocoleInitial(p); setOuvert(true); };
   const carte = "rounded-3xl border border-white/90 bg-white/70 shadow-sm backdrop-blur";
@@ -280,19 +291,19 @@ export function SuiviTests({ userId, soi }: { userId: string; soi: boolean }) {
       <Titre>Tes repères</Titre>
       <div className="grid grid-cols-2 gap-3">
         {reperes.map((r) => (
-          <a key={r.cle} href={`/seance/${r.session_id}`} className={`${tuile} hover:bg-white/90`}>
+          <Tuile key={r.cle} href={r.session_id ? `/seance/${r.session_id}` : null} className={`${tuile} ${r.session_id ? "hover:bg-white/90" : ""}`}>
             <span className={`text-[11px] font-extrabold tracking-[0.12em] ${couleurSport(r.cle)}`}>{REPERES[r.cle].sport === "velo" ? "VÉLO" : "COURSE"}</span>
             <span className="flex items-baseline gap-1">
               <span className="text-[30px] font-extrabold leading-tight text-slate-900">{texteValeur(r.cle, r.valeur)}</span>
               <span className="text-[13px] text-slate-500">{REPERES[r.cle].unite}</span>
             </span>
             <span className="text-[13.5px] font-bold text-slate-800">{REPERES[r.cle].mot}</span>
-            <span className="text-[12.5px] text-slate-400">{dateCarte(r.jour)}</span>
+            <span className="text-[12.5px] text-slate-400">{r.jour ? dateCarte(r.jour) : "ta valeur actuelle"}</span>
             <span className="mt-1 flex items-center justify-between">
-              <span className={`rounded-[10px] px-2 py-0.5 text-[11.5px] font-bold ${r.aJour ? "bg-green-100 text-green-800" : "bg-amber-100 text-amber-800"}`}>{r.aJour ? "à jour" : "à refaire"}</span>
+              {r.aJour != null ? <span className={`rounded-[10px] px-2 py-0.5 text-[11.5px] font-bold ${r.aJour ? "bg-green-100 text-green-800" : "bg-amber-100 text-amber-800"}`}>{r.aJour ? "à jour" : "à refaire"}</span> : <span />}
               <Vignette cle={r.cle} />
             </span>
-          </a>
+          </Tuile>
         ))}
         {vides.map((cle) => (
           <button key={cle} onClick={() => ouvrir(REPERES[cle].protocole as Protocole)} className="flex flex-col gap-1 rounded-3xl border-[1.5px] border-dashed border-slate-300 bg-white/40 p-4 text-left hover:bg-white/60">
@@ -332,10 +343,13 @@ export function SuiviTests({ userId, soi }: { userId: string; soi: boolean }) {
               {(toutVoir ? historique : historique.slice(0, 6)).map((l) => (
                 <li key={l.session_id}>
                   <a href={`/seance/${l.session_id}`} className="flex items-center gap-3 py-2.5 text-sm hover:bg-white/50">
-                    <span className="w-16 text-slate-500">{dateCarte(l.jour)}</span>
-                    <span className="flex-1 font-bold text-slate-800">{l.nom}</span>
-                    <span className="font-extrabold text-slate-800">{l.valeur}</span>
-                    <span className="w-16 text-right text-[12.5px] text-slate-400">{l.ecart}</span>
+                    <span className={`w-16 ${l.ecarte ? "text-slate-400" : "text-slate-500"}`}>{dateCarte(l.jour)}</span>
+                    <span className="flex-1">
+                      <span className={`block font-bold ${l.ecarte ? "text-slate-400" : "text-slate-800"}`}>{l.nom}</span>
+                      {l.ecarte && l.raison && <span className="block text-[12.5px] text-slate-400">{l.raison}</span>}
+                    </span>
+                    <span className={l.ecarte ? "font-semibold text-slate-400" : "font-extrabold text-slate-800"}>{l.valeur}</span>
+                    {!l.ecarte && <span className="w-16 text-right text-[12.5px] text-slate-400">{l.ecart}</span>}
                   </a>
                 </li>
               ))}

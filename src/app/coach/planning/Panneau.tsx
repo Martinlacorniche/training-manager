@@ -7,6 +7,7 @@
 //   l'app, components/coach/CoachSessionSheet.tsx) ;
 // — dupliquer une séance, copier la semaine : vers lui ou d'autres athlètes.
 // ─────────────────────────────────────────────────────────────────────────
+import DemandeVsFait from "../../DemandeVsFait";
 import Link from "next/link";
 import React, { useEffect, useRef, useState } from "react";
 import dayjs from "dayjs";
@@ -14,9 +15,9 @@ import { X, CaretLeft, Copy, Trash, Check, ArrowSquareOut, ChartLine, Flask, Tim
 import { supabase } from "@/lib/supabaseClient";
 import { Avatar, ETAT, INTENSITE, IconeSport, SPORT_COULEUR, SPORT_NOM, SPORTS, duree, etatSeance, lireDuree } from "../../commun";
 import { useCoque } from "../../Coque";
-import DemandeVsFait from "../../DemandeVsFait";
 import DessinSeance, { useFtp } from "../../DessinSeance";
 import { lireDessin } from "../../dessin-seance";
+import { verdictSeance } from "../../verdict-seance";
 import SuiviSeance from "../../SuiviSeance";
 import { ResultatTest, ProgrammerTest } from "../../Tests";
 import { copierSemaine, dupliquerSeance, type Copie } from "../copie";
@@ -182,7 +183,7 @@ function Modifier({ s, jours, onChange, onDupliquer, onSupprimer, onFermer }: {
           );
         })}
       </div>
-      <input value={f.title ?? ""} onChange={(ev) => changer({ title: ev.target.value })} placeholder="Nom de la séance"
+      <input value={f.title ?? ""} onChange={(ev) => changer({ title: ev.target.value })} placeholder="Nom de la séance" autoFocus={!s.title && !s.planned_inter}
         className="text-[22px] font-extrabold border-b border-slate-200 pb-1.5 focus:outline-none focus:border-blue-500 bg-transparent" />
       <div>
         <Etiquette>LE JOUR</Etiquette>
@@ -258,6 +259,10 @@ function Lire({ s, onDupliquer, onFermer }: { s: Seance; onDupliquer: () => void
     return () => { vivant = false; };
   }, [s.id, s.strava_activity_id]);
   const analysable = !!s.strava_activity_id || activiteDe === s.id;
+  const ftpAthlete = useFtp(s.user_id, s.sport);
+  const verdict = s.status === "valide" ? verdictSeance(s) : null;
+  const aDessin = !!s.workout_text && lireDessin(s.workout_text).length >= 2;
+  const long = (s.planned_inter ?? "").length > 220;
   return (
     <div className="flex flex-col gap-4">
       <Titre onFermer={onFermer}>
@@ -270,6 +275,27 @@ function Lire({ s, onDupliquer, onFermer }: { s: Seance; onDupliquer: () => void
           {s.planned_hour ? <span className="text-slate-500">prévue {duree(s.planned_hour)}</span> : null}
         </div>
       </div>
+      {verdict && (
+        <section className={`rounded-2xl border p-3.5 ${verdict.ton === "ok" ? "border-green-200 bg-green-50" : "border-amber-200 bg-amber-50"}`}>
+          <div className={`text-[15px] font-extrabold ${verdict.ton === "ok" ? "text-green-800" : "text-amber-800"}`}>{verdict.titre}</div>
+          <div className="mt-1.5 flex flex-wrap gap-1.5">
+            {verdict.pastilles.map((x) => (
+              <span key={x.texte} className={`rounded-full px-2.5 py-1 text-xs font-extrabold ${x.ton === "ok" ? "bg-green-100 text-green-800" : "bg-amber-100 text-amber-800"}`}>{x.texte}</span>
+            ))}
+          </div>
+          <div className="mt-2 space-y-0.5 text-sm font-semibold text-slate-700">
+            {verdict.duree && <div><span className="inline-block w-16 text-slate-400">Durée</span>Prévu {verdict.duree.prevu} · Fait <b>{verdict.duree.fait}</b></div>}
+            {verdict.effort && <div><span className="inline-block w-16 text-slate-400">Effort</span>Prévu {verdict.effort.prevu} · Fait <b>{verdict.effort.fait}</b></div>}
+          </div>
+        </section>
+      )}
+      {(s.planned_inter || aDessin) && (
+        <details open={!long} className="rounded-2xl border border-slate-200 bg-white p-3.5">
+          <summary className="cursor-pointer text-[11px] font-extrabold uppercase tracking-wide text-blue-600">Ce que tu avais prescrit</summary>
+          {s.planned_inter && <p className="mt-2 whitespace-pre-line text-sm font-semibold text-slate-700 leading-relaxed">{s.planned_inter}</p>}
+          {aDessin && <div className="mt-3"><DessinSeance texte={s.planned_inter ?? ""} workoutText={s.workout_text} ftp={ftpAthlete} /></div>}
+        </details>
+      )}
       {(s.rpe != null || s.athlete_comment) && (
         <section className="rounded-2xl bg-blue-50 p-4 space-y-1">
           <div className="text-[11px] font-extrabold tracking-wider text-blue-700">CE QU&apos;IL EN A DIT</div>
@@ -280,15 +306,9 @@ function Lire({ s, onDupliquer, onFermer }: { s: Seance; onDupliquer: () => void
       {s.test && <ResultatTest sessionId={s.id} protocole={s.test} texte={s.planned_inter} faite={s.status === "valide"} />}
       <DemandeVsFait data={s} coachView />
       {s.status === "valide" && <SuiviSeance sessionId={s.id} sport={s.sport} rpe={s.rpe ?? null} date={s.date} coach />}
-      {s.planned_inter && (
-        <details className="rounded-xl border border-slate-200 p-3">
-          <summary className="text-sm font-extrabold cursor-pointer">Les consignes</summary>
-          <p className="text-sm text-slate-600 whitespace-pre-line mt-2">{s.planned_inter}</p>
-        </details>
-      )}
       <div className="flex gap-2">
         <button onClick={onDupliquer} className="flex-1 h-11 rounded-xl border border-slate-200 text-sm font-extrabold text-slate-800 hover:bg-slate-50 flex items-center justify-center gap-1.5"><Copy size={16} weight="bold" />Dupliquer</button>
-        <Link href={`/seance/${s.id}`} className="flex-1 h-11 rounded-xl bg-blue-600 text-sm font-extrabold text-white hover:bg-blue-700 flex items-center justify-center gap-1.5">
+        <Link href={`/seance/${s.id}`} className="flex-1 h-11 rounded-xl bg-slate-900 text-sm font-extrabold text-white hover:bg-slate-800 flex items-center justify-center gap-1.5">
           {analysable ? <ChartLine size={16} weight="bold" /> : <ArrowSquareOut size={16} weight="bold" />}{analysable ? "Analyser la séance" : "Voir en grand"}
         </Link>
       </div>

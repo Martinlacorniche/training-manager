@@ -51,12 +51,14 @@ export function CarteSeance({ s, ouverte, onOuvrir, vu }: { s: Seance; ouverte: 
   );
 }
 
-export function AjoutRapide({ onAjout, petit }: { onAjout: (t: string) => Promise<void>; petit?: boolean }) {
+// `direct` : le bouton crée tout de suite une séance vierge (le panneau de droite s'ouvre,
+// prêt à écrire) au lieu de demander une ligne de texte d'abord.
+export function AjoutRapide({ onAjout, petit, direct }: { onAjout: (t: string) => Promise<void>; petit?: boolean; direct?: boolean }) {
   const [ouvert, setOuvert] = useState(false);
   const [t, setT] = useState("");
   const [occupe, setOccupe] = useState(false);
   if (!ouvert) return (
-    <button onClick={() => setOuvert(true)} className={`w-full rounded-xl border-[1.5px] border-dashed border-slate-300 font-extrabold text-slate-400 hover:border-blue-400 hover:text-blue-600 hover:bg-blue-50/40 ${petit ? "py-1 text-xs" : "py-2 text-[13px]"}`}>{petit ? "+" : "+ Ajouter"}</button>
+    <button onClick={() => (direct ? void onAjout("") : setOuvert(true))} className={`w-full rounded-xl border-[1.5px] border-dashed border-slate-300 font-extrabold text-slate-400 hover:border-blue-400 hover:text-blue-600 hover:bg-blue-50/40 ${petit ? "py-1 text-xs" : "py-2 text-[13px]"}`}>{petit ? "+" : "+ Ajouter"}</button>
   );
   return (
     <form onSubmit={async (e) => { e.preventDefault(); if (!t.trim()) return; setOccupe(true); await onAjout(t); setOccupe(false); setT(""); setOuvert(false); }}>

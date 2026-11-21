@@ -14,7 +14,7 @@ import dayjs from "dayjs";
 import "dayjs/locale/fr";
 import isoWeek from "dayjs/plugin/isoWeek";
 import { DragDropContext, Droppable, Draggable, type DropResult } from "@hello-pangea/dnd";
-import { CaretLeft, CaretRight, CaretDown, Copy, Trash, BabyCarriage, Heartbeat } from "@phosphor-icons/react";
+import { CaretLeft, CaretRight, CaretDown, Copy, Trash, BabyCarriage, Heartbeat, Gauge } from "@phosphor-icons/react";
 import { supabase } from "@/lib/supabaseClient";
 import { useCoque, NIVEAU } from "../../Coque";
 import { Avatar, Bandeau, alerteSeance, duree, type Message } from "../../commun";
@@ -32,6 +32,9 @@ type Absence = Record<string, any> & { id: string; date: string; type: string };
 type Bilan = { id: string; rpe_life: number | null; comment: string | null; fatigue: number | null; sommeil: number | null; stress: number | null; jambes: number | null; douleur: boolean | null; douleur_zone: string | null };
 type Bande = { lundi: string; prevu: number; fait: number; theme: string | null; course: string | null };
 
+// 15 km/h → « 4:00/km ».
+const allureDe = (kmh: number) => { const s = Math.round(3600 / kmh); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}/km`; };
+
 function Planning({ athleteDemande }: { athleteDemande: string | null }) {
   const { moi, athletes, etats, setEtroit } = useCoque();
   const [athleteId, setAthleteId] = useState<string | null>(null);
@@ -47,11 +50,17 @@ function Planning({ athleteDemande }: { athleteDemande: string | null }) {
   const [reperes, setReperes] = useState<{ vma_kmh: number | null; ftp_w: number | null } | null>(null);
   const [vus, setVus] = useState<Set<string>>(new Set());
   const [menuCopie, setMenuCopie] = useState(false);
+  const [menuReperes, setMenuReperes] = useState(false);
   const [message, setMessage] = useState<Message | null>(null);
   const [n, setN] = useState(0);
   const recharger = useCallback(() => setN((x) => x + 1), []);
   const finMessage = useCallback(() => setMessage(null), []);
   const themeEnregistre = useRef("");
+  // « + Ajouter » ouvre tout de suite le panneau sur une séance vierge ; si on la
+  // quitte sans rien écrire, elle disparaît (pas de carte vide chez l'athlète).
+  const viergeId = useRef<string | null>(null);
+  const seancesRef = useRef<Seance[]>([]);
+  useEffect(() => { seancesRef.current = seances; }, [seances]);
 
   // L'adresse décide au départ : ?athlete=…&semaine=…&seance=…
   useEffect(() => {
@@ -72,6 +81,15 @@ function Planning({ athleteDemande }: { athleteDemande: string | null }) {
     window.history.replaceState(null, "", `/coach/planning?${p}`);
     window.dispatchEvent(new Event("coque:athlete"));
   }, [athleteId, lundi, vue]);
+  useEffect(() => {
+    const id = viergeId.current;
+    if (!id || (vue && vue.quoi !== "copier" && vue.id === id)) return;
+    viergeId.current = null;
+    const s = seancesRef.current.find((x) => x.id === id);
+    if (s && !s.title && !s.planned_inter && !s.planned_hour) {
+      supabase.from("sessions").delete().eq("id", id).then(() => setSeances((l) => l.filter((x) => x.id !== id)));
+    }
+  }, [vue]);
   const setVue = useCallback((v: Vue) => setVueBrute(v), []);
   // Panneau ouvert : le menu de gauche se réduit à ses icônes, la semaine garde sa place.
   useEffect(() => { setEtroit(!!vue); return () => setEtroit(false); }, [vue, setEtroit]);
@@ -161,6 +179,7 @@ function Planning({ athleteDemande }: { athleteDemande: string | null }) {
     const { data, error } = await supabase.from("sessions").insert({ user_id: athleteId, coach_id: moi?.id, date, ...lireSaisie(texte) }).select().single();
     if (error || !data) { setMessage({ texte: `Pas ajoutée : ${error?.message ?? "erreur"}` }); return; }
     setSeances((l) => [...l, data as Seance]);
+    if (!texte.trim()) viergeId.current = (data as Seance).id;
     setVue({ quoi: "seance", id: (data as Seance).id });
   }
 
@@ -232,8 +251,34 @@ function Planning({ athleteDemande }: { athleteDemande: string | null }) {
             <p className="text-sm font-semibold text-slate-500 mt-0.5 flex flex-wrap gap-x-2">
               {phrase && <span className="font-extrabold" style={{ color: couleurPhrase === "#cbd5e1" ? "#64748b" : couleurPhrase }}>{phrase}</span>}
               {prochaineCourse && <span>{phrase ? "· " : ""}{prochaineCourse}</span>}
-              {reperes && (reperes.vma_kmh || reperes.ftp_w) ? <span className="text-slate-400">· {[reperes.vma_kmh ? `VMA ${reperes.vma_kmh}` : "", reperes.ftp_w ? `FTP ${reperes.ftp_w} W` : ""].filter(Boolean).join(" · ")}</span> : null}
             </p>
+          </div>
+          <div className="relative">
+            <button onClick={() => setMenuReperes((v) => !v)} className={`rounded-xl px-3.5 py-2.5 text-sm font-extrabold flex items-center gap-1.5 ${menuReperes ? "border-2 border-blue-600 bg-blue-50 text-blue-600" : "border border-slate-200 bg-white text-slate-800 hover:bg-slate-50"}`}>
+              <Gauge size={16} weight="bold" />{[reperes?.ftp_w ? `FTP ${reperes.ftp_w} W` : "", reperes?.vma_kmh ? `VMA ${String(reperes.vma_kmh).replace(".", ",")} km/h` : ""].filter(Boolean).join(" · ") || "Ses repères"}
+            </button>
+            {menuReperes && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setMenuReperes(false)} />
+                <div className="absolute right-0 top-12 z-20 w-80 rounded-2xl border border-slate-200 bg-white p-4 shadow-xl text-sm">
+                  <div className="text-[11px] font-extrabold tracking-wider text-slate-400 mb-2">SES REPÈRES</div>
+                  <div className="flex gap-6 font-extrabold text-slate-800">
+                    <div><div className="text-xl">{reperes?.ftp_w ? `${reperes.ftp_w} W` : "–"}</div><div className="text-xs font-bold text-slate-400">FTP (vélo)</div></div>
+                    <div><div className="text-xl">{reperes?.vma_kmh ? `${String(reperes.vma_kmh).replace(".", ",")} km/h` : "–"}</div><div className="text-xs font-bold text-slate-400">VMA (course)</div></div>
+                  </div>
+                  {(reperes?.ftp_w || reperes?.vma_kmh) ? (
+                    <table className="w-full text-xs border-collapse mt-3">
+                      <thead><tr><th className="border-b text-left py-1 text-slate-400">%</th><th className="border-b text-center text-slate-400">Allure</th><th className="border-b text-center text-slate-400">Watts</th></tr></thead>
+                      <tbody>{[60, 70, 80, 90, 100, 110, 120].map((pct) => (
+                        <tr key={pct}><td className="py-0.5 font-bold text-slate-600">{pct} %</td>
+                          <td className="py-0.5 text-center text-slate-600">{reperes?.vma_kmh ? allureDe(reperes.vma_kmh * pct / 100) : "–"}</td>
+                          <td className="py-0.5 text-center text-slate-600">{reperes?.ftp_w ? Math.round(reperes.ftp_w * pct / 100) : "–"}</td></tr>
+                      ))}</tbody>
+                    </table>
+                  ) : <p className="mt-2 text-slate-500 font-semibold">Pas encore de FTP ni de VMA : l&apos;athlète les renseigne (ou un test les calcule).</p>}
+                </div>
+              </>
+            )}
           </div>
           <Bascule equipe={false} lundi={lundi} athleteId={athlete.id_auth} />
           <Link href={`/progres?athlete=${athlete.id_auth}`} className="rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm font-extrabold text-slate-800 hover:bg-slate-50 flex items-center gap-1.5"><Heartbeat size={16} weight="bold" />Ses progrès</Link>
@@ -333,7 +378,7 @@ function Planning({ athleteDemande }: { athleteDemande: string | null }) {
                         </Draggable>
                       ))}
                       {p.placeholder}
-                      <AjoutRapide onAjout={(t) => ajouter(j, t)} />
+                      <AjoutRapide direct onAjout={(t) => ajouter(j, t)} />
                     </div>
                   )}
                 </Droppable>
@@ -341,7 +386,7 @@ function Planning({ athleteDemande }: { athleteDemande: string | null }) {
             })}
           </section>
         </DragDropContext>
-        <p className="text-xs font-bold text-slate-400">Glisse une carte pour la changer de jour. Un clic l&apos;ouvre à droite. Écris « Footing 1h facile » dans « + Ajouter » puis Entrée.</p>
+        <p className="text-xs font-bold text-slate-400">Glisse une carte pour la changer de jour. Un clic l&apos;ouvre à droite. « + Ajouter » ouvre la séance à droite, prête à écrire.</p>
       </div>
 
       {panneauOuvert && (

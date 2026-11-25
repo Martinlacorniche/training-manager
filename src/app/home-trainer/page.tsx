@@ -35,7 +35,11 @@ import { ecart, zoneCoeur, zoneEtape, ZONE_PAUSE } from "./ht/zones";
 import { Capteur, Simulateur, bluetoothDispo, messageConnexion, type EtatCapteur, type Source } from "./capteurs";
 import { Editeur } from "./Editeur";
 import { EcranCol, ListeCols, ProfilCol } from "./Cols";
-import type { Col } from "./ht/cols";
+import { COLS, type Col } from "./ht/cols";
+import { classementFinal, couleurDe, distanceA, prenomDe, situation as situationCourse, type Rival } from "./ht/course";
+import { chargerFantomes, garderTrace, type FantomeTrace } from "./ht/courseReseau";
+import { useSalon } from "./ht/useSalon";
+import { EcranSalon, FeuilleFantomes, ResultatCourse } from "./CourseUi";
 import { resultatRampe, type Famille } from "./ht/catalogue";
 import Catalogue from "./Catalogue";
 import { Bandeau, bandeauDispo, chrono, ouvrirFenetre, type Actions } from "./Bandeau";
@@ -121,6 +125,12 @@ function HomeTrainer() {
   // La séance du planning à laquelle rattacher une séance écrite « à la main »
   const [cible, setCible] = useState<{ id: string; titre: string } | null>(null);
   const [moi, setMoi] = useState<string | null>(null);
+  const [prenomMoi, setPrenomMoi] = useState("");
+  const [bilanCol, setBilanCol] = useState<{ fait: boolean; duree: number; m: number } | null>(null);   // ma montée finie, pour le classement de la course
+  // Jeu des cols à plusieurs : les fantômes de la montée en cours, ceux qu'on vient de choisir, la feuille de choix.
+  const [fantomesActifs, setFantomesActifs] = useState<FantomeTrace[]>([]);
+  const fantomesProchains = useRef<{ colId: string; liste: FantomeTrace[] } | null>(null);
+  const [feuilleFantomes, setFeuilleFantomes] = useState<{ col: Col; liste: FantomeTrace[]; chargement: boolean } | null>(null);
   const copieId = useRef<string | null>(null);   // la copie de secours de la sortie en cours
   const [pasEnvoyees, setPasEnvoyees] = useState(0);
   const [brouillon, setBrouillon] = useState<{ s: Sortie; texte: string } | null>(null);
@@ -192,6 +202,7 @@ function HomeTrainer() {
       if (!session) { router.push("/login"); return; }
       const id = session.user.id;
       setMoi(id);
+      supabase.from("users").select("name").eq("id_auth", id).maybeSingle().then(({ data: u }) => setPrenomMoi(prenomDe(u?.name)));
       const [{ data: am }, { data: ss }, { data: fav }, { data: pp }, { data: cp }] = await Promise.all([
         supabase.from("athlete_metrics").select("ftp_w, hr_zones").eq("user_id", id).maybeSingle(),
         supabase.from("sessions").select("id, date, title, workout_text, planned_hour, status, test").eq("user_id", id).eq("sport", "Vélo")
@@ -283,12 +294,35 @@ function HomeTrainer() {
   const demarrer = async (c: Choix) => {
     setChoix(c);
     moteur.current = new Moteur(c.blocs, { ftp, ...profil, col: c.col ?? null, rampe: c.test === "rampe" });
-    setClassement(null); setNouveauRecord(false); setRpe(null); setAideRpe(false);
+    const fp = fantomesProchains.current; fantomesProchains.current = null;
+    setFantomesActifs(fp && c.col && fp.colId === c.col.id ? fp.liste : []);
+    setBilanCol(null); setClassement(null); setNouveauRecord(false); setRpe(null); setAideRpe(false);
     copieId.current = null;
     setPhase("rouler");
     setEnvoi({ etat: "rien" }); setFavoriOk(false); setFavoriNom("");
     if (simu) { sim.current = new Simulateur(ecoute); sim.current.demarrer(); }
     try { verrou.current = await (navigator as any).wakeLock?.request("screen"); } catch { /* pas grave */ } // eslint-disable-line @typescript-eslint/no-explicit-any
+  };
+
+  // Course en direct : au départ commun, la montée s'ouvre et démarre toute seule (pas d'attente du premier coup de pédale).
+  const etatRef = useRef<Etat | null>(null);
+  useEffect(() => { etatRef.current = etat; }, [etat]);
+  const salon = useSalon(supabase, moi ? { id: moi, prenom: prenomMoi || "Moi" } : null, (colId) => {
+    const col = COLS.find((x) => x.id === colId);
+    if (!col) return;
+    fantomesProchains.current = null;
+    demarrer({ titre: col.nom, blocs: [], sessionId: null, texteCourt: null, col });
+    moteur.current?.basculerPause();   // le moteur démarre en pause : on lève la pause au top
+  }, () => {
+    const m = moteur.current, col = choix?.col;
+    if (!m || !col) return null;
+    const dernier = m.points[m.points.length - 1];
+    return { m: dernier?.m ?? 0, v: (etatRef.current?.col?.kmh ?? 0) / 3.6, fini: colFini(col, m.points), abandon: phase === "fin" && !colFini(col, m.points) };
+  });
+  const ouvrirFantomes = async (c: Col) => {
+    setFeuilleFantomes({ col: c, liste: [], chargement: true });
+    const liste = await chargerFantomes(supabase, c.id);
+    setFeuilleFantomes((f) => (f && f.col.id === c.id ? { col: c, liste, chargement: false } : f));
   };
 
   // ─── Copie de secours (25/11/2026) : rien n'est perdu si l'envoi échoue ───
@@ -367,9 +401,11 @@ function HomeTrainer() {
         const duree = m.points.length, w = Math.round(m.points.reduce((a, p) => a + (p.w ?? 0), 0) / Math.max(1, duree));
         const ancien = records.get(col.id);
         await supabase.from("ht_cols_temps").insert({ col_id: col.id, duree_s: duree, watts: w, wkg: profil.poids ? Math.round((w / profil.poids) * 100) / 100 : null });
+        await garderTrace(supabase, col.id, m.points.map((p) => p.m));   // le fantôme des prochains (jamais bloquant)
         if (!ancien || duree < ancien) { setNouveauRecord(true); setRecords((r) => new Map(r).set(col.id, duree)); }
       }
       const { data } = await supabase.rpc("classement_col", { p_col: col.id });
+      setBilanCol({ fait, duree: m.points.length, m: m.points[m.points.length - 1]?.m ?? 0 });
       setClassement(data ?? []);
     })();
   }, [phase, choix, moi, classement, records, profil.poids]);
@@ -498,6 +534,19 @@ function HomeTrainer() {
   useEffect(() => { moteur.current?.pignonsVirtuels(guidonBranche); }, [guidonBranche, phase]);
 
   if (phase === "rouler" && etat && choix?.col && etat.col) {
+    // À plusieurs : fantômes (traces) ou coureurs en direct. Les watts restent en grand ; le bandeau s'ajoute.
+    const tRoute = etat.tTotal, total = etat.col.total;
+    const enDirect = salon.phase === "course";
+    const prenomJeu = prenomMoi || "Moi";
+    const rivauxCourse: Rival[] = enDirect ? salon.rivaux : fantomesActifs.map((g) => {
+      const d = distanceA(g.trace, tRoute);
+      return { id: `g:${g.id}`, prenom: g.moi ? "Ma meilleure" : g.prenom, m: d, v: distanceA(g.trace, tRoute + 1) - d, fini: tRoute >= g.trace.duree ? g.duree_s : null };
+    });
+    const sitCourse = rivauxCourse.length ? situationCourse({ id: moi ?? "moi", prenom: prenomJeu, m: etat.col.d, v: etat.col.kmh / 3.6 }, rivauxCourse, total) : null;
+    const pastilles = [
+      ...rivauxCourse.map((r, i) => ({ nom: r.prenom, d: Math.min(total, r.m), initiale: r.prenom.slice(0, 1).toUpperCase(), couleur: couleurDe(i + 1), fige: r.fige })),
+      ...(rivauxCourse.length ? [{ nom: prenomJeu, d: etat.col.d, initiale: prenomJeu.slice(0, 1).toUpperCase(), couleur: "#0f172a", moi: true }] : []),
+    ];
     const perdusCol = (["ht", "cardio", "pedales"] as Source[]).filter((x) => !simu && capteurs[x] && !capteurs[x]!.connecte);
     return (
       <main className={`${jakarta.className} min-h-screen bg-[#F8FAFC] px-4 lg:px-8 py-4`}>
@@ -522,7 +571,7 @@ function HomeTrainer() {
             </div>
           ))}
           {etat.pause !== "non" && <div className="flex items-center gap-2 rounded-2xl px-4 py-3 font-extrabold bg-sky-100 text-sky-800"><Icone d={mdiPauseCircle} taille={20} />{etat.pause === "auto" ? "En pause : repédale pour reprendre" : "Prêt ? Pédale pour attaquer la montée"}</div>}
-          <EcranCol etat={etat} col={choix.col} poids={profil.poids ?? null} zoneFc={zoneCoeur(etat.bpm, zonesFc)?.texte ?? null} record={records.get(choix.col.id) ?? null}
+          <EcranCol etat={etat} col={choix.col} poids={profil.poids ?? null} zoneFc={zoneCoeur(etat.bpm, zonesFc)?.texte ?? null} record={records.get(choix.col.id) ?? null} situation={sitCourse} rivaux={pastilles}
             onPause={actions.pause} onMoins={actions.moins} onPlus={actions.plus} onTerminer={async () => { if (await demander("Abandonner la montée ?", "Abandonner", true)) actions.terminer(); }} />
         </div>
         {fenetre && <Bandeau fenetre={fenetre} zoneFc={zoneCoeur(etat.bpm, zonesFc)?.n ?? null} etat={etat} etapes={[]} ftp={ftp} position={0} police={jakarta.style.fontFamily} perdu={!simu && capteurs.ht && !capteurs.ht.connecte ? "Home-trainer perdu, je le rebranche…" : null} actions={actions} onFermer={() => { fenetre.close(); window.focus(); }} />}
@@ -676,6 +725,13 @@ function HomeTrainer() {
     const moy = (k: "w" | "bpm") => { const v = pts.map((p) => p[k]).filter((x): x is number => x != null); return v.length ? Math.round(v.reduce((a, b) => a + b, 0) / v.length) : "—"; };
     const km = pts.length ? (pts[pts.length - 1].m / 1000).toFixed(1) : "0";
     const mille = dansLeMille(pts);
+    // Course à plusieurs : classement final (fantômes ou direct), en plus du classement de tous les temps.
+    let lignesCourse: ReturnType<typeof classementFinal> | null = null;
+    if (choix.col && bilanCol) {
+      const colTerminee = bilanCol.fait, enDirect = salon.phase === "course";
+      const autres: Rival[] = enDirect ? salon.rivaux : fantomesActifs.map((g) => ({ id: `g:${g.id}`, prenom: g.moi ? "Ma meilleure" : g.prenom, m: choix.col!.km * 1000, fini: g.duree_s }));
+      if (autres.length) lignesCourse = classementFinal([{ id: moi ?? "moi", prenom: prenomMoi || "Moi", m: bilanCol.m, fini: colTerminee ? (enDirect ? salon.monArrivee : bilanCol.duree) : null, abandon: !colTerminee, moi: true }, ...autres]);
+    }
     return (
       <main className={fond}>
         <div className="max-w-xl mx-auto space-y-3.5">
@@ -708,6 +764,8 @@ function HomeTrainer() {
               {(choix.col.pros ?? []).map((x) => (
                 <div key={x.nom} className="flex justify-between text-[14px] font-extrabold"><span className="text-slate-500">{x.nom} ({x.annee})</span><span className="tabular-nums text-slate-800">{chrono(x.s)}</span></div>
               ))}
+              {lignesCourse && <ResultatCourse lignes={lignesCourse} enCours={salon.phase === "course" && lignesCourse.some((l) => !l.abandon && l.t == null)} />}
+              {salon.phase === "course" && <button type="button" onClick={salon.quitter} className="rounded-full bg-slate-800 px-4 py-2 text-sm font-black text-white">Quitter le salon</button>}
               {classement && classement.length > 0 && (
                 <div className="border-t border-slate-100 pt-2.5 space-y-1">
                   <div className="text-[11px] font-extrabold uppercase tracking-[0.12em] text-slate-400">Classement</div>
@@ -804,6 +862,11 @@ function HomeTrainer() {
   // l'écran pendant qu'on roule, lui, reste en plein écran.
   return (
     <>
+      {salon.phase !== "rien" && salon.phase !== "course" && <EcranSalon salon={salon} />}
+      {feuilleFantomes && (
+        <FeuilleFantomes colNom={feuilleFantomes.col.nom} liste={feuilleFantomes.liste} chargement={feuilleFantomes.chargement} onFermer={() => setFeuilleFantomes(null)}
+          onPartir={(choisis) => { const c = feuilleFantomes.col; setFeuilleFantomes(null); fantomesProchains.current = { colId: c.id, liste: choisis }; demarrer({ titre: c.nom, blocs: [], sessionId: null, texteCourt: null, col: c }); }} />
+      )}
       <div className="max-w-[1400px] space-y-3.5">
         <div className="flex items-center gap-1.5">
           <h1 className="flex-1 text-[28px] font-extrabold text-slate-800">Home-trainer</h1>
@@ -995,7 +1058,7 @@ function HomeTrainer() {
           </div>
         ))}
 
-        {onglet === "cols" && <ListeCols ftp={ftp} poids={profil.poids ?? null} records={records} pret={pret} onPasPret={pasPret} onGo={(c) => demarrer({ titre: c.nom, blocs: [], sessionId: null, texteCourt: null, col: c })} />}
+        {onglet === "cols" && <ListeCols ftp={ftp} poids={profil.poids ?? null} records={records} pret={pret} onPasPret={pasPret} onFantomes={ouvrirFantomes} onDirect={() => salon.setPhase("choix")} onGo={(c) => demarrer({ titre: c.nom, blocs: [], sessionId: null, texteCourt: null, col: c })} />}
       </div>
       {pasPretOuvert && (
         <div className="fixed inset-0 z-50 grid place-items-center p-4">

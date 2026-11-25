@@ -2,23 +2,34 @@
 // « Les grands cols » (31/10/2026) : la liste des montées et leur profil.
 // Le profil se dessine comme un vrai profil de col : l'altitude, colorée par
 // tranche de 1 km selon la pente (vert, bleu, rouge, noir, comme les bornes).
-import { mdiFlagCheckered, mdiHeart, mdiMinus, mdiPlus, mdiImageFilterHdr, mdiPause, mdiPlay, mdiRotateRight, mdiSpeedometer, mdiTimerOutline, mdiTrophyOutline } from "@mdi/js";
+import { mdiAccountGroup, mdiChevronRight, mdiGhostOutline, mdiFlagCheckered, mdiHeart, mdiMinus, mdiPlus, mdiImageFilterHdr, mdiPause, mdiPlay, mdiRotateRight, mdiSpeedometer, mdiTimerOutline, mdiTrophyOutline } from "@mdi/js";
 import { tempsCol, type Etat } from "./ht/moteur";
 import { COLS, couleurPente, PAS_COL, portion, type Col } from "./ht/cols";
 import { Bouton, Bulle as Pastille, Carte, Icone, Sur, Titre } from "./ui";
 import { chrono } from "./Bandeau";
+import type { Situation } from "./ht/course";
+import { BandeauCourse } from "./CourseUi";
 
 // Les fantômes (pros, ton record) dessinés sur le col : une pastille nommée qui avance (02/11/2026).
-export type Fantome = { nom: string; d: number };
+// Course à plusieurs : `initiale` + `couleur` = une pastille ronde par coureur ; `moi` = la tienne, plus marquée ; `fige` = grisé.
+export type Fantome = { nom: string; d: number; initiale?: string; couleur?: string; moi?: boolean; fige?: boolean };
 function Fantomes({ liste, gauche, hauteur }: { liste: Fantome[]; gauche: (d: number) => number | null; hauteur: number }) {
   return (
     <>
       {liste.map((f, i) => {
         const g = gauche(f.d);
         if (g == null) return null;
+        if (f.initiale) {
+          const t = f.moi ? 28 : 22;
+          return (
+            <div key={`${f.nom}-${i}`} className="absolute pointer-events-none" style={{ left: `${Math.max(0, Math.min(98, g))}%`, top: 2 + (i % 3) * 16, opacity: f.fige ? 0.35 : 1, zIndex: f.moi ? 5 : 1 }}>
+              <div className="flex items-center justify-center rounded-full font-black text-white" style={{ width: t, height: t, marginLeft: -t / 2, fontSize: f.moi ? 13 : 11, background: f.fige ? "#94a3b8" : f.couleur ?? "#2563eb", border: f.moi ? "3px solid #0f172a" : "2px solid #fff" }}>{f.initiale}</div>
+            </div>
+          );
+        }
         return (
           // Près du sommet, la pastille passe à gauche du trait pour rester visible.
-          <div key={f.nom} className={`absolute pointer-events-none flex flex-col ${g > 75 ? "items-end -translate-x-full" : "items-start"}`} style={{ left: `${Math.max(0, Math.min(100, g))}%`, top: 2 + (i % 2) * 18 }}>
+          <div key={`${f.nom}-${i}`} className={`absolute pointer-events-none flex flex-col ${g > 75 ? "items-end -translate-x-full" : "items-start"}`} style={{ left: `${Math.max(0, Math.min(100, g))}%`, top: 2 + (i % 2) * 18 }}>
             <div className={`${g > 75 ? "-mr-1.5" : "-ml-1.5"} flex items-center gap-[3px] rounded-full bg-slate-900/80 px-1.5 py-0.5 whitespace-nowrap`}>
               <span className="w-1.5 h-1.5 rounded-full bg-yellow-400" />
               <span className="text-[10px] font-black text-white">{f.nom}</span>
@@ -97,7 +108,7 @@ export function ZoomCol({ col, d, hauteur = 150, fantomes }: { col: Col; d: numb
 
 export type Record = { col_id: string; duree_s: number };
 
-export function ListeCols({ ftp, poids, records, pret, onGo, onPasPret }: { ftp: number; poids: number | null; records: Map<string, number>; pret: boolean; onGo: (c: Col) => void; onPasPret: () => void }) {
+export function ListeCols({ ftp, poids, records, pret, onGo, onPasPret, onFantomes, onDirect }: { ftp: number; poids: number | null; records: Map<string, number>; pret: boolean; onGo: (c: Col) => void; onPasPret: () => void; onFantomes: (c: Col) => void; onDirect: () => void }) {
   const lancer = (c: Col) => (pret ? onGo(c) : onPasPret());
   const groupe = (famille: Col["famille"], titre: string) => (
     <div className="space-y-2.5">
@@ -114,6 +125,7 @@ export function ListeCols({ ftp, poids, records, pret, onGo, onPasPret }: { ftp:
             <Bouton petit icone={mdiPlay} onClick={() => lancer(c)}>Go</Bouton>
           </div>
           <ProfilCol col={c} hauteur={56} kmParKm={false} />
+          <button type="button" onClick={() => (pret ? onFantomes(c) : onPasPret())} className="flex items-center gap-1.5 rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-[13px] font-extrabold text-indigo-700"><Icone d={mdiGhostOutline} taille={16} />Avec des fantômes</button>
           {/* À ton rythme, et la fin du col pour les sorties courtes (02/11/2026) */}
           <div className="flex flex-wrap items-center justify-between gap-2">
             <span className="text-[13px] font-bold text-slate-500">À ton rythme : environ {Math.round(tempsCol(c, ftp * 0.9, (poids ?? 72) + 9) / 60)} min{c.pros?.length ? ` · ${c.pros[0].nom} ${chrono(c.pros[0].s)}` : ""}</span>
@@ -127,6 +139,11 @@ export function ListeCols({ ftp, poids, records, pret, onGo, onPasPret }: { ftp:
   );
   return (
     <div className="space-y-5">
+      <button type="button" onClick={() => (pret ? onDirect() : onPasPret())} className="flex w-full items-center gap-3 rounded-[20px] border border-indigo-200 bg-indigo-50 p-4 text-left">
+        <Icone d={mdiAccountGroup} taille={28} coul="#4f46e5" />
+        <span className="flex-1"><span className="block text-base font-black text-slate-800">Course en direct</span><span className="block text-[13px] font-semibold text-slate-500">Jusqu&apos;à 10 sur le même col, départ commun</span></span>
+        <Icone d={mdiChevronRight} taille={22} coul="#4f46e5" />
+      </button>
       {groupe("local", "Autour de Toulon")}
       {groupe("mythique", "Les mythiques")}
       <p className="text-[11px] text-slate-400">Profils fabriqués par l&apos;app : routes © OpenStreetMap, altitudes IGN et Copernicus. Ton home-trainer suit la vraie pente (le Flux S plafonne à 10 %).</p>
@@ -145,8 +162,8 @@ export function ecartFantome(t: number, d: number, total: number, tempsRef: numb
   return dRef - d;   // > 0 : il est devant de tant de mètres
 }
 
-export function EcranCol({ etat, col, poids, zoneFc, record, onPause, onTerminer, onMoins, onPlus }: {
-  etat: Etat; col: Col; poids: number | null; zoneFc?: string | null; record: number | null; onPause: () => void; onTerminer: () => void; onMoins: () => void; onPlus: () => void;
+export function EcranCol({ etat, col, poids, zoneFc, record, situation, rivaux = [], onPause, onTerminer, onMoins, onPlus }: {
+  etat: Etat; col: Col; poids: number | null; zoneFc?: string | null; record: number | null; situation?: Situation | null; rivaux?: Fantome[]; onPause: () => void; onTerminer: () => void; onMoins: () => void; onPlus: () => void;
 }) {
   const c = etat.col!;
   const p = c.pente, couleur = couleurPente(p);
@@ -157,7 +174,7 @@ export function EcranCol({ etat, col, poids, zoneFc, record, onPause, onTerminer
     ...(col.pros ?? []).map((x) => ({ nom: `${x.nom} ${x.annee}`, s: x.s })),
   ];
   // Où serait chaque fantôme maintenant, à vitesse moyenne constante.
-  const surProfil = fantomes.map((f) => ({ nom: f.nom.replace(/ \d{4}$/, ""), d: Math.min(c.total, (etat.tTotal / f.s) * c.total) }));
+  const surProfil = [...fantomes.map((f) => ({ nom: f.nom.replace(/ \d{4}$/, ""), d: Math.min(c.total, (etat.tTotal / f.s) * c.total) })), ...rivaux];
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-2 lg:grid-cols-12 gap-3">
@@ -185,6 +202,8 @@ export function EcranCol({ etat, col, poids, zoneFc, record, onPause, onTerminer
           <div className="flex items-center gap-1.5 text-[13px] font-black text-slate-700 mt-2"><Icone d={mdiTimerOutline} taille={15} />{chrono(etat.tTotal)}</div>
         </Carte>
       </div>
+
+      {situation && <BandeauCourse s={situation} />}
 
       <div className="grid grid-cols-2 lg:grid-cols-12 gap-3">
         <Carte className="lg:col-span-2"><div className="flex items-center gap-1.5 text-[11px] font-extrabold uppercase tracking-[0.12em] text-slate-400"><Icone d={mdiRotateRight} taille={14} coul="#94a3b8" />Cadence</div><div className="text-[38px] font-black text-slate-800 tabular-nums">{etat.cadence ?? "—"}</div></Carte>

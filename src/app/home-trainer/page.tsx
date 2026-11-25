@@ -29,6 +29,8 @@ import { Moteur, type Etat, type Profil as ProfilCycliste } from "./ht/moteur";
 import { compliment } from "./ht/compliment";
 import { fichierFit } from "./ht/fit";
 import { fluxDesPoints } from "./ht/flux";
+import { brouillonUtilisable, libelleSortie, nouvelId, type Sortie } from "./ht/secours";
+import { copier, ecrireBrouillon, effacerBrouillon, lireBrouillon, majCopie, reessayer, renvoyerEnAttente, retirerCopie } from "./ht/secoursEnvoi";
 import { ecart, zoneCoeur, zoneEtape, ZONE_PAUSE } from "./ht/zones";
 import { Capteur, Simulateur, bluetoothDispo, messageConnexion, type EtatCapteur, type Source } from "./capteurs";
 import { Editeur } from "./Editeur";
@@ -119,6 +121,9 @@ function HomeTrainer() {
   // La séance du planning à laquelle rattacher une séance écrite « à la main »
   const [cible, setCible] = useState<{ id: string; titre: string } | null>(null);
   const [moi, setMoi] = useState<string | null>(null);
+  const copieId = useRef<string | null>(null);   // la copie de secours de la sortie en cours
+  const [pasEnvoyees, setPasEnvoyees] = useState(0);
+  const [brouillon, setBrouillon] = useState<{ s: Sortie; texte: string } | null>(null);
   const [ftp, setFtp] = useState<number>(200);
   const [zonesFc, setZonesFc] = useState<number[] | null>(null);
   const [ftpConnue, setFtpConnue] = useState(true);
@@ -279,11 +284,51 @@ function HomeTrainer() {
     setChoix(c);
     moteur.current = new Moteur(c.blocs, { ftp, ...profil, col: c.col ?? null, rampe: c.test === "rampe" });
     setClassement(null); setNouveauRecord(false); setRpe(null); setAideRpe(false);
+    copieId.current = null;
     setPhase("rouler");
     setEnvoi({ etat: "rien" }); setFavoriOk(false); setFavoriNom("");
     if (simu) { sim.current = new Simulateur(ecoute); sim.current.demarrer(); }
     try { verrou.current = await (navigator as any).wakeLock?.request("screen"); } catch { /* pas grave */ } // eslint-disable-line @typescript-eslint/no-explicit-any
   };
+
+  // ─── Copie de secours (25/11/2026) : rien n'est perdu si l'envoi échoue ───
+  const sortieDe = (m: Moteur, o: Partial<Sortie> = {}): Sortie => ({
+    id: copieId.current ?? (copieId.current = nouvelId(Date.now())), cree_le: Date.now(), userId: moi ?? "", sessionId: choix?.sessionId ?? null,
+    titre: choix?.titre ?? "Vélo", blocs: choix?.blocs ?? [], texteCourt: choix?.texteCourt ?? null, jour: dayjs().format("YYYY-MM-DD"),
+    points: m.points, tours: m.tours, rr: m.rr, compliment: "", rpe: null, essais: 0, ...o,
+  });
+  const bravoPour = (m: Moteur, record: boolean) => {
+    const colFait = !!choix?.col && (m.points[m.points.length - 1]?.m ?? 0) >= choix.col.km * 1000 - 5;
+    return colFait ? `⛰️ ${choix!.col!.nom} : montée en ${chrono(m.points.length)}${record ? ", nouveau record !" : ""}` : compliment(m.points, m.tours, m.etapes, ftp, m.bouclee);
+  };
+  // À l'ouverture : une sortie interrompue (brouillon) à proposer, puis le renvoi des copies en attente.
+  useEffect(() => {
+    if (!moi) return;
+    (async () => {
+      try {
+        const b = await lireBrouillon();
+        if (b && brouillonUtilisable(b, moi, Date.now())) setBrouillon({ s: b, texte: libelleSortie(b, Date.now()) }); else if (b) await effacerBrouillon();
+        setPasEnvoyees(await renvoyerEnAttente(moi));
+      } catch { /* la copie de secours ne doit jamais gêner l'écran */ }
+    })();
+  }, [moi]);
+  // Pendant la sortie : un brouillon toutes les minutes (onglet fermé, plantage).
+  useEffect(() => {
+    if (phase !== "rouler" || !moi) return;
+    const h = setInterval(() => {
+      const m = moteur.current;
+      if (m && m.points.length >= 30) ecrireBrouillon(sortieDe(m)).catch(() => {});
+    }, 60_000);
+    return () => clearInterval(h);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, moi]);
+  // Dès l'écran de fin, avant même le ressenti : la copie complète.
+  useEffect(() => {
+    const m = moteur.current;
+    if (phase !== "fin" || !m || !moi || !choix || m.points.length < 30) return;
+    copier(sortieDe(m, { compliment: bravoPour(m, false) })).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase]);
 
   useEffect(() => {
     if (phase !== "rouler") return;
@@ -381,6 +426,8 @@ function HomeTrainer() {
     if (!m || !moi || !choix) return;
     if (m.points.length < 30) { setEnvoi({ etat: "erreur", texte: "Moins de 30 secondes enregistrées : rien à envoyer." }); return; }
     setEnvoi({ etat: "en_cours", texte: "J'enregistre la séance…" });
+    const copie = copieId.current;
+    if (copie) majCopie(copie, { rpe: note }).catch(() => {});
     try {
       let sessionId = choix.sessionId;
       if (sessionId) {
@@ -396,15 +443,16 @@ function HomeTrainer() {
         if (error) throw new Error(error.message);
         sessionId = data.id;
         setChoix({ ...choix, sessionId });
+        if (copie) majCopie(copie, { sessionId }).catch(() => {});
       }
       setEnvoi({ etat: "en_cours", texte: "J'envoie sur Strava…" });
       const fit = fichierFit(m.points, m.tours, m.rr);
-      const colFait = !!choix.col && (m.points[m.points.length - 1]?.m ?? 0) >= choix.col.km * 1000 - 5;
-      const bravo = colFait ? `⛰️ ${choix.col!.nom} : montée en ${chrono(m.points.length)}${nouveauRecord ? ", nouveau record !" : ""}` : compliment(m.points, m.tours, m.etapes, ftp, m.bouclee);
+      const bravo = bravoPour(m, nouveauRecord);
       const { data: r, error } = await supabase.functions.invoke("ht-envoi", { body: { fit: versBase64(fit), flux: fluxDesPoints(m.points, m.tours), session_id: sessionId, compliment: bravo } });
       if (error) throw new Error(error.message);
-      if (r?.status === "not_connected") { setEnvoi({ etat: "ok", texte: "Séance enregistrée : ton coach la voit." }); return; }
+      if (r?.status === "not_connected") { if (copie) await retirerCopie(copie); setEnvoi({ etat: "ok", texte: "Séance enregistrée : ton coach la voit." }); return; }
       if (r?.error) throw new Error(r.error);
+      if (copie) await retirerCopie(copie);   // ht-envoi a répondu : la copie de secours n'a plus lieu d'être
       if (r?.status === "en_cours") { setEnvoi({ etat: "ok", texte: "Séance enregistrée, Strava finit de traiter le fichier : elle arrivera dans quelques minutes." }); return; }
       if (r?.activity_id) {
         await supabase.functions.invoke("strava-force-sync", { body: { action: "attach", user_id: moi, target_type: "session", target_id: sessionId, activity_id: r.activity_id } });
@@ -769,6 +817,21 @@ function HomeTrainer() {
             </button>
           )}
         </div>
+
+        {brouillon && moi && (
+          <div className="flex flex-wrap items-center gap-2 rounded-2xl bg-orange-50 px-4 py-3 text-[14px] font-extrabold text-orange-800">
+            <span className="flex-1">Une sortie n’a pas été enregistrée ({brouillon.texte}). L’envoyer ?</span>
+            <button type="button" onClick={async () => { const b = brouillon.s; setBrouillon(null); await copier({ ...b, essais: 0, compliment: b.compliment || "Sortie retrouvée" }); setPasEnvoyees(await renvoyerEnAttente(moi)); }}
+              className="rounded-full bg-[#fc4c02] px-4 py-1.5 font-black text-white">Envoyer</button>
+            <button type="button" onClick={() => { setBrouillon(null); effacerBrouillon(); }} className="rounded-full bg-white px-4 py-1.5 font-black text-slate-700">Effacer</button>
+          </div>
+        )}
+        {pasEnvoyees > 0 && moi && (
+          <div className="flex items-center gap-2 rounded-2xl bg-orange-50 px-4 py-3 text-[14px] font-extrabold text-orange-800">
+            <span className="flex-1">{pasEnvoyees} sortie{pasEnvoyees > 1 ? "s" : ""} pas encore envoyée{pasEnvoyees > 1 ? "s" : ""}</span>
+            <button type="button" onClick={async () => { setPasEnvoyees(0); setPasEnvoyees(await reessayer(moi)); }} className="rounded-full bg-[#fc4c02] px-4 py-1.5 font-black text-white">Réessayer</button>
+          </div>
+        )}
 
         {/* Le matériel : affiché tant que le vélo n'est pas prêt, sinon à la demande (pastille). */}
         {(!avecPastille || !pret || materielOuvert || !ftpConnue) && (
